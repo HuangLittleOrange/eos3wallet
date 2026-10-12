@@ -1,0 +1,8 @@
+{
+  "ios": {
+    "NSCameraUsageDescription": "Dùng để quét mã QR nhằm kết nối DApp hoặc nhận diện địa chỉ nhận tiền.",
+    "NSFaceIDUsageDescription": "Dùng để xác thực danh tính nhanh chóng nhằm mở khóa ví hoặc ký giao dịch.",
+    "NSPhotoLibraryAddUsageDescription": "Dùng để lưu ảnh mã QR nhận tiền vào thư viện ảnh của bạn.",
+    "NSPhotoLibraryUsageDescription": "Dùng để lưu ảnh mã QR nhận tiền vào thư viện ảnh của bạn."
+  }
+}

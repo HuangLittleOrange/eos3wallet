@@ -1,0 +1,137 @@
+{
+  "expo": {
+    "name": "EOS³ Wallet",
+    "slug": "eostp",
+    "version": "1.0.2",
+    "scheme": [
+      "aurorawallet",
+      "eos3wallet"
+    ],
+    "orientation": "portrait",
+    "icon": "./assets/brand/eos3-app-icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.eos3.wallet",
+      "associatedDomains": [
+        "webcredentials:eos3.app",
+        "applinks:eos3.app"
+      ],
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "android": {
+      "package": "com.eos3.wallet",
+      "versionCode": 1,
+      "icon": "./assets/brand/eos3-app-icon.png",
+      "adaptiveIcon": {
+        "backgroundColor": "#2E7DF7",
+        "foregroundImage": "./assets/brand/eos3-adaptive-foreground.png",
+        "monochromeImage": "./assets/brand/eos3-adaptive-monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false,
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "scheme": "https",
+              "host": "eos3.app",
+              "pathPrefix": "/tgbind"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
+      ],
+      "permissions": [
+        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
+        "android.permission.READ_MEDIA_IMAGES",
+        "android.permission.CAMERA",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.REQUEST_INSTALL_PACKAGES"
+      ],
+      "blockedPermissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.READ_MEDIA_VIDEO",
+        "android.permission.READ_MEDIA_AUDIO"
+      ]
+    },
+    "web": {
+      "favicon": "./assets/brand/eos3-favicon.png"
+    },
+    "plugins": [
+      "expo-secure-store",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "16.4"
+          },
+          "android": {
+            "compileSdkVersion": 36,
+            "manifestQueries": {
+              "package": [
+                "com.android.vending"
+              ]
+            }
+          }
+        }
+      ],
+      "expo-font",
+      "expo-web-browser",
+      "expo-sharing",
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Used to save your receive QR code image to your photo library.",
+          "savePhotosPermission": "Used to save your receive QR code image to your photo library.",
+          "isAccessMediaLocationEnabled": false
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Used to scan QR codes for DApp connections and payment addresses.",
+          "recordAudioAndroid": false
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Used to read QR codes from photos in your library."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "Used to quickly verify your identity to unlock the wallet or sign transactions."
+        }
+      ],
+      "expo-localization",
+      "react-native-quick-crypto",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#FFFFFF",
+          "image": "./assets/splash/eos3-launch.png",
+          "imageWidth": 160,
+          "resizeMode": "contain"
+        }
+      ]
+    ],
+    "locales": {
+      "zh-Hans": "./native-locales/zh-Hans.json",
+      "en": "./native-locales/en.json",
+      "ko": "./native-locales/ko.json",
+      "vi": "./native-locales/vi.json",
+      "ja": "./native-locales/ja.json",
+      "ru": "./native-locales/ru.json"
+    }
+  }
+}

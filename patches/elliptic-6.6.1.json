@@ -1,0 +1,18 @@
+{
+  "package": "elliptic",
+  "version": "6.6.1",
+  "reference": "https://github.com/indutny/elliptic/issues/321",
+  "files": [
+    {
+      "path": "lib/elliptic/ec/index.js",
+      "before_sha256": "668741c0c921bf5174439104e8fd20636578373cbbd28736ccbcd8e59a5aeafc",
+      "after_sha256": "f4e114cf1120694624321628de239e3e7295d690ad888a3ddd47f5d888df3c47",
+      "changes": [
+        {
+          "before": "    k = this._truncateToN(k, true);",
+          "after": "    // Preserve the generated nonce width even when BN drops leading zeros.\n    k = this._truncateToN(k, true, options.k ? undefined : bytes * 8);"
+        }
+      ]
+    }
+  ]
+}

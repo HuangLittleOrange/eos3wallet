@@ -1,0 +1,759 @@
+{
+  "content": {
+    "schemaVersion": 1,
+    "intro": {
+      "title": {
+        "zh": "EOS³ Wallet,安全又轻松",
+        "en": "EOS³ Wallet, secure and effortless",
+        "ko": "EOS³ Wallet, 안전하고 간편하게",
+        "vi": "EOS³ Wallet, an toàn và dễ dàng",
+        "ja": "EOS³ Wallet、安全で手軽に",
+        "ru": "EOS³ Wallet — надёжно и просто"
+      },
+      "subtitle": {
+        "zh": "支持 Vaulta / EOS 主网与 Jungle4 测试网\n助记词、私钥、观察钱包与 Passkey 一站接入",
+        "en": "Supports Vaulta / EOS mainnet and the Jungle4 testnet\nMnemonic, private key, watch wallet and Passkey — all in one place",
+        "ko": "Vaulta / EOS 메인넷과 Jungle4 테스트넷 지원\n니모닉, 개인키, 관찰 지갑, Passkey를 한 곳에서",
+        "vi": "Hỗ trợ mainnet Vaulta / EOS và testnet Jungle4\nCụm từ khôi phục, khóa riêng, ví theo dõi và Passkey — tất cả trong một nơi",
+        "ja": "Vaulta / EOS メインネットと Jungle4 テストネットに対応\nニーモニック、秘密鍵、ウォッチウォレット、Passkey をひとつに",
+        "ru": "Поддерживает основную сеть Vaulta / EOS и тестовую сеть Jungle4\nМнемоническая фраза, закрытый ключ, кошелёк для наблюдения и Passkey — всё в одном месте"
+      }
+    },
+    "banners": [
+      {
+        "id": "ext",
+        "enabled": true,
+        "sortOrder": 0,
+        "title": {
+          "zh": "浏览器扩展钱包",
+          "en": "Browser extension wallet",
+          "ko": "브라우저 확장 지갑",
+          "vi": "Ví tiện ích mở rộng trình duyệt",
+          "ja": "ブラウザ拡張ウォレット",
+          "ru": "Кошелёк-расширение для браузера"
+        },
+        "lines": [
+          {
+            "zh": "· 把 EOS³ 带到你的浏览器",
+            "en": "· Bring EOS³ to your browser",
+            "ko": "· EOS³를 브라우저로 가져오세요",
+            "vi": "· Mang EOS³ lên trình duyệt của bạn",
+            "ja": "· EOS³ をブラウザに",
+            "ru": "· Возьмите EOS³ в свой браузер"
+          },
+          {
+            "zh": "· 一个钱包,手机与电脑通用",
+            "en": "· One wallet, works on phone and desktop",
+            "ko": "· 하나의 지갑, 모바일과 PC에서 모두 사용",
+            "vi": "· Một ví, dùng chung cho điện thoại và máy tính",
+            "ja": "· 1つのウォレットをスマホと PC で共通利用",
+            "ru": "· Один кошелёк для телефона и компьютера"
+          }
+        ],
+        "colors": [
+          "#141B36",
+          "#2B1E5C"
+        ]
+      },
+      {
+        "id": "security",
+        "enabled": true,
+        "sortOrder": 1,
+        "title": {
+          "zh": "安全无忧",
+          "en": "Worry-free security",
+          "ko": "걱정 없는 보안",
+          "vi": "An toàn tuyệt đối",
+          "ja": "安心のセキュリティ",
+          "ru": "Надёжная безопасность"
+        },
+        "lines": [
+          {
+            "zh": "· 私钥端到端加密,本地保存",
+            "en": "· Private keys encrypted end-to-end, stored locally",
+            "ko": "· 개인키는 종단간 암호화되어 로컬에 저장",
+            "vi": "· Khóa riêng mã hóa đầu cuối, lưu cục bộ",
+            "ja": "· 秘密鍵はエンドツーエンド暗号化してローカル保存",
+            "ru": "· Закрытые ключи шифруются end-to-end и хранятся локально"
+          },
+          {
+            "zh": "· 生物识别一键解锁",
+            "en": "· Unlock with one-tap biometrics",
+            "ko": "· 생체 인식으로 원탭 잠금 해제",
+            "vi": "· Mở khóa bằng sinh trắc học chỉ một chạm",
+            "ja": "· 生体認証でワンタップ解除",
+            "ru": "· Разблокировка одним касанием по биометрии"
+          }
+        ],
+        "colors": [
+          "#0B1B3A",
+          "#123A5E"
+        ]
+      },
+      {
+        "id": "connect",
+        "enabled": true,
+        "sortOrder": 2,
+        "title": {
+          "zh": "一键连接 DApp",
+          "en": "One-tap DApp connect",
+          "ko": "원탭 DApp 연결",
+          "vi": "Kết nối DApp chỉ một chạm",
+          "ja": "ワンタップで DApp 接続",
+          "ru": "Подключение к DApp в один шаг"
+        },
+        "lines": [
+          {
+            "zh": "· 无需插件,扫码即连",
+            "en": "· No extension needed, just scan to connect",
+            "ko": "· 확장 프로그램 없이 스캔만으로 연결",
+            "vi": "· Không cần tiện ích mở rộng, quét mã là kết nối",
+            "ja": "· 拡張機能不要、スキャンだけで接続",
+            "ru": "· Без расширений, достаточно отсканировать код"
+          },
+          {
+            "zh": "· 覆盖 EOS / Vaulta 主流生态",
+            "en": "· Covers the mainstream EOS / Vaulta ecosystem",
+            "ko": "· 주요 EOS / Vaulta 생태계 지원",
+            "vi": "· Bao phủ hệ sinh thái EOS / Vaulta phổ biến",
+            "ja": "· EOS / Vaulta の主要エコシステムをカバー",
+            "ru": "· Охватывает основную экосистему EOS / Vaulta"
+          }
+        ],
+        "colors": [
+          "#0A2038",
+          "#3B1E5C"
+        ]
+      }
+    ],
+    "promos": [
+      {
+        "id": "gas",
+        "enabled": true,
+        "sortOrder": 0,
+        "title": {
+          "zh": "享受 0 Gas 转账",
+          "en": "Enjoy 0 gas transfers",
+          "ko": "누리세요 0 Gas 전송",
+          "vi": "Tận hưởng 0 chuyển khoản Gas",
+          "ja": "楽しもう 0 Gas 送金",
+          "ru": "Наслаждайтесь 0 переводами с газом"
+        },
+        "colors": [
+          "#0B1B3A",
+          "#123A5E"
+        ]
+      },
+      {
+        "id": "stable",
+        "enabled": true,
+        "sortOrder": 1,
+        "title": {
+          "zh": "稳定币 支付资源",
+          "en": "Stablecoin pays for resources",
+          "ko": "스테이블코인 으로 리소스 결제",
+          "vi": "Stablecoin thanh toán tài nguyên",
+          "ja": "ステーブルコイン でリソース支払い",
+          "ru": "Стейблкоин оплачивает ресурсы"
+        },
+        "colors": [
+          "#0A2038",
+          "#0E3E4D"
+        ]
+      }
+    ],
+    "earnTitle": {
+      "zh": "💰 理财",
+      "en": "💰 Earn",
+      "ko": "💰 수익",
+      "vi": "💰 Kiếm lời",
+      "ja": "💰 資産運用",
+      "ru": "💰 Доход"
+    },
+    "earnDescription": {
+      "zh": "实用高效的加密理财工具合集 —— 让闲置资金收益最大化。",
+      "en": "A curated set of efficient crypto earning tools — put idle funds to work.",
+      "ko": "효율적인 암호화폐 수익 도구 모음 —— 유휴 자금의 수익을 극대화하세요.",
+      "vi": "Bộ công cụ kiếm lời tiền mã hóa hiệu quả —— tối đa hóa lợi nhuận từ vốn nhàn rỗi.",
+      "ja": "効率的な暗号資産運用ツール集 —— 遊休資金の収益を最大化。",
+      "ru": "Подборка эффективных инструментов заработка на крипте — заставьте простаивающие средства работать."
+    },
+    "earnItems": [
+      {
+        "id": "defibox",
+        "enabled": true,
+        "sortOrder": 0,
+        "title": {
+          "zh": "Defibox 理财",
+          "en": "Defibox earnings",
+          "ko": "Defibox 수익",
+          "vi": "Kiếm lời Defibox",
+          "ja": "Defibox 資産運用",
+          "ru": "Доход Defibox"
+        },
+        "description": {
+          "zh": "为 Defibox 热门代币池提供流动性,赚取手续费分成",
+          "en": "Provide liquidity to popular Defibox token pools and earn a share of trading fees",
+          "ko": "Defibox 인기 토큰 풀에 유동성을 제공하고 수수료 수익을 받으세요",
+          "vi": "Cung cấp thanh khoản cho các pool token phổ biến của Defibox và nhận chia sẻ phí giao dịch",
+          "ja": "Defibox の人気トークンプールに流動性を提供し、手数料収益を得る",
+          "ru": "Предоставляйте ликвидность популярным пулам токенов Defibox и получайте долю комиссий"
+        },
+        "color": "#3366FF",
+        "hot": true
+      },
+      {
+        "id": "dfs",
+        "enabled": true,
+        "sortOrder": 1,
+        "title": {
+          "zh": "DFS 矿池",
+          "en": "DFS mining pool",
+          "ko": "DFS 마이닝 풀",
+          "vi": "Pool đào DFS",
+          "ja": "DFS マイニングプール",
+          "ru": "Пул майнинга DFS"
+        },
+        "description": {
+          "zh": "质押 A 或稳定币进入 DFS 矿池,获取挖矿收益",
+          "en": "Stake A or stablecoins into the DFS mining pool to earn mining rewards",
+          "ko": "A 또는 스테이블코인을 DFS 마이닝 풀에 스테이킹하여 채굴 수익을 얻으세요",
+          "vi": "Stake A hoặc stablecoin vào pool đào DFS để nhận thưởng đào",
+          "ja": "A またはステーブルコインを DFS マイニングプールにステークしてマイニング収益を得る",
+          "ru": "Застейкайте A или стейблкоины в пул майнинга DFS и получайте награды за майнинг"
+        },
+        "color": "#00C2A8",
+        "hot": true
+      },
+      {
+        "id": "rex",
+        "enabled": true,
+        "sortOrder": 2,
+        "title": {
+          "zh": "REX 资源租赁",
+          "en": "REX resource leasing",
+          "ko": "REX 리소스 임대",
+          "vi": "Cho thuê tài nguyên REX",
+          "ja": "REX リソースレンタル",
+          "ru": "Аренда ресурсов REX"
+        },
+        "description": {
+          "zh": "把闲置的 A 存入 REX,赚取 CPU/NET 租赁收益",
+          "en": "Deposit idle A into REX and earn CPU/NET leasing rewards",
+          "ko": "유휴 A를 REX에 예치하여 CPU/NET 임대 수익을 얻으세요",
+          "vi": "Gửi A nhàn rỗi vào REX để nhận thưởng cho thuê CPU/NET",
+          "ja": "遊休の A を REX に預けて CPU/NET レンタル収益を得る",
+          "ru": "Внесите свободные A в REX и получайте доход от аренды CPU/NET"
+        },
+        "color": "#0EA5E9",
+        "hot": false
+      }
+    ],
+    "announcements": [
+      {
+        "id": "sys-welcome",
+        "enabled": true,
+        "sortOrder": 0,
+        "title": {
+          "zh": "欢迎使用 EOS³ Wallet",
+          "en": "Welcome to EOS³ Wallet",
+          "ko": "EOS³ Wallet에 오신 것을 환영합니다",
+          "vi": "Chào mừng đến với EOS³ Wallet",
+          "ja": "EOS³ Wallet へようこそ",
+          "ru": "Добро пожаловать в EOS³ Wallet"
+        },
+        "body": {
+          "zh": "私钥端到端加密、仅保存在本机,任何人(包括我们)都拿不走。使用中遇到问题欢迎在「我」页面反馈。",
+          "en": "Private keys are encrypted end-to-end and stored only on this device — no one, including us, can take them. If you run into any issues, feel free to share feedback on the \"Me\" page.",
+          "ko": "개인키는 종단간 암호화되어 이 기기에만 저장되며, 저희를 포함해 그 누구도 가져갈 수 없습니다. 사용 중 문제가 있으면 \"나\" 페이지에서 의견을 보내주세요.",
+          "vi": "Khóa riêng được mã hóa đầu cuối và chỉ lưu trên thiết bị này, không ai (kể cả chúng tôi) có thể lấy được. Nếu gặp vấn đề khi sử dụng, hãy gửi phản hồi ở trang \"Tôi\".",
+          "ja": "秘密鍵はエンドツーエンドで暗号化され、この端末にのみ保存されます。私たちを含め誰も取り出すことはできません。使用中に問題があれば「マイページ」でフィードバックをお寄せください。",
+          "ru": "Закрытые ключи шифруются end-to-end и хранятся только на этом устройстве — никто, включая нас, не может их получить. Если возникнут проблемы, оставьте отзыв на странице «Я»."
+        },
+        "publishedAt": "2026-08-01T00:00:00+08:00"
+      }
+    ],
+    "links": [
+      {
+        "id": "telegram",
+        "enabled": true,
+        "sortOrder": 0,
+        "title": {
+          "zh": "Telegram 交流群",
+          "en": "Telegram group",
+          "ko": "텔레그램 그룹",
+          "vi": "Nhóm Telegram",
+          "ja": "Telegram グループ",
+          "ru": "Группа в Telegram"
+        },
+        "url": "https://t.me/ECFgroup/1"
+      },
+      {
+        "id": "terms",
+        "enabled": true,
+        "sortOrder": 1,
+        "title": {
+          "zh": "服务条款",
+          "en": "Terms of Service",
+          "ja": "利用規約",
+          "ko": "이용약관",
+          "vi": "Điều khoản dịch vụ",
+          "ru": "Условия использования"
+        },
+        "url": "https://eos3.app/terms"
+      }
+    ]
+  },
+  "projects": [
+    {
+      "id": "defibox",
+      "enabled": true,
+      "sortOrder": 0,
+      "name": "Defibox",
+      "description": "All-in-one DeFi",
+      "iconUrl": "",
+      "appUrl": "https://defibox.io",
+      "category": "DeFi",
+      "featured": true,
+      "color": "#16213E",
+      "letter": "D",
+      "translations": {
+        "zh": {
+          "name": "Defibox",
+          "description": "一站式 DeFi",
+          "category": "DeFi"
+        },
+        "en": {
+          "name": "Defibox",
+          "description": "All-in-one DeFi",
+          "category": "DeFi"
+        },
+        "ko": {
+          "name": "Defibox",
+          "description": "올인원 DeFi",
+          "category": "DeFi"
+        },
+        "vi": {
+          "name": "Defibox",
+          "description": "DeFi tất cả trong một",
+          "category": "DeFi"
+        },
+        "ja": {
+          "name": "Defibox",
+          "description": "オールインワン DeFi",
+          "category": "DeFi"
+        },
+        "ru": {
+          "name": "Defibox",
+          "description": "DeFi «всё в одном»",
+          "category": "DeFi"
+        }
+      }
+    },
+    {
+      "id": "dfs",
+      "enabled": true,
+      "sortOrder": 1,
+      "name": "DFS",
+      "description": "Decentralized trading and lending",
+      "iconUrl": "",
+      "appUrl": "https://defis.network",
+      "category": "DeFi",
+      "featured": true,
+      "color": "#00C2A8",
+      "letter": "D",
+      "translations": {
+        "zh": {
+          "name": "DFS",
+          "description": "去中心化交易与借贷",
+          "category": "DeFi"
+        },
+        "en": {
+          "name": "DFS",
+          "description": "Decentralized trading and lending",
+          "category": "DeFi"
+        },
+        "ko": {
+          "name": "DFS",
+          "description": "탈중앙화 거래 및 대출",
+          "category": "DeFi"
+        },
+        "vi": {
+          "name": "DFS",
+          "description": "Giao dịch và cho vay phi tập trung",
+          "category": "DeFi"
+        },
+        "ja": {
+          "name": "DFS",
+          "description": "分散型取引と貸付",
+          "category": "DeFi"
+        },
+        "ru": {
+          "name": "DFS",
+          "description": "Децентрализованная торговля и кредитование",
+          "category": "DeFi"
+        }
+      }
+    },
+    {
+      "id": "bloks",
+      "enabled": true,
+      "sortOrder": 2,
+      "name": "Bloks",
+      "description": "Block explorer",
+      "iconUrl": "",
+      "appUrl": "https://bloks.io",
+      "category": "Tools",
+      "featured": true,
+      "color": "#1E88FF",
+      "letter": "B",
+      "translations": {
+        "zh": {
+          "name": "Bloks",
+          "description": "区块浏览器",
+          "category": "工具"
+        },
+        "en": {
+          "name": "Bloks",
+          "description": "Block explorer",
+          "category": "Tools"
+        },
+        "ko": {
+          "name": "Bloks",
+          "description": "블록 탐색기",
+          "category": "도구"
+        },
+        "vi": {
+          "name": "Bloks",
+          "description": "Trình khám phá khối",
+          "category": "Công cụ"
+        },
+        "ja": {
+          "name": "Bloks",
+          "description": "ブロックエクスプローラー",
+          "category": "ツール"
+        },
+        "ru": {
+          "name": "Bloks",
+          "description": "Блок-эксплорер",
+          "category": "Инструменты"
+        }
+      }
+    },
+    {
+      "id": "auth",
+      "enabled": true,
+      "sortOrder": 3,
+      "name": "EOS Authority",
+      "description": "Explorer and voting",
+      "iconUrl": "",
+      "appUrl": "https://eosauthority.com",
+      "category": "Tools",
+      "featured": true,
+      "color": "#5C6BC0",
+      "letter": "E",
+      "translations": {
+        "zh": {
+          "name": "EOS Authority",
+          "description": "浏览器与投票",
+          "category": "工具"
+        },
+        "en": {
+          "name": "EOS Authority",
+          "description": "Explorer and voting",
+          "category": "Tools"
+        },
+        "ko": {
+          "name": "EOS Authority",
+          "description": "탐색 및 투표",
+          "category": "도구"
+        },
+        "vi": {
+          "name": "EOS Authority",
+          "description": "Khám phá và bỏ phiếu",
+          "category": "Công cụ"
+        },
+        "ja": {
+          "name": "EOS Authority",
+          "description": "エクスプローラーと投票",
+          "category": "ツール"
+        },
+        "ru": {
+          "name": "EOS Authority",
+          "description": "Эксплорер и голосование",
+          "category": "Инструменты"
+        }
+      }
+    },
+    {
+      "id": "ram",
+      "enabled": true,
+      "sortOrder": 4,
+      "name": "RAM",
+      "description": "",
+      "iconUrl": "",
+      "appUrl": "https://bloks.io/ram",
+      "category": "Tools",
+      "featured": true,
+      "color": "#1E88FF",
+      "letter": "R",
+      "translations": {
+        "zh": {
+          "name": "RAM 市场",
+          "description": "",
+          "category": "工具"
+        },
+        "en": {
+          "name": "RAM market",
+          "description": "",
+          "category": "Tools"
+        },
+        "ko": {
+          "name": "RAM 마켓",
+          "description": "",
+          "category": "도구"
+        },
+        "vi": {
+          "name": "Thị trường RAM",
+          "description": "",
+          "category": "Công cụ"
+        },
+        "ja": {
+          "name": "RAM マーケット",
+          "description": "",
+          "category": "ツール"
+        },
+        "ru": {
+          "name": "Рынок RAM",
+          "description": "",
+          "category": "Инструменты"
+        }
+      }
+    },
+    {
+      "id": "staking",
+      "enabled": true,
+      "sortOrder": 5,
+      "name": "A Staking",
+      "description": "",
+      "iconUrl": "",
+      "appUrl": "https://bloks.io/staking",
+      "category": "Tools",
+      "featured": true,
+      "color": "#3B47D6",
+      "letter": "A",
+      "translations": {
+        "zh": {
+          "name": "A 质押奖励",
+          "description": "",
+          "category": "工具"
+        },
+        "en": {
+          "name": "A staking rewards",
+          "description": "",
+          "category": "Tools"
+        },
+        "ko": {
+          "name": "A 스테이킹 보상",
+          "description": "",
+          "category": "도구"
+        },
+        "vi": {
+          "name": "Thưởng staking A",
+          "description": "",
+          "category": "Công cụ"
+        },
+        "ja": {
+          "name": "A ステーキング報酬",
+          "description": "",
+          "category": "ツール"
+        },
+        "ru": {
+          "name": "Стейкинг-награды A",
+          "description": "",
+          "category": "Инструменты"
+        }
+      }
+    },
+    {
+      "id": "rex",
+      "enabled": true,
+      "sortOrder": 6,
+      "name": "REX",
+      "description": "",
+      "iconUrl": "",
+      "appUrl": "https://bloks.io/rex",
+      "category": "DeFi",
+      "featured": true,
+      "color": "#F0B90B",
+      "letter": "R",
+      "translations": {
+        "zh": {
+          "name": "A 理财收益",
+          "description": "",
+          "category": "DeFi"
+        },
+        "en": {
+          "name": "A earnings",
+          "description": "",
+          "category": "DeFi"
+        },
+        "ko": {
+          "name": "A 수익",
+          "description": "",
+          "category": "DeFi"
+        },
+        "vi": {
+          "name": "Thu nhập A",
+          "description": "",
+          "category": "DeFi"
+        },
+        "ja": {
+          "name": "A 収益",
+          "description": "",
+          "category": "DeFi"
+        },
+        "ru": {
+          "name": "Доход A",
+          "description": "",
+          "category": "DeFi"
+        }
+      }
+    },
+    {
+      "id": "msig",
+      "enabled": true,
+      "sortOrder": 7,
+      "name": "Msig",
+      "description": "",
+      "iconUrl": "",
+      "appUrl": "https://msig.app",
+      "category": "Tools",
+      "featured": true,
+      "color": "#16161F",
+      "letter": "M",
+      "translations": {
+        "zh": {
+          "name": "Msig 多签",
+          "description": "",
+          "category": "工具"
+        },
+        "en": {
+          "name": "Msig multisig",
+          "description": "",
+          "category": "Tools"
+        },
+        "ko": {
+          "name": "Msig 다중서명",
+          "description": "",
+          "category": "도구"
+        },
+        "vi": {
+          "name": "Đa chữ ký Msig",
+          "description": "",
+          "category": "Công cụ"
+        },
+        "ja": {
+          "name": "Msig マルチシグ",
+          "description": "",
+          "category": "ツール"
+        },
+        "ru": {
+          "name": "Мультиподпись Msig",
+          "description": "",
+          "category": "Инструменты"
+        }
+      }
+    },
+    {
+      "id": "unicove",
+      "enabled": true,
+      "sortOrder": 8,
+      "name": "Unicove",
+      "description": "Official Vaulta interface",
+      "iconUrl": "",
+      "appUrl": "https://unicove.com",
+      "category": "Tools",
+      "featured": false,
+      "color": "#111827",
+      "letter": "U",
+      "translations": {
+        "zh": {
+          "name": "Unicove",
+          "description": "Vaulta 官方界面",
+          "category": "工具"
+        },
+        "en": {
+          "name": "Unicove",
+          "description": "Official Vaulta interface",
+          "category": "Tools"
+        },
+        "ko": {
+          "name": "Unicove",
+          "description": "Vaulta 공식 인터페이스",
+          "category": "도구"
+        },
+        "vi": {
+          "name": "Unicove",
+          "description": "Giao diện chính thức của Vaulta",
+          "category": "Công cụ"
+        },
+        "ja": {
+          "name": "Unicove",
+          "description": "Vaulta 公式インターフェース",
+          "category": "ツール"
+        },
+        "ru": {
+          "name": "Unicove",
+          "description": "Официальный интерфейс Vaulta",
+          "category": "Инструменты"
+        }
+      }
+    },
+    {
+      "id": "evm",
+      "enabled": true,
+      "sortOrder": 9,
+      "name": "EOS EVM Bridge",
+      "description": "EOS ↔ EVM bridge",
+      "iconUrl": "",
+      "appUrl": "https://bridge.eosnetwork.com",
+      "category": "Bridge",
+      "featured": false,
+      "color": "#6366F1",
+      "letter": "E",
+      "translations": {
+        "zh": {
+          "name": "EOS EVM Bridge",
+          "description": "EOS ↔ EVM 跨链桥",
+          "category": "跨链"
+        },
+        "en": {
+          "name": "EOS EVM Bridge",
+          "description": "EOS ↔ EVM bridge",
+          "category": "Bridge"
+        },
+        "ko": {
+          "name": "EOS EVM Bridge",
+          "description": "EOS ↔ EVM 브리지",
+          "category": "브리지"
+        },
+        "vi": {
+          "name": "EOS EVM Bridge",
+          "description": "Cầu nối EOS ↔ EVM",
+          "category": "Cầu nối"
+        },
+        "ja": {
+          "name": "EOS EVM Bridge",
+          "description": "EOS ↔ EVM ブリッジ",
+          "category": "ブリッジ"
+        },
+        "ru": {
+          "name": "EOS EVM Bridge",
+          "description": "Мост EOS ↔ EVM",
+          "category": "Мост"
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "anchor-link": {
+    "url": "https://raw.githubusercontent.com/greymass/anchor-link/62c6e7775e3a637e1acfd95544902d174b698a7f/LICENSE",
+    "commit": "62c6e7775e3a637e1acfd95544902d174b698a7f"
+  },
+  "ionicons": {
+    "url": "https://raw.githubusercontent.com/ionic-team/ionicons/d1e2c48641fd5f4910ee42a144dc1c84b1a9a4ee/LICENSE",
+    "commit": "d1e2c48641fd5f4910ee42a144dc1c84b1a9a4ee"
+  },
+  "material-design-icons": {
+    "url": "https://raw.githubusercontent.com/Templarian/MaterialDesign-Font/d72e30826e6797c1b3a2976e71d0d2f790c1a2eb/LICENSE",
+    "commit": "d72e30826e6797c1b3a2976e71d0d2f790c1a2eb"
+  },
+  "font-awesome": {
+    "url": "https://raw.githubusercontent.com/FortAwesome/Font-Awesome/v4.7.0/src/license.html",
+    "version": "4.7.0"
+  },
+  "openssl": {
+    "url": "https://raw.githubusercontent.com/openssl/openssl/openssl-3.6.2/LICENSE.txt",
+    "version": "3.6.2"
+  }
+}

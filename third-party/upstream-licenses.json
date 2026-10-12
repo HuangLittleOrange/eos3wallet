@@ -1,0 +1,460 @@
+{
+  "metro@0.84.5": {
+    "path": "third-party/upstream/4ece3872aba4b0183ef2.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/b71015ef83904e7086342ddb72205b7242dcd129/LICENSE",
+    "version": "0.84.5",
+    "license": "MIT"
+  },
+  "metro-babel-transformer@0.84.5": {
+    "path": "third-party/upstream/4ece3872aba4b0183ef2.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/b71015ef83904e7086342ddb72205b7242dcd129/LICENSE",
+    "version": "0.84.5",
+    "license": "MIT"
+  },
+  "metro-cache@0.84.5": {
+    "path": "third-party/upstream/4ece3872aba4b0183ef2.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/b71015ef83904e7086342ddb72205b7242dcd129/LICENSE",
+    "version": "0.84.5",
+    "license": "MIT"
+  },
+  "metro-cache-key@0.84.5": {
+    "path": "third-party/upstream/4ece3872aba4b0183ef2.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/b71015ef83904e7086342ddb72205b7242dcd129/LICENSE",
+    "version": "0.84.5",
+    "license": "MIT"
+  },
+  "metro-config@0.84.5": {
+    "path": "third-party/upstream/4ece3872aba4b0183ef2.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/b71015ef83904e7086342ddb72205b7242dcd129/LICENSE",
+    "version": "0.84.5",
+    "license": "MIT"
+  },
+  "metro-core@0.84.5": {
+    "path": "third-party/upstream/4ece3872aba4b0183ef2.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/b71015ef83904e7086342ddb72205b7242dcd129/LICENSE",
+    "version": "0.84.5",
+    "license": "MIT"
+  },
+  "metro-file-map@0.84.5": {
+    "path": "third-party/upstream/4ece3872aba4b0183ef2.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/b71015ef83904e7086342ddb72205b7242dcd129/LICENSE",
+    "version": "0.84.5",
+    "license": "MIT"
+  },
+  "metro-minify-terser@0.84.5": {
+    "path": "third-party/upstream/4ece3872aba4b0183ef2.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/b71015ef83904e7086342ddb72205b7242dcd129/LICENSE",
+    "version": "0.84.5",
+    "license": "MIT"
+  },
+  "metro-resolver@0.84.5": {
+    "path": "third-party/upstream/4ece3872aba4b0183ef2.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/b71015ef83904e7086342ddb72205b7242dcd129/LICENSE",
+    "version": "0.84.5",
+    "license": "MIT"
+  },
+  "metro-runtime@0.84.5": {
+    "path": "third-party/upstream/4ece3872aba4b0183ef2.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/b71015ef83904e7086342ddb72205b7242dcd129/LICENSE",
+    "version": "0.84.5",
+    "license": "MIT"
+  },
+  "metro-source-map@0.84.5": {
+    "path": "third-party/upstream/4ece3872aba4b0183ef2.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/b71015ef83904e7086342ddb72205b7242dcd129/LICENSE",
+    "version": "0.84.5",
+    "license": "MIT"
+  },
+  "metro-symbolicate@0.84.5": {
+    "path": "third-party/upstream/4ece3872aba4b0183ef2.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/b71015ef83904e7086342ddb72205b7242dcd129/LICENSE",
+    "version": "0.84.5",
+    "license": "MIT"
+  },
+  "metro-transform-plugins@0.84.5": {
+    "path": "third-party/upstream/4ece3872aba4b0183ef2.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/b71015ef83904e7086342ddb72205b7242dcd129/LICENSE",
+    "version": "0.84.5",
+    "license": "MIT"
+  },
+  "metro-transform-worker@0.84.5": {
+    "path": "third-party/upstream/4ece3872aba4b0183ef2.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/b71015ef83904e7086342ddb72205b7242dcd129/LICENSE",
+    "version": "0.84.5",
+    "license": "MIT"
+  },
+  "ob1@0.84.5": {
+    "path": "third-party/upstream/4ece3872aba4b0183ef2.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/b71015ef83904e7086342ddb72205b7242dcd129/LICENSE",
+    "version": "0.84.5",
+    "license": "MIT"
+  },
+  "@expo/sdk-runtime-versions@1.0.0": {
+    "path": "third-party/upstream/1a2782aca6149604d064.txt",
+    "source": "https://raw.githubusercontent.com/expo/expo/bd93c2d4f28979490f81fe435809497b0ac3fc6c/LICENSE",
+    "note": "Upstream project license; npm archive omits a separate license file."
+  },
+  "@react-native/assets-registry@0.86.3": {
+    "path": "third-party/upstream/1f2c8c19a3d2a71b34f9.txt",
+    "source": "https://raw.githubusercontent.com/react/react-native/4829a675c80e64f7c170b0f30d24b3808b7663d3/LICENSE",
+    "version": "0.86.3",
+    "license": "MIT"
+  },
+  "@react-native/babel-plugin-codegen@0.86.3": {
+    "path": "third-party/upstream/1f2c8c19a3d2a71b34f9.txt",
+    "source": "https://raw.githubusercontent.com/react/react-native/4829a675c80e64f7c170b0f30d24b3808b7663d3/LICENSE",
+    "version": "0.86.3",
+    "license": "MIT"
+  },
+  "@react-native/babel-preset@0.86.3": {
+    "path": "third-party/upstream/1f2c8c19a3d2a71b34f9.txt",
+    "source": "https://raw.githubusercontent.com/react/react-native/4829a675c80e64f7c170b0f30d24b3808b7663d3/LICENSE",
+    "version": "0.86.3",
+    "license": "MIT"
+  },
+  "@react-native/codegen@0.86.3": {
+    "path": "third-party/upstream/1f2c8c19a3d2a71b34f9.txt",
+    "source": "https://raw.githubusercontent.com/react/react-native/4829a675c80e64f7c170b0f30d24b3808b7663d3/LICENSE",
+    "version": "0.86.3",
+    "license": "MIT"
+  },
+  "@react-native/community-cli-plugin@0.86.3": {
+    "path": "third-party/upstream/1f2c8c19a3d2a71b34f9.txt",
+    "source": "https://raw.githubusercontent.com/react/react-native/4829a675c80e64f7c170b0f30d24b3808b7663d3/LICENSE",
+    "version": "0.86.3",
+    "license": "MIT"
+  },
+  "@react-native/debugger-frontend@0.86.3": {
+    "path": "third-party/upstream/1f2c8c19a3d2a71b34f9.txt",
+    "source": "https://raw.githubusercontent.com/react/react-native/4829a675c80e64f7c170b0f30d24b3808b7663d3/LICENSE",
+    "version": "0.86.3",
+    "license": "BSD-3-Clause"
+  },
+  "@react-native/debugger-shell@0.86.3": {
+    "path": "third-party/upstream/1f2c8c19a3d2a71b34f9.txt",
+    "source": "https://raw.githubusercontent.com/react/react-native/4829a675c80e64f7c170b0f30d24b3808b7663d3/LICENSE",
+    "version": "0.86.3",
+    "license": "MIT"
+  },
+  "@react-native/dev-middleware@0.86.3": {
+    "path": "third-party/upstream/1f2c8c19a3d2a71b34f9.txt",
+    "source": "https://raw.githubusercontent.com/react/react-native/4829a675c80e64f7c170b0f30d24b3808b7663d3/LICENSE",
+    "version": "0.86.3",
+    "license": "MIT"
+  },
+  "@react-native/gradle-plugin@0.86.3": {
+    "path": "third-party/upstream/1f2c8c19a3d2a71b34f9.txt",
+    "source": "https://raw.githubusercontent.com/react/react-native/4829a675c80e64f7c170b0f30d24b3808b7663d3/LICENSE",
+    "version": "0.86.3",
+    "license": "MIT"
+  },
+  "@react-native/jest-preset@0.86.3": {
+    "path": "third-party/upstream/1f2c8c19a3d2a71b34f9.txt",
+    "source": "https://raw.githubusercontent.com/react/react-native/4829a675c80e64f7c170b0f30d24b3808b7663d3/LICENSE",
+    "version": "0.86.3",
+    "license": "MIT"
+  },
+  "@react-native/js-polyfills@0.86.3": {
+    "path": "third-party/upstream/1f2c8c19a3d2a71b34f9.txt",
+    "source": "https://raw.githubusercontent.com/react/react-native/4829a675c80e64f7c170b0f30d24b3808b7663d3/LICENSE",
+    "version": "0.86.3",
+    "license": "MIT"
+  },
+  "@react-native/metro-babel-transformer@0.86.3": {
+    "path": "third-party/upstream/1f2c8c19a3d2a71b34f9.txt",
+    "source": "https://raw.githubusercontent.com/react/react-native/4829a675c80e64f7c170b0f30d24b3808b7663d3/LICENSE",
+    "version": "0.86.3",
+    "license": "MIT"
+  },
+  "@react-native/metro-config@0.86.3": {
+    "path": "third-party/upstream/1f2c8c19a3d2a71b34f9.txt",
+    "source": "https://raw.githubusercontent.com/react/react-native/4829a675c80e64f7c170b0f30d24b3808b7663d3/LICENSE",
+    "version": "0.86.3",
+    "license": "MIT"
+  },
+  "@react-native/normalize-colors@0.86.3": {
+    "path": "third-party/upstream/1f2c8c19a3d2a71b34f9.txt",
+    "source": "https://raw.githubusercontent.com/react/react-native/4829a675c80e64f7c170b0f30d24b3808b7663d3/LICENSE",
+    "version": "0.86.3",
+    "license": "MIT"
+  },
+  "@react-native/virtualized-lists@0.86.3": {
+    "path": "third-party/upstream/1f2c8c19a3d2a71b34f9.txt",
+    "source": "https://raw.githubusercontent.com/react/react-native/4829a675c80e64f7c170b0f30d24b3808b7663d3/LICENSE",
+    "version": "0.86.3",
+    "license": "MIT"
+  },
+  "babel-plugin-react-compiler@1.0.0": {
+    "path": "third-party/upstream/5d144d51ad61aad24548.txt",
+    "source": "https://raw.githubusercontent.com/facebook/react/5c15c1cd3442f28044217703b5625f98c40042ee/LICENSE",
+    "version": "1.0.0",
+    "license": "MIT"
+  },
+  "boolbase@1.0.0": {
+    "path": "third-party/upstream/a53cf5f4fc00dc82fa60.txt",
+    "source": "https://raw.githubusercontent.com/fb55/boolbase/54811f01c797a6bb1c263183ae90b7dd627e0638/LICENSE",
+    "version": "1.0.0",
+    "license": "ISC"
+  },
+  "bser@2.1.1": {
+    "path": "third-party/upstream/f87d8b2835b2be4f99b0.txt",
+    "source": "https://raw.githubusercontent.com/facebook/watchman/8137286cddcb56a89579644a628dba87cf24e9ad/LICENSE",
+    "version": "2.1.1",
+    "license": "Apache-2.0"
+  },
+  "fast-base64-decode@1.0.0": {
+    "path": "third-party/upstream/fast-base64-decode-1.0.0-metadata.txt",
+    "source": "https://registry.npmjs.org/fast-base64-decode/1.0.0",
+    "kind": "npm-metadata-license-declaration",
+    "note": "Separate upstream copyright text unavailable; retain original metadata."
+  },
+  "fb-dotslash@0.5.8": {
+    "path": "third-party/upstream/9ef86eebda6128b5ca5c.txt",
+    "source": "https://raw.githubusercontent.com/facebook/dotslash/8060e2dec764bceba5809cf6a15906644aad0078/LICENSE-MIT",
+    "version": "0.5.8",
+    "license": "(MIT OR Apache-2.0)"
+  },
+  "fb-watchman@2.0.2": {
+    "path": "third-party/upstream/f87d8b2835b2be4f99b0.txt",
+    "source": "https://raw.githubusercontent.com/facebook/watchman/8137286cddcb56a89579644a628dba87cf24e9ad/LICENSE",
+    "version": "2.0.2",
+    "license": "Apache-2.0"
+  },
+  "hermes-compiler@250829098.0.17": {
+    "path": "third-party/upstream/51994daa736c1b15976a.txt",
+    "source": "https://raw.githubusercontent.com/facebook/hermes/3477757eb2475555cf8d8df24bfb1deb0613880d/LICENSE",
+    "version": "250829098.0.17",
+    "license": "MIT"
+  },
+  "jimp-compact@0.16.1": {
+    "path": "third-party/upstream/453f7db53e09d0896c01.txt",
+    "source": "https://raw.githubusercontent.com/jimp-dev/jimp/909f06eac36ef5ba36ebb1e0853fd006c4da3560/LICENSE",
+    "note": "Upstream project license; npm archive omits a separate license file."
+  },
+  "metro@0.84.4": {
+    "path": "third-party/upstream/a177cabebeb74bd2ba6c.txt",
+    "source": "https://raw.githubusercontent.com/facebook/metro/f15550573c17e0ef19774547458baa185d11b56a/LICENSE",
+    "version": "0.84.4",
+    "license": "MIT"
+  },
+  "metro-babel-transformer@0.84.4": {
+    "path": "third-party/upstream/a177cabebeb74bd2ba6c.txt",
+    "source": "https://raw.githubusercontent.com/facebook/metro/f15550573c17e0ef19774547458baa185d11b56a/LICENSE",
+    "version": "0.84.4",
+    "license": "MIT"
+  },
+  "metro-cache@0.84.4": {
+    "path": "third-party/upstream/a177cabebeb74bd2ba6c.txt",
+    "source": "https://raw.githubusercontent.com/facebook/metro/f15550573c17e0ef19774547458baa185d11b56a/LICENSE",
+    "version": "0.84.4",
+    "license": "MIT"
+  },
+  "metro-cache-key@0.84.4": {
+    "path": "third-party/upstream/a177cabebeb74bd2ba6c.txt",
+    "source": "https://raw.githubusercontent.com/facebook/metro/f15550573c17e0ef19774547458baa185d11b56a/LICENSE",
+    "version": "0.84.4",
+    "license": "MIT"
+  },
+  "metro-config@0.84.4": {
+    "path": "third-party/upstream/a177cabebeb74bd2ba6c.txt",
+    "source": "https://raw.githubusercontent.com/facebook/metro/f15550573c17e0ef19774547458baa185d11b56a/LICENSE",
+    "version": "0.84.4",
+    "license": "MIT"
+  },
+  "metro-core@0.84.4": {
+    "path": "third-party/upstream/a177cabebeb74bd2ba6c.txt",
+    "source": "https://raw.githubusercontent.com/facebook/metro/f15550573c17e0ef19774547458baa185d11b56a/LICENSE",
+    "version": "0.84.4",
+    "license": "MIT"
+  },
+  "metro-file-map@0.84.4": {
+    "path": "third-party/upstream/a177cabebeb74bd2ba6c.txt",
+    "source": "https://raw.githubusercontent.com/facebook/metro/f15550573c17e0ef19774547458baa185d11b56a/LICENSE",
+    "version": "0.84.4",
+    "license": "MIT"
+  },
+  "metro-minify-terser@0.84.4": {
+    "path": "third-party/upstream/a177cabebeb74bd2ba6c.txt",
+    "source": "https://raw.githubusercontent.com/facebook/metro/f15550573c17e0ef19774547458baa185d11b56a/LICENSE",
+    "version": "0.84.4",
+    "license": "MIT"
+  },
+  "metro-resolver@0.84.4": {
+    "path": "third-party/upstream/a177cabebeb74bd2ba6c.txt",
+    "source": "https://raw.githubusercontent.com/facebook/metro/f15550573c17e0ef19774547458baa185d11b56a/LICENSE",
+    "version": "0.84.4",
+    "license": "MIT"
+  },
+  "metro-runtime@0.84.4": {
+    "path": "third-party/upstream/a177cabebeb74bd2ba6c.txt",
+    "source": "https://raw.githubusercontent.com/facebook/metro/f15550573c17e0ef19774547458baa185d11b56a/LICENSE",
+    "version": "0.84.4",
+    "license": "MIT"
+  },
+  "metro-source-map@0.84.4": {
+    "path": "third-party/upstream/a177cabebeb74bd2ba6c.txt",
+    "source": "https://raw.githubusercontent.com/facebook/metro/f15550573c17e0ef19774547458baa185d11b56a/LICENSE",
+    "version": "0.84.4",
+    "license": "MIT"
+  },
+  "metro-symbolicate@0.84.4": {
+    "path": "third-party/upstream/a177cabebeb74bd2ba6c.txt",
+    "source": "https://raw.githubusercontent.com/facebook/metro/f15550573c17e0ef19774547458baa185d11b56a/LICENSE",
+    "version": "0.84.4",
+    "license": "MIT"
+  },
+  "metro-transform-plugins@0.84.4": {
+    "path": "third-party/upstream/a177cabebeb74bd2ba6c.txt",
+    "source": "https://raw.githubusercontent.com/facebook/metro/f15550573c17e0ef19774547458baa185d11b56a/LICENSE",
+    "version": "0.84.4",
+    "license": "MIT"
+  },
+  "metro-transform-worker@0.84.4": {
+    "path": "third-party/upstream/a177cabebeb74bd2ba6c.txt",
+    "source": "https://raw.githubusercontent.com/facebook/metro/f15550573c17e0ef19774547458baa185d11b56a/LICENSE",
+    "version": "0.84.4",
+    "license": "MIT"
+  },
+  "ob1@0.84.4": {
+    "path": "third-party/upstream/a177cabebeb74bd2ba6c.txt",
+    "source": "https://raw.githubusercontent.com/facebook/metro/f15550573c17e0ef19774547458baa185d11b56a/LICENSE",
+    "version": "0.84.4",
+    "license": "MIT"
+  },
+  "react-devtools-core@6.1.5": {
+    "path": "third-party/upstream/f1de47b7a77fa24d3ada.txt",
+    "source": "https://raw.githubusercontent.com/facebook/react/5d87cd224452c68d09bef99656b6261e9772a210/LICENSE",
+    "version": "6.1.5",
+    "license": "MIT"
+  },
+  "react-native-nitro-modules@0.37.1": {
+    "path": "third-party/upstream/b0519f2691a1d0f87899.txt",
+    "source": "https://raw.githubusercontent.com/mrousavy/nitro/605017127c16f9d502f527097ffed77439d8ce6c/LICENSE",
+    "version": "0.37.1",
+    "license": "MIT"
+  },
+  "react-native-quick-crypto@1.1.8": {
+    "path": "third-party/upstream/ba2e9f606ba63d87326e.txt",
+    "source": "https://raw.githubusercontent.com/margelo/react-native-quick-crypto/626241fb8a53c17759e2a9c739a434f5b78c87d4/LICENSE",
+    "version": "1.1.8",
+    "license": "MIT"
+  },
+  "@react-native/normalize-colors@0.74.89": {
+    "path": "third-party/upstream/a1033dd2e0c78c10e298.txt",
+    "source": "https://raw.githubusercontent.com/facebook/react-native/a2066d730d933126bbf7055f4e47c575936e62f3/LICENSE",
+    "version": "0.74.89",
+    "license": "MIT"
+  },
+  "standard-navigation@0.0.8": {
+    "path": "third-party/upstream/0e6ac14cacc4f57fb8e1.txt",
+    "source": "https://raw.githubusercontent.com/react-navigation/react-navigation/b0e0a5e9a3ea4d2ba99f73bac812a41b022cd9d1/packages/core/LICENSE",
+    "note": "Upstream project license; npm archive omits a separate license file."
+  },
+  "stream-buffers@2.2.0": {
+    "error": "Upstream license not found",
+    "repository": "samcday/node-stream-buffer",
+    "ref": "17024f70e0107175ede0ebcfbe9de7102d8be25f"
+  },
+  "structured-headers@0.4.1": {
+    "path": "third-party/upstream/structured-headers-0.4.1-metadata.txt",
+    "source": "https://registry.npmjs.org/structured-headers/0.4.1",
+    "kind": "npm-metadata-license-declaration",
+    "note": "Separate upstream copyright text unavailable; retain original metadata."
+  },
+  "tr46@0.0.3": {
+    "path": "third-party/upstream/tr46-0.0.3-metadata.txt",
+    "source": "https://registry.npmjs.org/tr46/0.0.3",
+    "kind": "npm-metadata-license-declaration",
+    "note": "Separate upstream copyright text unavailable; retain original metadata."
+  },
+  "metro@0.84.6": {
+    "path": "third-party/upstream/metro-0.84.6-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/118de9fdd60fde6a7aa9c0961e65f22492afffcc/LICENSE",
+    "version": "0.84.6",
+    "license": "MIT"
+  },
+  "metro-babel-transformer@0.84.6": {
+    "path": "third-party/upstream/metro-0.84.6-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/118de9fdd60fde6a7aa9c0961e65f22492afffcc/LICENSE",
+    "version": "0.84.6",
+    "license": "MIT"
+  },
+  "metro-cache@0.84.6": {
+    "path": "third-party/upstream/metro-0.84.6-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/118de9fdd60fde6a7aa9c0961e65f22492afffcc/LICENSE",
+    "version": "0.84.6",
+    "license": "MIT"
+  },
+  "metro-cache-key@0.84.6": {
+    "path": "third-party/upstream/metro-0.84.6-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/118de9fdd60fde6a7aa9c0961e65f22492afffcc/LICENSE",
+    "version": "0.84.6",
+    "license": "MIT"
+  },
+  "metro-config@0.84.6": {
+    "path": "third-party/upstream/metro-0.84.6-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/118de9fdd60fde6a7aa9c0961e65f22492afffcc/LICENSE",
+    "version": "0.84.6",
+    "license": "MIT"
+  },
+  "metro-core@0.84.6": {
+    "path": "third-party/upstream/metro-0.84.6-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/118de9fdd60fde6a7aa9c0961e65f22492afffcc/LICENSE",
+    "version": "0.84.6",
+    "license": "MIT"
+  },
+  "metro-file-map@0.84.6": {
+    "path": "third-party/upstream/metro-0.84.6-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/118de9fdd60fde6a7aa9c0961e65f22492afffcc/LICENSE",
+    "version": "0.84.6",
+    "license": "MIT"
+  },
+  "metro-minify-terser@0.84.6": {
+    "path": "third-party/upstream/metro-0.84.6-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/118de9fdd60fde6a7aa9c0961e65f22492afffcc/LICENSE",
+    "version": "0.84.6",
+    "license": "MIT"
+  },
+  "metro-resolver@0.84.6": {
+    "path": "third-party/upstream/metro-0.84.6-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/118de9fdd60fde6a7aa9c0961e65f22492afffcc/LICENSE",
+    "version": "0.84.6",
+    "license": "MIT"
+  },
+  "metro-runtime@0.84.6": {
+    "path": "third-party/upstream/metro-0.84.6-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/118de9fdd60fde6a7aa9c0961e65f22492afffcc/LICENSE",
+    "version": "0.84.6",
+    "license": "MIT"
+  },
+  "metro-source-map@0.84.6": {
+    "path": "third-party/upstream/metro-0.84.6-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/118de9fdd60fde6a7aa9c0961e65f22492afffcc/LICENSE",
+    "version": "0.84.6",
+    "license": "MIT"
+  },
+  "metro-symbolicate@0.84.6": {
+    "path": "third-party/upstream/metro-0.84.6-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/118de9fdd60fde6a7aa9c0961e65f22492afffcc/LICENSE",
+    "version": "0.84.6",
+    "license": "MIT"
+  },
+  "metro-transform-plugins@0.84.6": {
+    "path": "third-party/upstream/metro-0.84.6-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/118de9fdd60fde6a7aa9c0961e65f22492afffcc/LICENSE",
+    "version": "0.84.6",
+    "license": "MIT"
+  },
+  "metro-transform-worker@0.84.6": {
+    "path": "third-party/upstream/metro-0.84.6-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/118de9fdd60fde6a7aa9c0961e65f22492afffcc/LICENSE",
+    "version": "0.84.6",
+    "license": "MIT"
+  },
+  "ob1@0.84.6": {
+    "path": "third-party/upstream/metro-0.84.6-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/react/metro/118de9fdd60fde6a7aa9c0961e65f22492afffcc/LICENSE",
+    "version": "0.84.6",
+    "license": "MIT"
+  }
+}

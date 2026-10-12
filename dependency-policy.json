@@ -1,0 +1,7 @@
+{
+  "lockSha256": "fa82f0b19f366d62d598515407a86347d4ce876f9908fbac02135568bb6f0646",
+  "blockedInstallScripts": [
+    "node_modules/fsevents@2.3.3"
+  ],
+  "buildImage": "node@sha256:c3de60bf2f9dd0ac6370e6117950ff62d6e339527e7472301c9c78a017978392"
+}

@@ -1,0 +1,8 @@
+{
+  "ios": {
+    "NSCameraUsageDescription": "Used to scan QR codes for DApp connections and payment addresses.",
+    "NSFaceIDUsageDescription": "Used to quickly verify your identity to unlock the wallet or sign transactions.",
+    "NSPhotoLibraryAddUsageDescription": "Used to save your receive QR code image to your photo library.",
+    "NSPhotoLibraryUsageDescription": "Used to save your receive QR code image to your photo library."
+  }
+}

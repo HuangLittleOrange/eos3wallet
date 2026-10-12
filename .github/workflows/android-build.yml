@@ -1,0 +1,261 @@
+name: Public Android APK
+run-name: Android APK from main @ ${{ github.sha }}
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-android-${{ github.ref }}
+  cancel-in-progress: false
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: macos-15-intel
+    timeout-minutes: 120
+    steps:
+      - name: Require a public repository
+        env:
+          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          test "$REPOSITORY_PRIVATE" = false || { echo 'Use a public repository for public build records and attestations.'; exit 1; }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.2'
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17.0.20.1+1'
+      - name: Install reviewed Android SDK components
+        run: node scripts/github-android.cjs sdk
+      - name: Prepare public dependencies inside the credential-free sandbox
+        run: node scripts/build-android-isolated.cjs --prepare-cache
+      - name: Build unsigned APK offline and run tests
+        id: native
+        run: node scripts/build-android-isolated.cjs --unsigned-only
+      - name: Record source commit, file hashes and toolchain
+        env:
+          NATIVE_OUTPUT: ${{ steps.native.outputs.native_output }}
+        run: node scripts/github-android.cjs package-build "$NATIVE_OUTPUT" exports/github-unsigned
+      - name: Upload unsigned APK and public build evidence
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-unsigned-${{ github.run_id }}-${{ github.run_attempt }}
+          path: exports/github-unsigned/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+      - name: Preserve failure diagnostics only
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-failed-logs-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            exports/native-review/*/java-version.txt
+            exports/native-review/*/sandbox-probe.txt
+            exports/native-review/*/install.txt
+            exports/native-review/*/cache.txt
+            exports/native-review/*/build.txt
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Upload source license texts
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-licenses-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            third-party/
+            docs/dependency-security.md
+          if-no-files-found: error
+          retention-days: 90
+
+  test-sign:
+    needs: build
+    runs-on: macos-15-intel
+    timeout-minutes: 20
+    steps:
+      # Fresh VM, no app source, node_modules or Gradle code in this checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+          sparse-checkout-cone-mode: false
+          sparse-checkout: |
+            /scripts/github-android.cjs
+            /scripts/sign-android-test.cjs
+            /scripts/test-signing-worker.cjs
+            /scripts/native-sandbox.cjs
+            /native-build-policy.json
+            /.gitignore
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.2'
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: temurin
+          java-version: '17.0.20.1+1'
+      - name: Install reviewed signing tools
+        run: node scripts/github-android.cjs sign-sdk
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: android-unsigned-${{ github.run_id }}-${{ github.run_attempt }}
+          path: exports/github-input
+          digest-mismatch: error
+      - name: Verify unsigned evidence and sign in an independent offline sandbox
+        run: node scripts/github-android.cjs sign exports/github-input exports/github-signed
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-test-signed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: exports/github-signed/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+
+  attest:
+    needs: [build, test-sign]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write
+      attestations: write
+    steps:
+      # Never check out or execute repository scripts in the OIDC-enabled job.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: android-unsigned-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/evidence/unsigned
+          digest-mismatch: error
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: android-test-signed-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/evidence/signed
+          digest-mismatch: error
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: android-licenses-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/evidence/legal
+          digest-mismatch: error
+      - name: Verify artifacts and source binding before issuing provenance
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, re, shutil
+          base = pathlib.Path(os.environ['RUNNER_TEMP'])
+          unsigned = base / 'evidence/unsigned'
+          signed = base / 'evidence/signed'
+          legal = base / 'evidence/legal'
+          output = base / 'public-apk'
+          output.mkdir()
+          unsigned_names = ['wallet-review-unsigned.apk', 'build-info.json', 'source-manifest.json', 'verification.json', 'java-version.txt', 'sandbox-probe.txt', 'install.txt', 'build.txt', 'LICENSE', 'THIRD_PARTY_NOTICES.md']
+          signed_names = ['wallet-review-test-signed.apk', 'wallet-review-test-signed.apk.json', 'sign-info.json']
+          def digest(file):
+              if file.is_symlink() or not file.is_file():
+                  raise SystemExit('Artifact must be a regular file')
+              hasher = hashlib.sha256()
+              with file.open('rb') as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                      hasher.update(chunk)
+              return hasher.hexdigest()
+          for directory, names in [(unsigned, unsigned_names), (signed, signed_names)]:
+              expected = ''.join(f'{digest(directory / name)}  {name}\n' for name in names)
+              checksum_file = directory / 'SHA256SUMS'
+              digest(checksum_file)
+              if checksum_file.read_text() != expected:
+                  raise SystemExit('SHA256 or artifact inventory mismatch')
+          build = json.loads((unsigned / 'build-info.json').read_text())
+          sign = json.loads((signed / 'sign-info.json').read_text())
+          proof = json.loads((signed / 'wallet-review-test-signed.apk.json').read_text())
+          expected = {'repository': os.environ['GITHUB_REPOSITORY'], 'ref': 'refs/heads/main', 'commit': os.environ['GITHUB_SHA'], 'runId': os.environ['GITHUB_RUN_ID'], 'runAttempt': os.environ['GITHUB_RUN_ATTEMPT']}
+          if os.environ['GITHUB_REF'] != expected['ref']:
+              raise SystemExit('Only main builds may receive this provenance')
+          for metadata in [build, sign]:
+              if any(metadata.get(key) != value for key, value in expected.items()) or metadata.get('productionSigning') is not False:
+                  raise SystemExit('Source or workflow context mismatch')
+          unsigned_hash = digest(unsigned / unsigned_names[0])
+          signed_hash = digest(signed / signed_names[0])
+          if build.get('sha256') != unsigned_hash or sign.get('sha256') != signed_hash or sign.get('unsignedSha256') != unsigned_hash:
+              raise SystemExit('APK metadata mismatch')
+          if proof.get('unsignedSha256') != unsigned_hash or proof.get('signedSha256') != signed_hash or proof.get('signatureVerified') is not True or proof.get('alignment16KbVerified') is not True:
+              raise SystemExit('Signature verification missing')
+          if not re.fullmatch('[a-fA-F0-9]{64}', proof.get('certificateSha256', '')) or proof.get('certificateSha256') != sign.get('certificateSha256'):
+              raise SystemExit('Certificate fingerprint mismatch')
+          if build.get('sourceManifestSha256') != digest(unsigned / 'source-manifest.json'):
+              raise SystemExit('Source manifest metadata mismatch')
+          manifest = json.loads((unsigned / 'source-manifest.json').read_text())['files']
+          license_names = sorted(name for name in manifest if name.startswith('third-party/') or name == 'docs/dependency-security.md')
+          if not license_names:
+              raise SystemExit('Source license inventory missing')
+          for name in license_names:
+              relative = pathlib.PurePosixPath(name)
+              file = legal / name
+              if relative.is_absolute() or '..' in relative.parts or legal.resolve() not in file.resolve().parents:
+                  raise SystemExit('Unsafe license path')
+              if digest(file) != manifest[name]:
+                  raise SystemExit('License differs from compiled source')
+          for name in license_names:
+              target = output / name
+              target.parent.mkdir(parents=True, exist_ok=True)
+              shutil.copyfile(legal / name, target)
+          for directory, names in [(unsigned, unsigned_names), (signed, signed_names)]:
+              for name in names:
+                  shutil.copyfile(directory / name, output / name)
+          PY
+      - name: Attest APKs and source evidence with GitHub OIDC
+        id: provenance
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-path: |
+            ${{ runner.temp }}/public-apk/wallet-review-unsigned.apk
+            ${{ runner.temp }}/public-apk/wallet-review-test-signed.apk
+            ${{ runner.temp }}/public-apk/build-info.json
+            ${{ runner.temp }}/public-apk/sign-info.json
+            ${{ runner.temp }}/public-apk/source-manifest.json
+      - name: Publish SHA256, provenance bundle and verification instructions
+        env:
+          ATTESTATION_BUNDLE: ${{ steps.provenance.outputs.bundle-path }}
+        run: |
+          python3 - <<'PY'
+          import hashlib, os, pathlib, shutil
+          output = pathlib.Path(os.environ['RUNNER_TEMP']) / 'public-apk'
+          shutil.copyfile(os.environ['ATTESTATION_BUNDLE'], output / 'provenance.jsonl')
+          lines = []
+          for file in sorted(output.rglob('*')):
+              if file.is_dir():
+                  continue
+              hasher = hashlib.sha256()
+              with file.open('rb') as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                      hasher.update(chunk)
+              lines.append(f"{hasher.hexdigest()}  {file.relative_to(output).as_posix()}\n")
+          (output / 'SHA256SUMS').write_text(''.join(lines))
+          repo, commit = os.environ['GITHUB_REPOSITORY'], os.environ['GITHUB_SHA']
+          source = f'https://github.com/{repo}/tree/{commit}'
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(f'### Public Android build\n\nSource: [main commit `{commit}`]({source})\n\n')
+              summary.write('Test signing only; no production signing key is used.\n\n')
+              summary.write('```text\n' + ''.join(line for line in lines if line.rstrip().endswith('.apk')) + '```\n\n')
+              summary.write('Download the final `android-public-…` artifact and extract it. Verify every file and both APK attestations:\n\n```bash\nsha256sum -c SHA256SUMS\n')
+              for name in ['wallet-review-unsigned.apk', 'wallet-review-test-signed.apk']:
+                  summary.write(f'gh attestation verify {name} --repo {repo} --signer-workflow {repo}/.github/workflows/android-build.yml --signer-digest {commit} --source-ref refs/heads/main --source-digest {commit} --deny-self-hosted-runners\n')
+              summary.write('```\n\nOn macOS, use `shasum -a 256 -c SHA256SUMS`. See the repository build guide for offline verification and limits.\n')
+          PY
+      - name: Upload final APKs, checksums and provenance
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: android-public-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/public-apk/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0

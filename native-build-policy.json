@@ -1,0 +1,22 @@
+{
+  "platform": "android-36",
+  "buildTools": "36.0.0",
+  "additionalBuildTools": ["35.0.0"],
+  "ndk": "27.1.12297006",
+  "cmake": "3.22.1",
+  "mavenBuildTools": [
+    "com.android.tools.build:aapt2:8.12.0-13700139:osx",
+    "com.android.tools.lint:lint-gradle:31.12.0"
+  ],
+  "gradle": {
+    "version": "9.3.1",
+    "url": "https://services.gradle.org/distributions/gradle-9.3.1-bin.zip",
+    "sha256": "b266d5ff6b90eada6dc3b20cb090e3731302e553a27c5d3e4df1f0d76beaff06",
+    "wrapperJarSha256": "b3a875ddc1f044746e1b1a55f645584505f4a10438c1afea9f15e92a7c42ec13"
+  },
+  "signingTools": {
+    "lib/apksigner.jar": "3716d9311e55d2b0918a2fd9d54ba9e406c5f6abeea700b287f11259bc163dec",
+    "zipalign": "0427144f4a3fd242c5a159e7088637082539ae556bc1d2bbc2032bb775d47cea",
+    "apksigner": "b47549e373b895ce6ca620d0c7887e674d9615ffa837a86ac601dcfd04adb0f0"
+  }
+}

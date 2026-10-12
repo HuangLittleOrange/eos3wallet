@@ -1,0 +1,8 @@
+{
+  "ios": {
+    "NSCameraUsageDescription": "用于扫描二维码以连接 DApp 或识别收款地址。",
+    "NSFaceIDUsageDescription": "用于快速验证身份以解锁钱包或签名交易。",
+    "NSPhotoLibraryAddUsageDescription": "用于把收款二维码图片保存到你的相册。",
+    "NSPhotoLibraryUsageDescription": "用于把收款二维码图片保存到你的相册。"
+  }
+}

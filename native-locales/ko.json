@@ -1,0 +1,8 @@
+{
+  "ios": {
+    "NSCameraUsageDescription": "DApp 연결 및 수취 주소 인식을 위해 QR 코드를 스캔하는 데 사용됩니다.",
+    "NSFaceIDUsageDescription": "지갑 잠금 해제 또는 거래 서명 시 빠르게 본인 확인을 하는 데 사용됩니다.",
+    "NSPhotoLibraryAddUsageDescription": "수취용 QR 코드 이미지를 사진 앨범에 저장하는 데 사용됩니다.",
+    "NSPhotoLibraryUsageDescription": "수취용 QR 코드 이미지를 사진 앨범에 저장하는 데 사용됩니다."
+  }
+}

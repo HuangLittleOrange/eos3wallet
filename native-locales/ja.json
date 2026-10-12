@@ -1,0 +1,8 @@
+{
+  "ios": {
+    "NSCameraUsageDescription": "DApp への接続や受取アドレスの認識のために QR コードをスキャンする際に使用します。",
+    "NSFaceIDUsageDescription": "ウォレットのロック解除や取引の署名時に、すばやく本人確認を行うために使用します。",
+    "NSPhotoLibraryAddUsageDescription": "受け取り用 QR コード画像を写真ライブラリに保存するために使用します。",
+    "NSPhotoLibraryUsageDescription": "受け取り用 QR コード画像を写真ライブラリに保存するために使用します。"
+  }
+}

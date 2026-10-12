@@ -1,0 +1,18 @@
+{
+  "package": "node-forge",
+  "version": "1.4.0",
+  "reference": "https://github.com/digitalbazaar/forge/pull/1152",
+  "files": [
+    {
+      "path": "lib/rsa.js",
+      "before_sha256": "fd4740238145ec26470eb3f06a627c72039538ce1307dbdce40521f94dfd0a50",
+      "after_sha256": "c9b1e3799e230528b6d6815c1f6cd3c6058b9d45975264b55d995abb976589af",
+      "changes": [
+        {
+          "before": "            obj.value.length !== 2) {",
+          "after": "            obj.value.length !== 2 ||\n            obj.value[0].value.length !==\n              (('parameters' in capture) ? 2 : 1)) {"
+        }
+      ]
+    }
+  ]
+}
