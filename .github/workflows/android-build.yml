@@ -21,7 +21,47 @@ defaults:
     shell: bash
 
 jobs:
+  reserve-release-tag:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      # No checkout, wallet code, dependency execution, signing secrets or OIDC.
+      # Reserve the immutable source tag while this commit is still main HEAD.
+      # A tag alone is not a release: publication still waits for all checks.
+      - name: Verify tag permissions and reserve this run's source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, subprocess
+          repo, commit = os.environ['GITHUB_REPOSITORY'], os.environ['GITHUB_SHA']
+          run_id, attempt = os.environ['GITHUB_RUN_ID'], os.environ['GITHUB_RUN_ATTEMPT']
+          if os.environ['GITHUB_REF'] != 'refs/heads/main' or os.environ['REPOSITORY_PRIVATE'] != 'false' or os.environ['GITHUB_EVENT_NAME'] not in ('push', 'workflow_dispatch') or not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo) or not re.fullmatch('[a-f0-9]{40}', commit) or not re.fullmatch('[0-9]+', run_id) or not re.fullmatch('[0-9]+', attempt):
+              raise SystemExit('Invalid public main source context')
+          def gh(*args):
+              return subprocess.check_output(['gh', *args], text=True)
+          head = json.loads(gh('api', f'repos/{repo}/git/ref/heads/main'))
+          if head['object']['type'] != 'commit' or head['object']['sha'] != commit:
+              raise SystemExit('Main advanced before tag reservation; no compilation was started')
+          tag = f'android-prerelease-{commit}-{run_id}-{attempt}'
+          endpoint = f'repos/{repo}/git/ref/tags/{tag}'
+          result = subprocess.run(['gh', 'api', endpoint], capture_output=True, text=True)
+          if result.returncode:
+              if 'HTTP 404' not in result.stderr:
+                  raise SystemExit(result.stderr)
+              gh('api', '--method', 'POST', f'repos/{repo}/git/refs', '-f', f'ref=refs/tags/{tag}', '-f', f'sha={commit}')
+          reference = json.loads(gh('api', endpoint))
+          if reference['object']['type'] != 'commit' or reference['object']['sha'] != commit:
+              raise SystemExit('Reserved source tag mismatch')
+          print(f'Reserved {tag}; no APK or release has been published')
+          PY
+
   build:
+    needs: reserve-release-tag
     if: github.ref == 'refs/heads/main'
     runs-on: macos-15-intel
     timeout-minutes: 120
@@ -52,13 +92,14 @@ jobs:
             .codex/native-build-cache/gradle-9.3.1-bin.zip
             .codex/native-build-cache/modules-2
             .codex/native-build-cache/npm-cache/_cacache
-          key: android-public-downloads-v1-${{ runner.os }}-${{ runner.arch }}-node22.23.2-java17.0.20-101-${{ hashFiles('package.json', 'package-lock.json', 'native-build-policy.json', 'dependency-policy.json', 'app.json', 'patches/**', 'scripts/native-android-worker.cjs') }}
+          key: android-public-downloads-v1-${{ runner.os }}-${{ runner.arch }}-node22.23.2-java17.0.20-101-${{ hashFiles('package.json', 'package-lock.json', 'native-build-policy.json', 'dependency-policy.json', 'app.json', 'patches/**', 'scripts/native-android-worker.cjs', 'scripts/native-install.cjs') }}
       - name: Discard a non-exact cache match
         if: steps.public-cache.outputs.cache-hit != 'true'
         run: rm -rf .codex/native-build-cache
       - name: Install reviewed Android SDK components
         run: node scripts/github-android.cjs sdk
       - name: Prepare public dependencies inside the credential-free sandbox
+        timeout-minutes: 30
         run: node scripts/build-android-isolated.cjs --prepare-cache
       # Save after successful preparation, even if the subsequent build fails.
       - name: Save public dependency downloads
@@ -435,11 +476,8 @@ jobs:
           def gh(*args):
               return subprocess.check_output(['gh', *args], text=True)
           tag_endpoint = f'repos/{repo}/git/ref/tags/{tag}'
-          tag_result = subprocess.run(['gh', 'api', tag_endpoint], capture_output=True, text=True)
-          if tag_result.returncode:
-              if 'HTTP 404' not in tag_result.stderr:
-                  raise SystemExit(tag_result.stderr)
-              gh('api', '--method', 'POST', f'repos/{repo}/git/refs', '-f', f'ref=refs/tags/{tag}', '-f', f'sha={plan["commit"]}')
+          # This exact source tag was reserved before compilation. Never move it
+          # or create a different tag after the source branch has advanced.
           reference = json.loads(gh('api', tag_endpoint))
           if reference['object']['type'] != 'commit' or reference['object']['sha'] != plan['commit']:
               raise SystemExit('Release source tag mismatch')

@@ -60,12 +60,16 @@ test('workflow keeps main-only triggers and grants attestation authority only to
         assert.equal(step.with['persist-credentials'], false);
       }
     }
-    if (!['attest', 'release'].includes(name)) assert.equal(job.permissions, undefined);
+    if (!['attest', 'release', 'reserve-release-tag'].includes(name)) assert.equal(job.permissions, undefined);
   }
   assert.deepEqual(workflow.jobs.attest.permissions, { contents: 'read', 'id-token': 'write', attestations: 'write' });
   assert.ok(!workflow.jobs.attest.steps.some((step) => step.uses?.startsWith('actions/checkout@')));
   assert.ok(!workflow.jobs.attest.steps.some((step) => /node |npm |scripts\//.test(step.run ?? '')));
   assert.deepEqual(workflow.jobs.release.permissions, { contents: 'write' });
+  assert.deepEqual(workflow.jobs['reserve-release-tag'].permissions, { contents: 'write' });
+  assert.equal(workflow.jobs.build.needs, 'reserve-release-tag');
+  assert.equal(workflow.jobs['reserve-release-tag'].if, "github.ref == 'refs/heads/main'");
+  assert.ok(!workflow.jobs['reserve-release-tag'].steps.some((step) => step.uses?.includes('checkout') || /node |npm |scripts\//.test(step.run ?? '')));
   assert.deepEqual(workflow.jobs.release.needs, ['build', 'release-sign', 'attest']);
   assert.equal(workflow.jobs.release.if, "github.ref == 'refs/heads/main'");
   assert.ok(!workflow.jobs.release.steps.some((step) => step.uses?.startsWith('actions/checkout@')));
@@ -112,6 +116,46 @@ function inlinePython(step) {
   assert.ok(script, 'inline verification script exists');
   return script;
 }
+
+test('actual tag preflight reserves only the current public main source and fails before compilation on denied permissions or moved source', { skip: !pythonAvailable }, () => {
+  const script = inlinePython(workflow.jobs['reserve-release-tag'].steps[0]);
+  for (const variant of ['create', 'existing', 'advanced', 'denied', 'wrong-tag', 'private']) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ci-tag-preflight-test-'));
+    try {
+      const stateFile = path.join(dir, 'state.json');
+      fs.writeFileSync(stateFile, JSON.stringify({ variant, calls: [], exists: ['existing', 'wrong-tag'].includes(variant) }));
+      const mock = `#!/usr/bin/env python3
+import json, os, pathlib, sys
+p = pathlib.Path(os.environ['FAKE_GH_STATE']); s = json.loads(p.read_text()); args = sys.argv[1:]; s['calls'].append(args); p.write_text(json.dumps(s))
+sha = os.environ['GITHUB_SHA']; endpoint = args[-1]
+if '--method' in args:
+    assert args[args.index('--method')+1] == 'POST'
+    assert f'sha={sha}' in args
+    assert f'ref=refs/tags/android-prerelease-{sha}-123-1' in args
+    if s['variant'] == 'denied':
+        print('Resource not accessible by integration (HTTP 403)',file=sys.stderr); sys.exit(1)
+    s['exists'] = True; p.write_text(json.dumps(s)); print('{}')
+elif endpoint.endswith('/git/ref/heads/main'):
+    print(json.dumps({'object':{'type':'commit','sha':'b'*40 if s['variant']=='advanced' else sha}}))
+elif '/git/ref/tags/' in endpoint:
+    if not s['exists']:
+        print('Not Found (HTTP 404)',file=sys.stderr); sys.exit(1)
+    print(json.dumps({'object':{'type':'commit','sha':'b'*40 if s['variant']=='wrong-tag' else sha}}))
+else:
+    sys.exit('Unexpected API request')
+`;
+      fs.writeFileSync(path.join(dir, 'gh'), mock, { mode: 0o700 });
+      const result = spawnSync('python3', ['-c', script], { encoding: 'utf8', env: { PATH: dir + path.delimiter + process.env.PATH, ...env, REPOSITORY_PRIVATE: variant === 'private' ? 'true' : 'false', FAKE_GH_STATE: stateFile } });
+      const state = JSON.parse(fs.readFileSync(stateFile));
+      if (['create', 'existing'].includes(variant)) {
+        assert.equal(result.status, 0, result.stderr);
+        assert.match(result.stdout, /no APK or release has been published/);
+      } else assert.notEqual(result.status, 0);
+      assert.equal(state.calls.filter((args) => args.includes('POST')).length, ['create', 'denied'].includes(variant) ? 1 : 0);
+      assert.ok(state.calls.every((args) => args[0] === 'api' && args.some((arg) => arg.includes('/git/'))));
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+});
 
 function evidenceFixture(directory) {
   const unsigned = path.join(directory, 'evidence/unsigned'), signed = path.join(directory, 'evidence/signed');

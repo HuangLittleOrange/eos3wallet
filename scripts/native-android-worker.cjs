@@ -5,6 +5,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const { spawnSync } = require('node:child_process');
 const { removeAndroidSigning } = require('./android-unsigned.cjs');
+const { installPublicDependencies } = require('./native-install.cjs');
 const root = path.resolve(__dirname, '..');
 const stage = path.dirname(root);
 const mode = process.argv[2];
@@ -19,10 +20,10 @@ function run(command, args, cwd = root) {
   console.log(`Finished ${path.basename(command)} in ${Math.round((Date.now() - started) / 1000)}s`);
 }
 
-try {
+async function main() {
   if (mode === 'install') {
     run('node', ['scripts/dependency-policy.cjs']);
-    run('npm', ['ci', '--ignore-scripts', '--prefer-offline', '--no-audit', '--no-fund']);
+    await installPublicDependencies(root);
     run('npm', ['audit', 'signatures']);
   } else if (mode === 'build' || mode === 'cache') {
     run('npm', ['run', 'patch:dependencies']);
@@ -64,4 +65,5 @@ try {
     if (!fs.existsSync(unsigned)) throw new Error('Expected an unsigned release APK.');
     fs.copyFileSync(unsigned, path.join(stage, 'app-release-unsigned.apk'));
   } else throw new Error('Use install or build.');
-} catch (error) { console.error(error.message); process.exitCode = 1; }
+}
+main().catch((error) => { console.error(error.message); process.exitCode = 1; });
