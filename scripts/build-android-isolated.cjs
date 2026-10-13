@@ -7,7 +7,7 @@ const crypto = require('node:crypto');
 const { execFileSync, spawnSync } = require('node:child_process');
 const { copyPublicSource } = require('./isolated-build.cjs');
 const { verifyDependencyPolicy } = require('./dependency-policy.cjs');
-const { cleanEnvironment, prepareStage, runSandbox, nodeRuntimeRoot } = require('./native-sandbox.cjs');
+const { cleanEnvironment, prepareStage, runSandbox, runSandboxStreaming, nodeRuntimeRoot } = require('./native-sandbox.cjs');
 const { signTestApk } = require('./sign-android-test.cjs');
 const root = path.resolve(__dirname, '..');
 const hash = (data) => crypto.createHash('sha256').update(data).digest('hex');
@@ -73,6 +73,10 @@ async function main() {
     if (!fs.existsSync(initialCache) && prepareCache) fs.mkdirSync(path.join(stage, 'gradle-home/caches/modules-2'), { recursive: true });
     else cloneCache(initialCache, path.join(stage, 'gradle-home/caches/modules-2'));
     const env = cleanEnvironment(stage, path.dirname(process.execPath), javaHome, sdk);
+    // Reuse only npm's content-addressed public downloads, never installed code,
+    // npm configuration, audit logs or native build outputs.
+    const npmCache = path.join(root, '.codex/native-build-cache/npm-cache/_cacache');
+    if (fs.existsSync(npmCache)) cloneCache(npmCache, path.join(stage, 'npm-cache/_cacache'));
     runSandbox(stage, readTools, false, java, ['-version'], env, path.join(output, 'java-version.txt'));
     if (!/version "17[.]/.test(fs.readFileSync(path.join(output, 'java-version.txt'), 'utf8'))) throw new Error('The reviewed native toolchain requires JDK 17.');
     const canary = path.join(root, '.codex/native-isolation/credential-canary');
@@ -81,12 +85,14 @@ async function main() {
     const probe = `const fs=require('fs'),net=require('net');let blocked=0;for(const op of [()=>fs.readFileSync(${JSON.stringify(canary)}),()=>fs.writeFileSync(${JSON.stringify(canary)},'changed')]){try{op()}catch(e){if(['EPERM','EACCES'].includes(e.code))blocked++}}if(blocked!==2)process.exit(1);const s=net.connect(443,'1.1.1.1');s.on('connect',()=>process.exit(1));s.on('error',e=>{if(!['EPERM','EACCES'].includes(e.code))process.exit(1);console.log('Credential read/write and external network isolation verified');process.exit(0)});setTimeout(()=>process.exit(1),2000);`;
     runSandbox(stage, readTools, false, process.execPath, ['-e', probe], env, path.join(output, 'sandbox-probe.txt'));
     console.log('Installing dependencies in a sandbox with no host credentials.');
-    runSandbox(stage, readTools, true, process.execPath, [path.join(source, 'scripts/native-android-worker.cjs'), 'install'], env, path.join(output, 'install.txt'));
+    await runSandboxStreaming(stage, readTools, true, process.execPath, [path.join(source, 'scripts/native-android-worker.cjs'), 'install'], env, path.join(output, 'install.txt'), [], { label: 'install' });
     verifySource(source, manifest);
+    fs.rmSync(npmCache, { recursive: true, force: true });
+    cloneCache(path.join(stage, 'npm-cache/_cacache'), npmCache);
     if (prepareCache) {
       console.log('Preparing public native dependencies in a credential-free networked sandbox; no APK is promoted.');
       try {
-        runSandbox(stage, readTools, true, process.execPath, [path.join(source, 'scripts/native-android-worker.cjs'), 'cache'], env, path.join(output, 'cache.txt'), sdkDirectories);
+        await runSandboxStreaming(stage, readTools, true, process.execPath, [path.join(source, 'scripts/native-android-worker.cjs'), 'cache'], env, path.join(output, 'cache.txt'), sdkDirectories, { label: 'dependencies' });
       } finally {
         // A partial public cache is reusable, but does not turn a failed
         // preparation into success or permit an online APK build.
@@ -98,7 +104,7 @@ async function main() {
       return;
     }
     console.log('Building a fresh unsigned Android APK offline; no signing key is present.');
-    runSandbox(stage, readTools, false, process.execPath, [path.join(source, 'scripts/native-android-worker.cjs'), 'build'], env, path.join(output, 'build.txt'), sdkDirectories);
+    await runSandboxStreaming(stage, readTools, false, process.execPath, [path.join(source, 'scripts/native-android-worker.cjs'), 'build'], env, path.join(output, 'build.txt'), sdkDirectories, { label: 'build' });
     verifySource(source, manifest);
     const unsigned = path.join(output, 'wallet-review-unsigned.apk');
     fs.copyFileSync(path.join(stage, 'app-release-unsigned.apk'), unsigned);

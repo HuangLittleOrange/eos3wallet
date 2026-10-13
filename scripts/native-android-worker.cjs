@@ -11,15 +11,18 @@ const mode = process.argv[2];
 const policy = JSON.parse(fs.readFileSync(path.join(root, 'native-build-policy.json')));
 
 function run(command, args, cwd = root) {
+  const started = Date.now();
+  console.log(`Starting ${path.basename(command)} ${args.join(' ')}`);
   const result = spawnSync(command, args, { cwd, stdio: 'inherit' });
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(`Native ${args[0]} step failed (${result.status ?? result.signal}).`);
+  console.log(`Finished ${path.basename(command)} in ${Math.round((Date.now() - started) / 1000)}s`);
 }
 
 try {
   if (mode === 'install') {
     run('node', ['scripts/dependency-policy.cjs']);
-    run('npm', ['ci', '--ignore-scripts', '--no-audit', '--no-fund']);
+    run('npm', ['ci', '--ignore-scripts', '--prefer-offline', '--no-audit', '--no-fund']);
     run('npm', ['audit', 'signatures']);
   } else if (mode === 'build' || mode === 'cache') {
     run('npm', ['run', 'patch:dependencies']);
@@ -38,7 +41,7 @@ try {
     const properties = fs.readFileSync(wrapperProperties, 'utf8');
     if (!properties.includes(`gradle-${policy.gradle.version}-bin.zip`)) throw new Error('Gradle version changed.');
     fs.writeFileSync(wrapperProperties, properties + `\ndistributionSha256Sum=${policy.gradle.sha256}\n`);
-    fs.appendFileSync(path.join(android, 'gradle.properties'), `\norg.gradle.daemon=false\norg.gradle.parallel=false\norg.gradle.workers.max=4\nkotlin.compiler.execution.strategy=in-process\norg.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=768m -XX:-UsePerfData -Djava.io.tmpdir=${path.join(stage, 'tmp')}\n`);
+    fs.appendFileSync(path.join(android, 'gradle.properties'), `\norg.gradle.daemon=false\norg.gradle.parallel=true\norg.gradle.workers.max=4\norg.gradle.console=plain\nkotlin.compiler.execution.strategy=in-process\norg.gradle.jvmargs=-Xmx3g -XX:MaxMetaspaceSize=768m -XX:-UsePerfData -Djava.io.tmpdir=${path.join(stage, 'tmp')}\n`);
     fs.writeFileSync(path.join(android, 'local.properties'), `sdk.dir=${process.env.ANDROID_HOME}\n`);
     const gradle = path.join(stage, `gradle-${policy.gradle.version}`, 'bin/gradle');
     if (mode === 'cache') {

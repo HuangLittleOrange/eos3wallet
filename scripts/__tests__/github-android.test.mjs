@@ -54,7 +54,7 @@ test('workflow keeps main-only triggers and grants attestation authority only to
   assert.deepEqual(workflow.permissions, { contents: 'read' });
   for (const [name, job] of Object.entries(workflow.jobs)) {
     for (const step of job.steps) {
-      if (step.uses) assert.match(step.uses, /^actions\/[a-z-]+@[a-f0-9]{40}$/);
+      if (step.uses) assert.match(step.uses, /^actions\/[a-z-]+(?:\/(?:restore|save))?@[a-f0-9]{40}$/);
       if (step.uses?.startsWith('actions/checkout@')) {
         assert.equal(step.with.ref, '${{ github.sha }}');
         assert.equal(step.with['persist-credentials'], false);
@@ -84,6 +84,27 @@ test('workflow keeps main-only triggers and grants attestation authority only to
     }
   }
   assert.match(workflow.env.RELEASE_CERTIFICATE_SHA256, /^[a-f0-9]{64}$/);
+});
+
+test('public download cache is exact-key, build-only and excludes executable build outputs and secrets', () => {
+  const steps = workflow.jobs.build.steps;
+  const restore = steps.find((step) => step.uses?.startsWith('actions/cache/restore@'));
+  const save = steps.find((step) => step.uses?.startsWith('actions/cache/save@'));
+  const paths = ['.codex/native-build-cache/gradle-9.3.1-bin.zip', '.codex/native-build-cache/modules-2', '.codex/native-build-cache/npm-cache/_cacache'];
+  assert.deepEqual(restore.with.path.trim().split('\n'), paths);
+  assert.deepEqual(save.with.path.trim().split('\n'), paths);
+  assert.equal(restore.with['restore-keys'], undefined);
+  assert.match(restore.with.key, /hashFiles\(.*package-lock[.]json.*native-build-policy[.]json.*dependency-policy[.]json/);
+  const discard = steps.find((step) => step.name === 'Discard a non-exact cache match');
+  assert.equal(discard.if, "steps.public-cache.outputs.cache-hit != 'true'");
+  assert.equal(discard.run, 'rm -rf .codex/native-build-cache');
+  assert.ok(steps.indexOf(discard) > steps.indexOf(restore));
+  assert.ok(steps.indexOf(save) > steps.findIndex((step) => step.run?.includes('--prepare-cache')));
+  assert.ok(steps.indexOf(save) < steps.findIndex((step) => step.id === 'native'));
+  assert.equal(save.if, "steps.public-cache.outputs.cache-hit != 'true'");
+  for (const [name, job] of Object.entries(workflow.jobs)) {
+    if (name !== 'build') assert.ok(!job.steps.some((step) => step.uses?.startsWith('actions/cache/')));
+  }
 });
 
 function inlinePython(step) {

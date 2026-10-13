@@ -43,10 +43,33 @@ jobs:
           distribution: temurin
           # Adoptium SemVer for the Temurin 17.0.20.1+1 release.
           java-version: '17.0.20+101'
+      # Downloads only. No compiled outputs, node_modules or signing materials.
+      - name: Restore public dependency downloads
+        id: public-cache
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4, pinned
+        with:
+          path: |
+            .codex/native-build-cache/gradle-9.3.1-bin.zip
+            .codex/native-build-cache/modules-2
+            .codex/native-build-cache/npm-cache/_cacache
+          key: android-public-downloads-v1-${{ runner.os }}-${{ runner.arch }}-node22.23.2-java17.0.20-101-${{ hashFiles('package.json', 'package-lock.json', 'native-build-policy.json', 'dependency-policy.json', 'app.json', 'patches/**', 'scripts/native-android-worker.cjs') }}
+      - name: Discard a non-exact cache match
+        if: steps.public-cache.outputs.cache-hit != 'true'
+        run: rm -rf .codex/native-build-cache
       - name: Install reviewed Android SDK components
         run: node scripts/github-android.cjs sdk
       - name: Prepare public dependencies inside the credential-free sandbox
         run: node scripts/build-android-isolated.cjs --prepare-cache
+      # Save after successful preparation, even if the subsequent build fails.
+      - name: Save public dependency downloads
+        if: steps.public-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4, pinned
+        with:
+          path: |
+            .codex/native-build-cache/gradle-9.3.1-bin.zip
+            .codex/native-build-cache/modules-2
+            .codex/native-build-cache/npm-cache/_cacache
+          key: ${{ steps.public-cache.outputs.cache-primary-key }}
       - name: Build unsigned APK offline and run tests
         id: native
         run: node scripts/build-android-isolated.cjs --unsigned-only

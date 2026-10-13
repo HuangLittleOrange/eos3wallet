@@ -7,7 +7,7 @@ import net from 'node:net';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { removeAndroidSigning } = require('../android-unsigned.cjs');
-const { sandboxProfile, cleanEnvironment, prepareStage, runSandbox, nodeRuntimeRoot } = require('../native-sandbox.cjs');
+const { sandboxProfile, cleanEnvironment, prepareStage, runSandbox, runSandboxStreaming, nodeRuntimeRoot } = require('../native-sandbox.cjs');
 const { cloneCache } = require('../build-android-isolated.cjs');
 
 test('public cache retains AndroidX credentials dependencies while rejecting credential files and links', () => {
@@ -111,4 +111,55 @@ test('networked preparation refuses host Unix sockets such as a Docker or SSH ag
     const script = `const s=require('net').connect(${JSON.stringify(socket)});s.on('connect',()=>process.exit(1));s.on('error',e=>process.exit(['EPERM','EACCES'].includes(e.code)?0:1));setTimeout(()=>process.exit(1),2000);`;
     runSandbox(stage, [path.dirname(process.execPath)], true, process.execPath, ['-e', script], cleanEnvironment(stage, path.dirname(process.execPath), '/unused', '/unused'), path.join(stage, 'probe.txt'));
   } finally { server.close(); fs.rmSync(parent, { recursive: true, force: true }); }
+});
+
+test('live sandbox output arrives before exit, preserves raw logs and cannot inject Actions commands', { skip: process.platform !== 'darwin' || process.env.EOSTP_NATIVE_SANDBOX === '1' }, async () => {
+  const stage = fs.mkdtempSync('/private/tmp/native-stream-test-');
+  const previous = process.env.GITHUB_ACTIONS;
+  process.env.GITHUB_ACTIONS = 'true';
+  try {
+    prepareStage(stage);
+    const log = path.join(stage, 'build.txt'), ack = path.join(stage, 'ack'), done = path.join(stage, 'done');
+    const output = [];
+    const env = cleanEnvironment(stage, path.dirname(process.execPath), '/unused', '/unused');
+    // Child waits for parent acknowledgment: buffered-until-exit logging cannot
+    // pass. Fake workflow commands and split UTF-8 bytes exercise both streams.
+    const script = `const fs=require('fs');console.log('ready ::set-output name=unsafe::yes');console.error('::error::fake');const b=Buffer.from('中文');process.stdout.write(b.subarray(0,2));process.stdout.write(b.subarray(2));const timer=setInterval(()=>{if(fs.existsSync(${JSON.stringify(ack)})){clearInterval(timer);fs.writeFileSync(${JSON.stringify(done)},'done')}},20);setTimeout(()=>process.exit(2),3000).unref();`;
+    await runSandboxStreaming(stage, [path.dirname(process.execPath)], false, process.execPath, ['-e', script], env, log, [], {
+      label: 'build', output: (text) => {
+        output.push(text);
+        if (text.includes('ready')) {
+          assert.equal(fs.existsSync(done), false);
+          assert.match(fs.readFileSync(log, 'utf8'), /ready/);
+          fs.writeFileSync(ack, 'ok');
+        }
+      },
+    });
+    const token = output[0].match(/^::stop-commands::([a-f0-9-]+)\n$/)?.[1];
+    assert.ok(token);
+    assert.equal(output.at(-1), `\n::${token}::\n`);
+    assert.equal(fs.existsSync(done), true);
+    assert.match(output.join(''), /中文/);
+    const raw = fs.readFileSync(log, 'utf8');
+    assert.match(raw, /::set-output name=unsafe::yes/);
+    assert.match(raw, /::error::fake/);
+    assert.ok(!raw.includes(token));
+    assert.equal(fs.statSync(log).mode & 0o777, 0o600);
+  } finally {
+    if (previous === undefined) delete process.env.GITHUB_ACTIONS; else process.env.GITHUB_ACTIONS = previous;
+    fs.rmSync(stage, { recursive: true, force: true });
+  }
+});
+
+test('live sandbox failures retain diagnostics, and release signing refuses live logging', { skip: process.platform !== 'darwin' || process.env.EOSTP_NATIVE_SANDBOX === '1' }, async () => {
+  const stage = fs.mkdtempSync('/private/tmp/native-stream-failure-');
+  try {
+    prepareStage(stage);
+    const env = cleanEnvironment(stage, path.dirname(process.execPath), '/unused', '/unused');
+    const log = path.join(stage, 'failure.txt');
+    await assert.rejects(runSandboxStreaming(stage, [path.dirname(process.execPath)], false, process.execPath, ['-e', "console.error('compiler failure');process.exit(7)"], env, log, [], { output: () => {} }), /failed \(7\)/);
+    assert.match(fs.readFileSync(log, 'utf8'), /compiler failure/);
+    await assert.rejects(runSandboxStreaming(stage, [], false, process.execPath, [], { ...env, EOS3_RELEASE_SIGNER: '1' }, path.join(stage, 'sign.txt')), /Signing diagnostics cannot be streamed/);
+    assert.equal(fs.existsSync(path.join(stage, 'sign.txt')), false);
+  } finally { fs.rmSync(stage, { recursive: true, force: true }); }
 });
