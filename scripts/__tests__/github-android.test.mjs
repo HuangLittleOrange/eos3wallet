@@ -9,9 +9,11 @@ import { createHash } from 'node:crypto';
 const require = createRequire(import.meta.url);
 const { context, checksums, verifyChecksums, sameRun, unsignedFiles, signedFiles } = require('../github-android.cjs');
 const workflow = require('yaml').parse(fs.readFileSync(new URL('../../.github/workflows/android-build.yml', import.meta.url), 'utf8'));
+function sha256CertificateFixture() { return createHash('sha256').update('public certificate fixture').digest('hex'); }
 const env = {
   GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'push', GITHUB_REF: 'refs/heads/main',
   GITHUB_SHA: 'a'.repeat(40), GITHUB_REPOSITORY: 'example/wallet', GITHUB_RUN_ID: '123',
+  RELEASE_CERTIFICATE_SHA256: sha256CertificateFixture(),
   GITHUB_RUN_ATTEMPT: '1', GITHUB_SERVER_URL: 'https://github.com',
 };
 const sha256 = (data) => createHash('sha256').update(data).digest('hex');
@@ -64,12 +66,24 @@ test('workflow keeps main-only triggers and grants attestation authority only to
   assert.ok(!workflow.jobs.attest.steps.some((step) => step.uses?.startsWith('actions/checkout@')));
   assert.ok(!workflow.jobs.attest.steps.some((step) => /node |npm |scripts\//.test(step.run ?? '')));
   assert.deepEqual(workflow.jobs.release.permissions, { contents: 'write' });
-  assert.deepEqual(workflow.jobs.release.needs, ['build', 'test-sign', 'attest']);
+  assert.deepEqual(workflow.jobs.release.needs, ['build', 'release-sign', 'attest']);
   assert.equal(workflow.jobs.release.if, "github.ref == 'refs/heads/main'");
   assert.ok(!workflow.jobs.release.steps.some((step) => step.uses?.startsWith('actions/checkout@')));
   assert.ok(!workflow.jobs.release.steps.some((step) => /node |npm |scripts\//.test(step.run ?? '')));
-  const sparse = workflow.jobs['test-sign'].steps.find((step) => step.uses?.startsWith('actions/checkout@')).with['sparse-checkout'];
+  const sparse = workflow.jobs['release-sign'].steps.find((step) => step.uses?.startsWith('actions/checkout@')).with['sparse-checkout'];
   assert.doesNotMatch(sparse, /\/src\/|package[.]json|node_modules|gradle/);
+  assert.equal(workflow.jobs['release-sign'].environment, 'android-production-signing');
+  for (const [name, job] of Object.entries(workflow.jobs)) {
+    for (const step of job.steps) {
+      const secretVariables = Object.entries(step.env ?? {}).filter(([, value]) => /secrets\./.test(String(value)));
+      if (secretVariables.length) {
+        assert.equal(name, 'release-sign');
+        assert.match(step.run, /^node scripts\/github-android\.cjs sign /);
+        assert.equal(secretVariables.length, 2);
+      }
+    }
+  }
+  assert.match(workflow.env.RELEASE_CERTIFICATE_SHA256, /^[a-f0-9]{64}$/);
 });
 
 function inlinePython(step) {
@@ -86,7 +100,10 @@ function evidenceFixture(directory) {
   checksums(unsigned, unsignedFiles); checksums(signed, signedFiles);
   const hashOf = (target, name) => fs.readFileSync(path.join(target, 'SHA256SUMS'), 'utf8').split('\n').find((line) => line.endsWith(`  ${name}`)).slice(0, 64);
   const unsignedHash = hashOf(unsigned, unsignedFiles[0]), signedHash = hashOf(signed, signedFiles[0]);
-  const info = context(env), certificate = 'b'.repeat(64);
+  const info = context(env), certificate = env.RELEASE_CERTIFICATE_SHA256;
+  const policy = JSON.stringify({ certificateSha256: certificate });
+  fs.writeFileSync(path.join(signed, 'android-signing-policy.json'), policy);
+  fs.writeFileSync(path.join(signed, 'android-release-certificate.der'), 'public certificate fixture');
   const legal = path.join(directory, 'evidence/legal');
   const licenseNames = ['docs/dependency-security.md', 'third-party/fixture-license.txt'];
   const files = {};
@@ -94,17 +111,19 @@ function evidenceFixture(directory) {
     const target = path.join(legal, name); fs.mkdirSync(path.dirname(target), { recursive: true });
     fs.writeFileSync(target, 'public license fixture'); files[name] = sha256(fs.readFileSync(target));
   }
+  files['android-signing-policy.json'] = sha256(policy);
+  files['docs/android-release-certificate.der'] = certificate;
   const manifest = JSON.stringify({ files }); fs.writeFileSync(path.join(unsigned, 'source-manifest.json'), manifest);
   fs.writeFileSync(path.join(unsigned, 'build-info.json'), JSON.stringify({ ...info, productionSigning: false, sha256: unsignedHash, sourceManifestSha256: sha256(manifest) }));
-  fs.writeFileSync(path.join(signed, 'sign-info.json'), JSON.stringify({ ...info, productionSigning: false, sha256: signedHash, unsignedSha256: unsignedHash, certificateSha256: certificate }));
-  fs.writeFileSync(path.join(signed, 'wallet-review-test-signed.apk.json'), JSON.stringify({ unsignedSha256: unsignedHash, signedSha256: signedHash, certificateSha256: certificate, signatureVerified: true, alignment16KbVerified: true }));
+  fs.writeFileSync(path.join(signed, 'sign-info.json'), JSON.stringify({ ...info, productionSigning: true, signingPolicySha256: sha256(policy), sha256: signedHash, unsignedSha256: unsignedHash, certificateSha256: certificate }));
+  fs.writeFileSync(path.join(signed, 'wallet-release.apk.json'), JSON.stringify({ productionSigning: true, signingPolicySha256: sha256(policy), unsignedSha256: unsignedHash, signedSha256: signedHash, certificateSha256: certificate, signatureVerified: true, alignment16KbVerified: true }));
   checksums(unsigned, unsignedFiles); checksums(signed, signedFiles);
   return { unsigned, signed, legal };
 }
 
 test('actual OIDC job verification rejects substituted APKs even with updated checksum files and rejects another run', { skip: pythonAvailable ? false : 'Python 3 is needed to exercise Ubuntu workflow steps' }, () => {
   const script = inlinePython(workflow.jobs.attest.steps.find((step) => step.name?.startsWith('Verify artifacts')));
-  for (const variant of ['valid', 'replacement', 'other-run', 'signature-missing', 'license-replaced']) {
+  for (const variant of ['valid', 'replacement', 'other-run', 'signature-missing', 'license-replaced', 'wrong-certificate', 'test-signature']) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'ci-evidence-test-'));
     try {
       const { unsigned, signed, legal } = evidenceFixture(directory);
@@ -115,9 +134,14 @@ test('actual OIDC job verification rejects substituted APKs even with updated ch
         const metadata = JSON.parse(fs.readFileSync(file)); metadata.runId = '999'; fs.writeFileSync(file, JSON.stringify(metadata));
       }
       if (variant === 'signature-missing') {
-        const file = path.join(signed, 'wallet-review-test-signed.apk.json');
+        const file = path.join(signed, 'wallet-release.apk.json');
         const proof = JSON.parse(fs.readFileSync(file)); proof.signatureVerified = false; fs.writeFileSync(file, JSON.stringify(proof));
       }
+      if (variant === 'wrong-certificate') {
+        const f = path.join(signed, 'sign-info.json'), p = path.join(signed, 'wallet-release.apk.json');
+        for (const file of [f,p]) { const info = JSON.parse(fs.readFileSync(file)); info.certificateSha256 = '0'.repeat(64); fs.writeFileSync(file,JSON.stringify(info)); }
+      }
+      if (variant === 'test-signature') { const f = path.join(signed, 'sign-info.json'); const info = JSON.parse(fs.readFileSync(f)); info.productionSigning = false; fs.writeFileSync(f,JSON.stringify(info)); }
       checksums(unsigned, unsignedFiles); checksums(signed, signedFiles);
       const result = spawnSync('python3', ['-c', script], { encoding: 'utf8', env: { PATH: process.env.PATH, ...env, RUNNER_TEMP: directory } });
       if (variant === 'valid') {
@@ -173,7 +197,7 @@ test('release preparation refuses foreign builds, unsigned evidence, replaced AP
         const info = JSON.parse(fs.readFileSync(file)); info.runId = '456'; fs.writeFileSync(file, JSON.stringify(info));
       }
       if (variant === 'signature-missing') {
-        const file = path.join(input, 'wallet-review-test-signed.apk.json');
+        const file = path.join(input, 'wallet-release.apk.json');
         const proof = JSON.parse(fs.readFileSync(file)); proof.signatureVerified = false; fs.writeFileSync(file, JSON.stringify(proof));
       }
       if (variant === 'symlink') {
@@ -196,7 +220,7 @@ test('release preparation refuses foreign builds, unsigned evidence, replaced AP
         assert.equal(result.status, 0, result.stderr);
         const plan = JSON.parse(fs.readFileSync(path.join(dir, 'release-output/plan.json')));
         assert.equal(plan.commit, env.GITHUB_SHA);
-        assert.equal(plan.tag, `android-test-${env.GITHUB_SHA}-123-1`);
+        assert.equal(plan.tag, `android-prerelease-${env.GITHUB_SHA}-123-1`);
         assert.ok(plan.assets.some((asset) => asset.name === 'provenance.jsonl'));
         for (const asset of plan.assets) assert.equal(sha256(fs.readFileSync(asset.path)), asset.sha256);
         const notes = fs.readFileSync(plan.notes, 'utf8');
@@ -219,7 +243,7 @@ test('release publication resumes drafts by ID and refuses wrong tags or remote 
       const output = path.join(dir, 'release-output'); fs.mkdirSync(output);
       const file = path.join(dir, 'fixture.apk'); fs.writeFileSync(file, 'verified fixture APK');
       const asset = { path: file, name: 'fixture.apk', sha256: sha256(fs.readFileSync(file)) };
-      const plan = { repository: env.GITHUB_REPOSITORY, tag: 'android-test-fixture', commit: env.GITHUB_SHA, assets: [asset] };
+      const plan = { repository: env.GITHUB_REPOSITORY, tag: 'android-prerelease-fixture', commit: env.GITHUB_SHA, assets: [asset] };
       fs.writeFileSync(path.join(output, 'plan.json'), JSON.stringify(plan));
       const release = { id: 1, tag_name: plan.tag, target_commitish: plan.commit, draft: variant !== 'published', prerelease: true, html_url: 'https://example.test/release', assets: variant === 'published' ? [{ name: asset.name, digest: 'sha256:' + asset.sha256 }] : [] };
       const stateFile = path.join(dir, 'state.json');

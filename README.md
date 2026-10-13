@@ -73,7 +73,7 @@ npm run build:android:isolated
 
 ## 公开 APK 构建
 
-[GitHub Actions 流程](.github/workflows/android-build.yml)在 `main` 更新时构建，也支持从 `main` 手动运行。每次构建记录具体提交、依赖锁文件和源码文件哈希，并公开测试 APK、未签名 APK、`SHA256SUMS` 和 GitHub 来源证明。编译、测试签名和来源证明分别在新 runner 上执行，无需提供正式签名密钥。
+[GitHub Actions 流程](.github/workflows/android-build.yml)在 `main` 更新时构建，也支持从 `main` 手动运行。每次构建记录具体提交、依赖锁文件和源码文件哈希，并公开固定正式证书签名的 APK、未签名 APK、`SHA256SUMS` 和 GitHub 来源证明。编译、独立正式签名、来源证明和发布分别在新 runner 上执行；签名秘密仅供独立签名步骤使用。全部验证成功后自动发布到 Releases，保留预发布标记。
 
 在公开仓库的 **Actions → Public Android APK** 中查看日志、APK 哈希和校验命令，下载成功运行的 `android-public-…` 产物。启用方式、用户校验方法与正式发行说明见[公开构建与来源核验](docs/github-android-build.md)。
 

@@ -63,7 +63,8 @@ function prepareStage(directory) {
 function runSandbox(directory, tools, online, command, args, env, log, listDirectories = []) {
   if (process.platform !== 'darwin' || !fs.existsSync('/usr/bin/sandbox-exec')) throw new Error('This native entry point requires macOS sandbox-exec; no unsandboxed fallback is allowed.');
   const profile = path.join(directory, online ? 'networked.sb' : 'offline.sb');
-  fs.writeFileSync(profile, sandboxProfile(directory, tools, online, listDirectories));
+  const extra = env.EOS3_RELEASE_SIGNER === '1' ? '\n(deny network*)\n' : '';
+  fs.writeFileSync(profile, sandboxProfile(directory, tools, online, listDirectories) + extra);
   const descriptor = fs.openSync(log, 'w', 0o600);
   try {
     const result = spawnSync('/usr/bin/sandbox-exec', ['-f', profile, command, ...args], { cwd: directory, env, stdio: ['ignore', descriptor, descriptor] });

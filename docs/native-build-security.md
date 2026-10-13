@@ -4,7 +4,7 @@
 
 ## Android 原生测试包
 
-公开 GitHub Actions 构建使用同一隔离入口的 `--unsigned-only` 模式，并在另一台 runner 上独立测试签名。配置与核验说明见[公开构建与来源核验](github-android-build.md)。本机无参数入口仍执行编译和独立测试签名。
+公开 GitHub Actions 构建使用同一隔离入口的 `--unsigned-only` 模式，并在另一台 runner 上用固定正式证书独立签名。配置与核验说明见[公开构建与来源核验](github-android-build.md)。本机无参数入口仍执行编译和独立测试签名。
 
 在 macOS 上安装 JDK 17，以及 `native-build-policy.json` 指定的 Android SDK 组件，并准备仅包含公开依赖的 Gradle 离线缓存：
 

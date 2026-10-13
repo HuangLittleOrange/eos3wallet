@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "keyAlias": "eos3-wallet-release",
+  "certificateSha256": "760400107cc85ff86312473f854fe5fc5ff9e4237cdc280f07bfe4230628750a",
+  "certificateFile": "docs/android-release-certificate.der",
+  "purpose": "fixed Android release signing identity",
+  "algorithm": "RSA-4096",
+  "validityDays": 10950
+}

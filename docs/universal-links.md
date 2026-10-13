@@ -12,6 +12,8 @@
 
 在自有域名的 `/.well-known/assetlinks.json` 声明应用包名、签名证书指纹和关联能力，并与 `app.json` 中的 App Links 配置一致。仓库中的 [assetlinks.json](../well-known/assetlinks.json) 可作为结构参考。
 
+固定正式 Android 证书的指纹来自 [签名策略](../android-signing-policy.json)，已加入仓库关联文件。生成正式签名 APK 后，还需将该文件部署到对应域名；提交仓库不会自动更新服务器。证书轮换前应保留仍受支持安装包的指纹，部署后验证 Passkey 和 HTTPS 深链。
+
 ## 验证
 
 使用有效的绑定请求，在安装了应用的真机上打开对应 HTTPS 链接，确认进入授权页面。

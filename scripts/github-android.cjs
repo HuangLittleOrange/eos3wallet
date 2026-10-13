@@ -9,7 +9,7 @@ const { execFileSync } = require('node:child_process');
 const root = path.resolve(__dirname, '..');
 const sha256 = (data) => crypto.createHash('sha256').update(data).digest('hex');
 const unsignedName = 'wallet-review-unsigned.apk';
-const signedName = 'wallet-review-test-signed.apk';
+const signedName = 'wallet-release.apk';
 
 function context(env = process.env) {
   if (env.GITHUB_ACTIONS !== 'true' || env.GITHUB_REF !== 'refs/heads/main' ||
@@ -61,7 +61,7 @@ function checkoutContext() {
 
 const unsignedFiles = [unsignedName, 'build-info.json', 'source-manifest.json', 'verification.json',
   'java-version.txt', 'sandbox-probe.txt', 'install.txt', 'build.txt', 'LICENSE', 'THIRD_PARTY_NOTICES.md'];
-const signedFiles = [signedName, `${signedName}.json`, 'sign-info.json'];
+const signedFiles = [signedName, `${signedName}.json`, 'sign-info.json', 'android-signing-policy.json', 'android-release-certificate.der'];
 
 function packageBuild(input, destination) {
   const info = checkoutContext();
@@ -108,12 +108,21 @@ function packageSignature(input, destination) {
   if (fs.readdirSync(destination).length) throw new Error('Artifact destination must be empty.');
   const sdk = fs.realpathSync(process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT);
   const java = fs.realpathSync(execFileSync('/usr/bin/which', ['java'], { encoding: 'utf8' }).trim());
-  const { signTestApk } = require('./sign-android-test.cjs');
-  const signed = signTestApk(path.join(input, unsignedName), metadata.sha256, path.join(destination, signedName), sdk, path.dirname(path.dirname(java)));
+  const policyBytes = checkedFile(root, 'android-signing-policy.json');
+  const policy = JSON.parse(policyBytes);
+  const source = JSON.parse(checkedFile(input, 'source-manifest.json')).files;
+  const certificateBytes = checkedFile(root, policy.certificateFile);
+  if (source['android-signing-policy.json'] !== sha256(policyBytes) || source[policy.certificateFile] !== sha256(certificateBytes)) {
+    throw new Error('Release identity differs from compiled source.');
+  }
+  const { signReleaseApk } = require('./sign-android-release.cjs');
+  const signed = signReleaseApk(path.join(input, unsignedName), metadata.sha256, path.join(destination, signedName), sdk, path.dirname(path.dirname(java)));
+  fs.writeFileSync(path.join(destination, 'android-signing-policy.json'), policyBytes);
+  fs.writeFileSync(path.join(destination, 'android-release-certificate.der'), certificateBytes);
   fs.writeFileSync(path.join(destination, 'sign-info.json'), JSON.stringify({
     ...info, artifact: signedName, sha256: signed.signedSha256,
     unsignedSha256: metadata.sha256, certificateSha256: signed.certificateSha256,
-    productionSigning: false, purpose: 'test only; a fresh temporary key is deleted after each run',
+    productionSigning: true, signingPolicySha256: sha256(policyBytes), purpose: 'fixed release signing; prerelease distribution',
   }, null, 2) + '\n');
   checksums(destination, signedFiles);
 }

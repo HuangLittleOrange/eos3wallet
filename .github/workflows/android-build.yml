@@ -9,6 +9,9 @@ on:
 permissions:
   contents: read
 
+env:
+  RELEASE_CERTIFICATE_SHA256: 760400107cc85ff86312473f854fe5fc5ff9e4237cdc280f07bfe4230628750a
+
 concurrency:
   group: public-android-${{ github.ref }}
   cancel-in-progress: false
@@ -83,8 +86,9 @@ jobs:
           if-no-files-found: error
           retention-days: 90
 
-  test-sign:
+  release-sign:
     needs: build
+    environment: android-production-signing
     runs-on: macos-15-intel
     timeout-minutes: 20
     steps:
@@ -96,8 +100,10 @@ jobs:
           sparse-checkout-cone-mode: false
           sparse-checkout: |
             /scripts/github-android.cjs
-            /scripts/sign-android-test.cjs
-            /scripts/test-signing-worker.cjs
+            /scripts/sign-android-release.cjs
+            /scripts/release-signing-worker.cjs
+            /android-signing-policy.json
+            /docs/android-release-certificate.der
             /scripts/native-sandbox.cjs
             /native-build-policy.json
             /.gitignore
@@ -117,17 +123,20 @@ jobs:
           path: exports/github-input
           digest-mismatch: error
       - name: Verify unsigned evidence and sign in an independent offline sandbox
+        env:
+          ANDROID_RELEASE_KEYSTORE_BASE64: ${{ secrets.ANDROID_RELEASE_KEYSTORE_BASE64 }}
+          ANDROID_RELEASE_STORE_PASSWORD: ${{ secrets.ANDROID_RELEASE_STORE_PASSWORD }}
         run: node scripts/github-android.cjs sign exports/github-input exports/github-signed
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: android-test-signed-${{ github.run_id }}-${{ github.run_attempt }}
+          name: android-release-signed-${{ github.run_id }}-${{ github.run_attempt }}
           path: exports/github-signed/
           if-no-files-found: error
           retention-days: 90
           compression-level: 0
 
   attest:
-    needs: [build, test-sign]
+    needs: [build, release-sign]
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     permissions:
@@ -143,7 +152,7 @@ jobs:
           digest-mismatch: error
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: android-test-signed-${{ github.run_id }}-${{ github.run_attempt }}
+          name: android-release-signed-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/evidence/signed
           digest-mismatch: error
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
@@ -162,7 +171,7 @@ jobs:
           output = base / 'public-apk'
           output.mkdir()
           unsigned_names = ['wallet-review-unsigned.apk', 'build-info.json', 'source-manifest.json', 'verification.json', 'java-version.txt', 'sandbox-probe.txt', 'install.txt', 'build.txt', 'LICENSE', 'THIRD_PARTY_NOTICES.md']
-          signed_names = ['wallet-review-test-signed.apk', 'wallet-review-test-signed.apk.json', 'sign-info.json']
+          signed_names = ['wallet-release.apk', 'wallet-release.apk.json', 'sign-info.json', 'android-signing-policy.json', 'android-release-certificate.der']
           def digest(file):
               if file.is_symlink() or not file.is_file():
                   raise SystemExit('Artifact must be a regular file')
@@ -179,13 +188,15 @@ jobs:
                   raise SystemExit('SHA256 or artifact inventory mismatch')
           build = json.loads((unsigned / 'build-info.json').read_text())
           sign = json.loads((signed / 'sign-info.json').read_text())
-          proof = json.loads((signed / 'wallet-review-test-signed.apk.json').read_text())
+          proof = json.loads((signed / 'wallet-release.apk.json').read_text())
           expected = {'repository': os.environ['GITHUB_REPOSITORY'], 'ref': 'refs/heads/main', 'commit': os.environ['GITHUB_SHA'], 'runId': os.environ['GITHUB_RUN_ID'], 'runAttempt': os.environ['GITHUB_RUN_ATTEMPT']}
           if os.environ['GITHUB_REF'] != expected['ref']:
               raise SystemExit('Only main builds may receive this provenance')
           for metadata in [build, sign]:
-              if any(metadata.get(key) != value for key, value in expected.items()) or metadata.get('productionSigning') is not False:
+              if any(metadata.get(key) != value for key, value in expected.items()):
                   raise SystemExit('Source or workflow context mismatch')
+          if build.get('productionSigning') is not False or sign.get('productionSigning') is not True or proof.get('productionSigning') is not True:
+              raise SystemExit('Release signing mode mismatch')
           unsigned_hash = digest(unsigned / unsigned_names[0])
           signed_hash = digest(signed / signed_names[0])
           if build.get('sha256') != unsigned_hash or sign.get('sha256') != signed_hash or sign.get('unsignedSha256') != unsigned_hash:
@@ -194,9 +205,15 @@ jobs:
               raise SystemExit('Signature verification missing')
           if not re.fullmatch('[a-fA-F0-9]{64}', proof.get('certificateSha256', '')) or proof.get('certificateSha256') != sign.get('certificateSha256'):
               raise SystemExit('Certificate fingerprint mismatch')
+          policy = json.loads((signed / 'android-signing-policy.json').read_text())
+          pinned = os.environ['RELEASE_CERTIFICATE_SHA256']
+          if not re.fullmatch('[a-f0-9]{64}', pinned) or policy.get('certificateSha256') != pinned or proof.get('certificateSha256') != pinned or digest(signed / 'android-release-certificate.der') != pinned or sign.get('signingPolicySha256') != digest(signed / 'android-signing-policy.json') or proof.get('signingPolicySha256') != sign.get('signingPolicySha256'):
+              raise SystemExit('Pinned release certificate mismatch')
           if build.get('sourceManifestSha256') != digest(unsigned / 'source-manifest.json'):
               raise SystemExit('Source manifest metadata mismatch')
           manifest = json.loads((unsigned / 'source-manifest.json').read_text())['files']
+          if manifest.get('android-signing-policy.json') != digest(signed / 'android-signing-policy.json') or manifest.get('docs/android-release-certificate.der') != pinned:
+              raise SystemExit('Release policy differs from compiled source')
           license_names = sorted(name for name in manifest if name.startswith('third-party/') or name == 'docs/dependency-security.md')
           if not license_names:
               raise SystemExit('Source license inventory missing')
@@ -221,7 +238,7 @@ jobs:
         with:
           subject-path: |
             ${{ runner.temp }}/public-apk/wallet-review-unsigned.apk
-            ${{ runner.temp }}/public-apk/wallet-review-test-signed.apk
+            ${{ runner.temp }}/public-apk/wallet-release.apk
             ${{ runner.temp }}/public-apk/build-info.json
             ${{ runner.temp }}/public-apk/sign-info.json
             ${{ runner.temp }}/public-apk/source-manifest.json
@@ -247,10 +264,10 @@ jobs:
           source = f'https://github.com/{repo}/tree/{commit}'
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
               summary.write(f'### Public Android build\n\nSource: [main commit `{commit}`]({source})\n\n')
-              summary.write('Test signing only; no production signing key is used.\n\n')
+              summary.write('Fixed release certificate signing in an independent offline sandbox; distributed as a prerelease.\n\n')
               summary.write('```text\n' + ''.join(line for line in lines if line.rstrip().endswith('.apk')) + '```\n\n')
               summary.write('Download the final `android-public-…` artifact and extract it. Verify every file and both APK attestations:\n\n```bash\nsha256sum -c SHA256SUMS\n')
-              for name in ['wallet-review-unsigned.apk', 'wallet-review-test-signed.apk']:
+              for name in ['wallet-review-unsigned.apk', 'wallet-release.apk']:
                   summary.write(f'gh attestation verify {name} --repo {repo} --signer-workflow {repo}/.github/workflows/android-build.yml --signer-digest {commit} --source-ref refs/heads/main --source-digest {commit} --deny-self-hosted-runners\n')
               summary.write('```\n\nOn macOS, use `shasum -a 256 -c SHA256SUMS`. See the repository build guide for offline verification and limits.\n')
           PY
@@ -264,7 +281,7 @@ jobs:
           compression-level: 0
 
   release:
-    needs: [build, test-sign, attest]
+    needs: [build, release-sign, attest]
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
@@ -277,7 +294,7 @@ jobs:
           name: android-public-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release-input
           digest-mismatch: error
-      - name: Verify release inventory and prepare test release
+      - name: Verify release inventory and prepare signed prerelease
         run: |
           python3 - <<'PY'
           import hashlib, json, os, pathlib, re, zipfile
@@ -318,47 +335,55 @@ jobs:
                   actual.add(file.relative_to(source).as_posix())
           if actual != set(inventory) | {'SHA256SUMS'}:
               raise SystemExit('Release inventory mismatch')
-          required = {'wallet-review-test-signed.apk', 'wallet-review-unsigned.apk', 'provenance.jsonl', 'build-info.json', 'sign-info.json', 'source-manifest.json', 'verification.json', 'wallet-review-test-signed.apk.json', 'LICENSE', 'THIRD_PARTY_NOTICES.md'}
+          required = {'wallet-release.apk', 'wallet-review-unsigned.apk', 'provenance.jsonl', 'build-info.json', 'sign-info.json', 'source-manifest.json', 'verification.json', 'wallet-release.apk.json', 'android-signing-policy.json', 'android-release-certificate.der', 'LICENSE', 'THIRD_PARTY_NOTICES.md'}
           if not required <= set(inventory):
               raise SystemExit('Release evidence missing')
           build = json.loads((source / 'build-info.json').read_text())
           sign = json.loads((source / 'sign-info.json').read_text())
-          proof = json.loads((source / 'wallet-review-test-signed.apk.json').read_text())
+          proof = json.loads((source / 'wallet-release.apk.json').read_text())
           expected = {'repository': repo, 'ref': 'refs/heads/main', 'commit': commit, 'runId': run_id, 'runAttempt': attempt}
           for metadata in [build, sign]:
-              if any(metadata.get(key) != value for key, value in expected.items()) or metadata.get('productionSigning') is not False:
+              if any(metadata.get(key) != value for key, value in expected.items()):
                   raise SystemExit('Release source context mismatch')
-          signed_hash, unsigned_hash = inventory['wallet-review-test-signed.apk'], inventory['wallet-review-unsigned.apk']
+          if build.get('productionSigning') is not False or sign.get('productionSigning') is not True or proof.get('productionSigning') is not True:
+              raise SystemExit('Release signing mode mismatch')
+          policy = json.loads((source / 'android-signing-policy.json').read_text())
+          pinned = os.environ['RELEASE_CERTIFICATE_SHA256']
+          source_files = json.loads((source / 'source-manifest.json').read_text())['files']
+          if not re.fullmatch('[a-f0-9]{64}', pinned) or policy.get('certificateSha256') != pinned or proof.get('certificateSha256') != pinned or inventory['android-release-certificate.der'] != pinned or sign.get('signingPolicySha256') != inventory['android-signing-policy.json'] or proof.get('signingPolicySha256') != sign.get('signingPolicySha256') or source_files.get('android-signing-policy.json') != inventory['android-signing-policy.json'] or source_files.get('docs/android-release-certificate.der') != pinned:
+              raise SystemExit('Release certificate policy mismatch')
+          signed_hash, unsigned_hash = inventory['wallet-release.apk'], inventory['wallet-review-unsigned.apk']
           if build.get('sha256') != unsigned_hash or build.get('sourceManifestSha256') != inventory['source-manifest.json'] or sign.get('sha256') != signed_hash or sign.get('unsignedSha256') != unsigned_hash or proof.get('signedSha256') != signed_hash or proof.get('unsignedSha256') != unsigned_hash or proof.get('signatureVerified') is not True or proof.get('alignment16KbVerified') is not True or not re.fullmatch('[a-fA-F0-9]{64}', proof.get('certificateSha256', '')) or sign.get('certificateSha256') != proof.get('certificateSha256'):
               raise SystemExit('Release APK or signature evidence mismatch')
           output.mkdir()
-          archive = output / 'android-test-evidence.zip'
+          archive = output / 'android-release-evidence.zip'
           with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_STORED) as bundle:
               for name in sorted(actual):
                   bundle.write(source / name, name)
-          tag = f'android-test-{commit}-{run_id}-{attempt}'
+          tag = f'android-prerelease-{commit}-{run_id}-{attempt}'
           run_url = f'https://github.com/{repo}/actions/runs/{run_id}/attempts/{attempt}'
           notes = f'''## Android 预发布测试版 / Android test prerelease
 
-          本 APK 使用独立生成的临时测试证书签名，非正式发行签名。每次构建证书不同，不能覆盖其他证书签名的安装；尚未进行真机运行测试。
+          本 APK 使用固定正式证书，在独立离线环境签名，作为预发布版提供测试。同一证书签名的后续版本可覆盖升级；之前的临时测试证书安装不能直接覆盖。尚未进行真机运行测试。
 
           - Source / 源码提交: [{commit}](https://github.com/{repo}/tree/{commit})
           - Build / 公开构建记录: {run_url}
-          - 流程：离线原生编译、独立测试签名、GitHub 来源证明。
-          - Test APK SHA256: `{signed_hash}`
+          - 流程：离线原生编译、独立正式签名、GitHub 来源证明。
+          - APK SHA256: `{signed_hash}`
+          - Certificate SHA256: `{pinned}`
           - Evidence ZIP SHA256: `{digest(archive)}`
 
-          下载 `wallet-review-test-signed.apk` 安装测试。`android-test-evidence.zip` 包含原样 APK、未签名 APK、完整 SHA256 清单、来源证明、构建日志和第三方声明。
+          下载 `wallet-release.apk` 安装测试。`android-release-evidence.zip` 包含原样 APK、未签名 APK、完整 SHA256 清单、来源证明、构建日志和第三方声明。
           解压证据 ZIP 后执行 `sha256sum -c SHA256SUMS`，macOS 使用 `shasum -a 256 -c SHA256SUMS`。
 
           ```bash
-          gh attestation verify wallet-review-test-signed.apk --bundle provenance.jsonl --repo {repo} --signer-workflow {repo}/.github/workflows/android-build.yml --signer-digest {commit} --source-ref refs/heads/main --source-digest {commit} --deny-self-hosted-runners
+          gh attestation verify wallet-release.apk --bundle provenance.jsonl --repo {repo} --signer-workflow {repo}/.github/workflows/android-build.yml --signer-digest {commit} --source-ref refs/heads/main --source-digest {commit} --deny-self-hosted-runners
           ```
           '''
           # Dedent the workflow's multiline note without modifying the evidence.
           notes = '\n'.join(line.strip() for line in notes.splitlines()) + '\n'
           (output / 'notes.md').write_text(notes)
-          names = ['wallet-review-test-signed.apk', 'SHA256SUMS', 'provenance.jsonl', 'build-info.json', 'sign-info.json', 'source-manifest.json']
+          names = ['wallet-release.apk', 'SHA256SUMS', 'provenance.jsonl', 'build-info.json', 'sign-info.json', 'source-manifest.json', 'android-signing-policy.json', 'android-release-certificate.der']
           assets = [{'path': str(source / name), 'name': name, 'sha256': digest(source / name)} for name in names]
           assets.append({'path': str(archive), 'name': archive.name, 'sha256': digest(archive)})
           (output / 'plan.json').write_text(json.dumps({'repository': repo, 'commit': commit, 'tag': tag, 'title': f'Android 测试版 {commit[:7]} · build {run_id}.{attempt}', 'notes': str(output / 'notes.md'), 'assets': assets}))
@@ -367,7 +392,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          for name in wallet-review-test-signed.apk wallet-review-unsigned.apk build-info.json sign-info.json source-manifest.json; do
+          for name in wallet-release.apk wallet-review-unsigned.apk build-info.json sign-info.json source-manifest.json; do
             gh attestation verify "$RUNNER_TEMP/release-input/$name" \
               --bundle "$RUNNER_TEMP/release-input/provenance.jsonl" \
               --repo "$GITHUB_REPOSITORY" \
