@@ -59,6 +59,7 @@ jobs:
           if-no-files-found: error
           retention-days: 90
           compression-level: 0
+
       - name: Preserve failure diagnostics only
         if: failure()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -261,3 +262,165 @@ jobs:
           if-no-files-found: error
           retention-days: 90
           compression-level: 0
+
+  release:
+    needs: [build, test-sign, attest]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      # Publishing credentials never reach app source, npm, Gradle or signing.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: android-public-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/release-input
+          digest-mismatch: error
+      - name: Verify release inventory and prepare test release
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, re, zipfile
+          base = pathlib.Path(os.environ['RUNNER_TEMP'])
+          source = base / 'release-input'
+          output = base / 'release-output'
+          repo, commit = os.environ['GITHUB_REPOSITORY'], os.environ['GITHUB_SHA']
+          run_id, attempt = os.environ['GITHUB_RUN_ID'], os.environ['GITHUB_RUN_ATTEMPT']
+          if os.environ['GITHUB_REF'] != 'refs/heads/main' or not re.fullmatch('[a-f0-9]{40}', commit) or not re.fullmatch('[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo) or not re.fullmatch('[1-9][0-9]*', run_id) or not re.fullmatch('[1-9][0-9]*', attempt):
+              raise SystemExit('Invalid release context')
+          def digest(file):
+              if file.is_symlink() or not file.is_file():
+                  raise SystemExit('Release files must be regular files')
+              hasher = hashlib.sha256()
+              with file.open('rb') as stream:
+                  for chunk in iter(lambda: stream.read(1024 * 1024), b''):
+                      hasher.update(chunk)
+              return hasher.hexdigest()
+          digest(source / 'SHA256SUMS')
+          inventory = {}
+          for line in (source / 'SHA256SUMS').read_text().splitlines():
+              match = re.fullmatch(r'([a-f0-9]{64})  (.+)', line)
+              if not match:
+                  raise SystemExit('Invalid checksum manifest')
+              value, name = match.groups()
+              relative = pathlib.PurePosixPath(name)
+              file = source / name
+              if name in inventory or name == 'SHA256SUMS' or relative.is_absolute() or '..' in relative.parts or relative.as_posix() != name or source.resolve() not in file.resolve().parents:
+                  raise SystemExit('Unsafe release inventory')
+              if digest(file) != value:
+                  raise SystemExit('Release checksum mismatch')
+              inventory[name] = value
+          actual = set()
+          for file in source.rglob('*'):
+              if file.is_symlink():
+                  raise SystemExit('Release symlinks are forbidden')
+              if file.is_file():
+                  actual.add(file.relative_to(source).as_posix())
+          if actual != set(inventory) | {'SHA256SUMS'}:
+              raise SystemExit('Release inventory mismatch')
+          required = {'wallet-review-test-signed.apk', 'wallet-review-unsigned.apk', 'provenance.jsonl', 'build-info.json', 'sign-info.json', 'source-manifest.json', 'verification.json', 'wallet-review-test-signed.apk.json', 'LICENSE', 'THIRD_PARTY_NOTICES.md'}
+          if not required <= set(inventory):
+              raise SystemExit('Release evidence missing')
+          build = json.loads((source / 'build-info.json').read_text())
+          sign = json.loads((source / 'sign-info.json').read_text())
+          proof = json.loads((source / 'wallet-review-test-signed.apk.json').read_text())
+          expected = {'repository': repo, 'ref': 'refs/heads/main', 'commit': commit, 'runId': run_id, 'runAttempt': attempt}
+          for metadata in [build, sign]:
+              if any(metadata.get(key) != value for key, value in expected.items()) or metadata.get('productionSigning') is not False:
+                  raise SystemExit('Release source context mismatch')
+          signed_hash, unsigned_hash = inventory['wallet-review-test-signed.apk'], inventory['wallet-review-unsigned.apk']
+          if build.get('sha256') != unsigned_hash or build.get('sourceManifestSha256') != inventory['source-manifest.json'] or sign.get('sha256') != signed_hash or sign.get('unsignedSha256') != unsigned_hash or proof.get('signedSha256') != signed_hash or proof.get('unsignedSha256') != unsigned_hash or proof.get('signatureVerified') is not True or proof.get('alignment16KbVerified') is not True or not re.fullmatch('[a-fA-F0-9]{64}', proof.get('certificateSha256', '')) or sign.get('certificateSha256') != proof.get('certificateSha256'):
+              raise SystemExit('Release APK or signature evidence mismatch')
+          output.mkdir()
+          archive = output / 'android-test-evidence.zip'
+          with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_STORED) as bundle:
+              for name in sorted(actual):
+                  bundle.write(source / name, name)
+          tag = f'android-test-{commit}-{run_id}-{attempt}'
+          run_url = f'https://github.com/{repo}/actions/runs/{run_id}/attempts/{attempt}'
+          notes = f'''## Android 预发布测试版 / Android test prerelease
+
+          本 APK 使用独立生成的临时测试证书签名，非正式发行签名。每次构建证书不同，不能覆盖其他证书签名的安装；尚未进行真机运行测试。
+
+          - Source / 源码提交: [{commit}](https://github.com/{repo}/tree/{commit})
+          - Build / 公开构建记录: {run_url}
+          - 流程：离线原生编译、独立测试签名、GitHub 来源证明。
+          - Test APK SHA256: `{signed_hash}`
+          - Evidence ZIP SHA256: `{digest(archive)}`
+
+          下载 `wallet-review-test-signed.apk` 安装测试。`android-test-evidence.zip` 包含原样 APK、未签名 APK、完整 SHA256 清单、来源证明、构建日志和第三方声明。
+          解压证据 ZIP 后执行 `sha256sum -c SHA256SUMS`，macOS 使用 `shasum -a 256 -c SHA256SUMS`。
+
+          ```bash
+          gh attestation verify wallet-review-test-signed.apk --bundle provenance.jsonl --repo {repo} --signer-workflow {repo}/.github/workflows/android-build.yml --signer-digest {commit} --source-ref refs/heads/main --source-digest {commit} --deny-self-hosted-runners
+          ```
+          '''
+          # Dedent the workflow's multiline note without modifying the evidence.
+          notes = '\n'.join(line.strip() for line in notes.splitlines()) + '\n'
+          (output / 'notes.md').write_text(notes)
+          names = ['wallet-review-test-signed.apk', 'SHA256SUMS', 'provenance.jsonl', 'build-info.json', 'sign-info.json', 'source-manifest.json']
+          assets = [{'path': str(source / name), 'name': name, 'sha256': digest(source / name)} for name in names]
+          assets.append({'path': str(archive), 'name': archive.name, 'sha256': digest(archive)})
+          (output / 'plan.json').write_text(json.dumps({'repository': repo, 'commit': commit, 'tag': tag, 'title': f'Android 测试版 {commit[:7]} · build {run_id}.{attempt}', 'notes': str(output / 'notes.md'), 'assets': assets}))
+          PY
+      - name: Verify GitHub provenance before publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for name in wallet-review-test-signed.apk wallet-review-unsigned.apk build-info.json sign-info.json source-manifest.json; do
+            gh attestation verify "$RUNNER_TEMP/release-input/$name" \
+              --bundle "$RUNNER_TEMP/release-input/provenance.jsonl" \
+              --repo "$GITHUB_REPOSITORY" \
+              --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/android-build.yml" \
+              --signer-digest "$GITHUB_SHA" --source-ref refs/heads/main --source-digest "$GITHUB_SHA" \
+              --deny-self-hosted-runners
+          done
+      - name: Upload verified assets then publish the prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 - <<'PY'
+          import json, os, pathlib, subprocess
+          output = pathlib.Path(os.environ['RUNNER_TEMP']) / 'release-output'
+          plan = json.loads((output / 'plan.json').read_text())
+          repo, tag = plan['repository'], plan['tag']
+          def gh(*args):
+              return subprocess.check_output(['gh', *args], text=True)
+          tag_endpoint = f'repos/{repo}/git/ref/tags/{tag}'
+          tag_result = subprocess.run(['gh', 'api', tag_endpoint], capture_output=True, text=True)
+          if tag_result.returncode:
+              if 'HTTP 404' not in tag_result.stderr:
+                  raise SystemExit(tag_result.stderr)
+              gh('api', '--method', 'POST', f'repos/{repo}/git/refs', '-f', f'ref=refs/tags/{tag}', '-f', f'sha={plan["commit"]}')
+          reference = json.loads(gh('api', tag_endpoint))
+          if reference['object']['type'] != 'commit' or reference['object']['sha'] != plan['commit']:
+              raise SystemExit('Release source tag mismatch')
+          endpoint = f'repos/{repo}/releases/tags/{tag}'
+          existing = subprocess.run(['gh', 'api', endpoint], capture_output=True, text=True)
+          if existing.returncode:
+              if 'HTTP 404' not in existing.stderr:
+                  raise SystemExit(existing.stderr)
+              gh('release', 'create', tag, '--repo', repo, '--verify-tag', '--target', plan['commit'], '--title', plan['title'], '--notes-file', plan['notes'], '--draft', '--prerelease', '--latest=false')
+              release = json.loads(gh('api', endpoint))
+          else:
+              release = json.loads(existing.stdout)
+          if release['target_commitish'] != plan['commit'] or not release['prerelease']:
+              raise SystemExit('Refusing to replace a different release')
+          if release['draft']:
+              gh('release', 'upload', tag, '--repo', repo, *[asset['path'] for asset in plan['assets']], '--clobber')
+          release = json.loads(gh('api', endpoint))
+          expected = {asset['name']: 'sha256:' + asset['sha256'] for asset in plan['assets']}
+          actual = {asset['name']: asset.get('digest') for asset in release['assets']}
+          if actual != expected:
+              raise SystemExit('Uploaded release asset digest mismatch; draft left unpublished')
+          if release['draft']:
+              gh('release', 'edit', tag, '--repo', repo, '--draft=false', '--prerelease', '--latest=false')
+          release = json.loads(gh('api', endpoint))
+          reference = json.loads(gh('api', f'repos/{repo}/git/ref/tags/{tag}'))
+          if release['draft'] or not release['prerelease'] or reference['object']['type'] != 'commit' or reference['object']['sha'] != plan['commit']:
+              raise SystemExit('Published release or source tag mismatch')
+          (output / 'published.json').write_text(json.dumps({'url': release['html_url'], 'tag': tag, 'commit': plan['commit'], 'prerelease': True, 'assets': expected}))
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write(f"### Android test prerelease\n\n[Download verified APK and evidence]({release['html_url']})\n\n")
+          print(release['html_url'])
+          PY

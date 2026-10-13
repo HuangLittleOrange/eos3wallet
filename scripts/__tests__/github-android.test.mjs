@@ -58,11 +58,16 @@ test('workflow keeps main-only triggers and grants attestation authority only to
         assert.equal(step.with['persist-credentials'], false);
       }
     }
-    if (name !== 'attest') assert.equal(job.permissions, undefined);
+    if (!['attest', 'release'].includes(name)) assert.equal(job.permissions, undefined);
   }
   assert.deepEqual(workflow.jobs.attest.permissions, { contents: 'read', 'id-token': 'write', attestations: 'write' });
   assert.ok(!workflow.jobs.attest.steps.some((step) => step.uses?.startsWith('actions/checkout@')));
   assert.ok(!workflow.jobs.attest.steps.some((step) => /node |npm |scripts\//.test(step.run ?? '')));
+  assert.deepEqual(workflow.jobs.release.permissions, { contents: 'write' });
+  assert.deepEqual(workflow.jobs.release.needs, ['build', 'test-sign', 'attest']);
+  assert.equal(workflow.jobs.release.if, "github.ref == 'refs/heads/main'");
+  assert.ok(!workflow.jobs.release.steps.some((step) => step.uses?.startsWith('actions/checkout@')));
+  assert.ok(!workflow.jobs.release.steps.some((step) => /node |npm |scripts\//.test(step.run ?? '')));
   const sparse = workflow.jobs['test-sign'].steps.find((step) => step.uses?.startsWith('actions/checkout@')).with['sparse-checkout'];
   assert.doesNotMatch(sparse, /\/src\/|package[.]json|node_modules|gradle/);
 });
@@ -143,4 +148,65 @@ test('publication hashes the downloaded bundle and all outputs and binds CLI ins
     assert.match(fs.readFileSync(summary, 'utf8'), new RegExp(`--source-digest ${env.GITHUB_SHA}`));
     assert.match(fs.readFileSync(summary, 'utf8'), /--signer-workflow example\/wallet\//);
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
+});
+
+test('release preparation refuses foreign builds, unsigned evidence, replaced APKs and unsafe inventories', { skip: !pythonAvailable }, () => {
+  const prepare = inlinePython(workflow.jobs.release.steps.find((step) => step.name?.startsWith('Verify release inventory')));
+  const assemble = inlinePython(workflow.jobs.attest.steps.find((step) => step.name?.startsWith('Verify artifacts')));
+  const manifest = inlinePython(workflow.jobs.attest.steps.find((step) => step.name?.startsWith('Publish SHA256')));
+  for (const variant of ['valid', 'replacement', 'other-run', 'signature-missing', 'symlink', 'traversal', 'extra-file', 'other-branch']) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ci-release-test-'));
+    try {
+      evidenceFixture(dir);
+      const summary = path.join(dir, 'summary.md'), bundle = path.join(dir, 'bundle.jsonl');
+      fs.writeFileSync(bundle, '{"fixture":true}\n');
+      const childEnv = { PATH: process.env.PATH, ...env, RUNNER_TEMP: dir, GITHUB_STEP_SUMMARY: summary, ATTESTATION_BUNDLE: bundle };
+      for (const script of [assemble, manifest]) {
+        const result = spawnSync('python3', ['-c', script], { env: childEnv, encoding: 'utf8' });
+        assert.equal(result.status, 0, result.stderr);
+      }
+      const input = path.join(dir, 'release-input');
+      fs.renameSync(path.join(dir, 'public-apk'), input);
+      if (variant === 'replacement') fs.writeFileSync(path.join(input, signedFiles[0]), 'replaced APK');
+      if (variant === 'other-run') {
+        const file = path.join(input, 'build-info.json');
+        const info = JSON.parse(fs.readFileSync(file)); info.runId = '456'; fs.writeFileSync(file, JSON.stringify(info));
+      }
+      if (variant === 'signature-missing') {
+        const file = path.join(input, 'wallet-review-test-signed.apk.json');
+        const proof = JSON.parse(fs.readFileSync(file)); proof.signatureVerified = false; fs.writeFileSync(file, JSON.stringify(proof));
+      }
+      if (variant === 'symlink') {
+        fs.writeFileSync(path.join(dir, 'external'), 'external data');
+        fs.symlinkSync(path.join(dir, 'external'), path.join(input, 'linked-secret'));
+      }
+      if (['other-run', 'signature-missing', 'symlink'].includes(variant)) {
+        const names = fs.readFileSync(path.join(input, 'SHA256SUMS'), 'utf8').trim().split('\n').map((line) => line.split('  ')[1]);
+        if (variant === 'symlink') names.push('linked-secret');
+        fs.writeFileSync(path.join(input, 'SHA256SUMS'), names.map((name) => `${sha256(fs.readFileSync(path.join(input, name)))}  ${name}\n`).join(''));
+      }
+      if (variant === 'traversal') {
+        fs.writeFileSync(path.join(dir, 'external'), 'external data');
+        fs.appendFileSync(path.join(input, 'SHA256SUMS'), `${sha256('external data')}  ../external\n`);
+      }
+      if (variant === 'extra-file') fs.writeFileSync(path.join(input, 'unexpected.apk'), 'extra APK');
+      if (variant === 'other-branch') childEnv.GITHUB_REF = 'refs/heads/dev';
+      const result = spawnSync('python3', ['-c', prepare], { env: childEnv, encoding: 'utf8' });
+      if (variant === 'valid') {
+        assert.equal(result.status, 0, result.stderr);
+        const plan = JSON.parse(fs.readFileSync(path.join(dir, 'release-output/plan.json')));
+        assert.equal(plan.commit, env.GITHUB_SHA);
+        assert.equal(plan.tag, `android-test-${env.GITHUB_SHA}-123-1`);
+        assert.ok(plan.assets.some((asset) => asset.name === 'provenance.jsonl'));
+        for (const asset of plan.assets) assert.equal(sha256(fs.readFileSync(asset.path)), asset.sha256);
+        const notes = fs.readFileSync(plan.notes, 'utf8');
+        assert.match(notes, /预发布测试版/);
+        assert.ok(notes.includes(`--source-digest ${env.GITHUB_SHA}`));
+      } else {
+        assert.notEqual(result.status, 0);
+        assert.match(result.stderr, /mismatch|Unsafe|regular|Invalid|forbidden/);
+        assert.ok(!fs.existsSync(path.join(dir, 'release-output/plan.json')));
+      }
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
 });
