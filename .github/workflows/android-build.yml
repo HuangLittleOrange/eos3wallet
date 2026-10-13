@@ -395,15 +395,21 @@ jobs:
           reference = json.loads(gh('api', tag_endpoint))
           if reference['object']['type'] != 'commit' or reference['object']['sha'] != plan['commit']:
               raise SystemExit('Release source tag mismatch')
-          endpoint = f'repos/{repo}/releases/tags/{tag}'
-          existing = subprocess.run(['gh', 'api', endpoint], capture_output=True, text=True)
-          if existing.returncode:
-              if 'HTTP 404' not in existing.stderr:
-                  raise SystemExit(existing.stderr)
+          def find_release():
+              # The by-tag endpoint excludes drafts. List with write access,
+              # then use the release ID through upload and publication.
+              pages = json.loads(gh('api', '--paginate', '--slurp', f'repos/{repo}/releases?per_page=100'))
+              matching = [item for page in pages for item in page if item['tag_name'] == tag]
+              if len(matching) > 1:
+                  raise SystemExit('Ambiguous release tag')
+              return matching[0] if matching else None
+          release = find_release()
+          if release is None:
               gh('release', 'create', tag, '--repo', repo, '--verify-tag', '--target', plan['commit'], '--title', plan['title'], '--notes-file', plan['notes'], '--draft', '--prerelease', '--latest=false')
-              release = json.loads(gh('api', endpoint))
-          else:
-              release = json.loads(existing.stdout)
+              release = find_release()
+          if release is None:
+              raise SystemExit('Created release was not found')
+          endpoint = f'repos/{repo}/releases/{release["id"]}'
           if release['target_commitish'] != plan['commit'] or not release['prerelease']:
               raise SystemExit('Refusing to replace a different release')
           if release['draft']:

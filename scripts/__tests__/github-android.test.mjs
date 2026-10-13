@@ -210,3 +210,63 @@ test('release preparation refuses foreign builds, unsigned evidence, replaced AP
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
 });
+
+test('release publication resumes drafts by ID and refuses wrong tags or remote asset digests', { skip: !pythonAvailable }, () => {
+  const script = inlinePython(workflow.jobs.release.steps.find((step) => step.name?.startsWith('Upload verified assets')));
+  for (const variant of ['draft', 'published', 'wrong-tag', 'bad-digest']) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ci-release-api-test-'));
+    try {
+      const output = path.join(dir, 'release-output'); fs.mkdirSync(output);
+      const file = path.join(dir, 'fixture.apk'); fs.writeFileSync(file, 'verified fixture APK');
+      const asset = { path: file, name: 'fixture.apk', sha256: sha256(fs.readFileSync(file)) };
+      const plan = { repository: env.GITHUB_REPOSITORY, tag: 'android-test-fixture', commit: env.GITHUB_SHA, assets: [asset] };
+      fs.writeFileSync(path.join(output, 'plan.json'), JSON.stringify(plan));
+      const release = { id: 1, tag_name: plan.tag, target_commitish: plan.commit, draft: variant !== 'published', prerelease: true, html_url: 'https://example.test/release', assets: variant === 'published' ? [{ name: asset.name, digest: 'sha256:' + asset.sha256 }] : [] };
+      const stateFile = path.join(dir, 'state.json');
+      fs.writeFileSync(stateFile, JSON.stringify({ release, variant, calls: [], commit: plan.commit }));
+      const mock = `#!/usr/bin/env python3
+import json, os, pathlib, sys, hashlib
+state_file = pathlib.Path(os.environ['FAKE_GH_STATE'])
+state = json.loads(state_file.read_text()); args = sys.argv[1:]
+state['calls'].append(args); release = state['release']; response = None
+if args[0] == 'api':
+    endpoint = args[-1]
+    if '/git/ref/tags/' in endpoint:
+        response = {'object': {'type':'commit','sha':'b'*40 if state['variant']=='wrong-tag' else state['commit']}}
+    elif '/releases/tags/' in endpoint:
+        raise SystemExit('Drafts cannot be retrieved by tag')
+    elif '/releases?per_page=' in endpoint:
+        response = [[release]]
+    elif endpoint.endswith('/releases/1'):
+        response = release
+    else:
+        raise SystemExit('Unexpected API request')
+elif args[:2] == ['release','upload']:
+    files = [pathlib.Path(item) for item in args if pathlib.Path(item).is_file()]
+    release['assets'] = [{'name':item.name, 'digest':'sha256:'+('0'*64 if state['variant']=='bad-digest' else hashlib.sha256(item.read_bytes()).hexdigest())} for item in files]
+elif args[:2] == ['release','edit']:
+    assert '--draft=false' in args and '--prerelease' in args and '--latest=false' in args
+    release['draft'] = False
+else:
+    raise SystemExit('Unexpected CLI request')
+state_file.write_text(json.dumps(state))
+if response is not None: print(json.dumps(response))
+`;
+      const executable = path.join(dir, 'gh'); fs.writeFileSync(executable, mock, { mode: 0o755 });
+      const result = spawnSync('python3', ['-c', script], { env: { PATH: dir + path.delimiter + process.env.PATH, RUNNER_TEMP: dir, FAKE_GH_STATE: stateFile, GITHUB_STEP_SUMMARY: path.join(dir, 'summary.md') }, encoding: 'utf8' });
+      const state = JSON.parse(fs.readFileSync(stateFile));
+      if (['draft', 'published'].includes(variant)) {
+        assert.equal(result.status, 0, result.stderr);
+        assert.equal(state.release.draft, false);
+        assert.equal(state.release.prerelease, true);
+        assert.ok(fs.existsSync(path.join(output, 'published.json')));
+        if (variant === 'published') assert.ok(!state.calls.some((args) => args[0] === 'release'));
+      } else {
+        assert.notEqual(result.status, 0);
+        assert.equal(state.release.draft, true);
+        assert.ok(!state.calls.some((args) => args[1] === 'edit'));
+        if (variant === 'wrong-tag') assert.ok(!state.calls.some((args) => args[1] === 'upload'));
+      }
+    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+  }
+});
