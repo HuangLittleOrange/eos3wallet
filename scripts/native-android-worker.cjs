@@ -45,9 +45,10 @@ try {
       const init = path.join(stage, 'resolve-public.gradle');
       // Resolve external tool/app artifacts without requesting project build
       // outputs. Configuration plugins still execute inside this sandbox.
-      fs.writeFileSync(init, `allprojects { p ->\n  tasks.register('resolvePublicArtifacts') {\n    doLast {\n      p.configurations.findAll { it.canBeResolved && (it.name.toLowerCase().contains('release') || it.name.toLowerCase().contains('lint') || it.name.toLowerCase().contains('compilerclasspath') || it.name.toLowerCase().contains('buildtoolsapiclasspath')) }.each { c ->\n        c.incoming.artifactView { componentFilter { it instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier } }.files.files\n      }\n    }\n  }\n}\n`);
-      // AGP creates the AAPT2 binary configuration only inside its resource
-      // task action, so task-graph preparation cannot resolve it in advance.
+      fs.writeFileSync(init, `allprojects { p ->\n  tasks.register('resolvePublicArtifacts') {\n    doLast {\n      p.configurations.findAll { it.canBeResolved && (it.name.toLowerCase().contains('release') || it.name.toLowerCase().contains('lint') || it.name.toLowerCase().contains('prefab') || it.name.toLowerCase().contains('compilerclasspath') || it.name.toLowerCase().contains('buildtoolsapiclasspath')) }.each { c ->\n        c.incoming.artifactView { componentFilter { it instanceof org.gradle.api.artifacts.component.ModuleComponentIdentifier } }.files.files\n      }\n    }\n  }\n}\n`);
+      // AGP creates some tool configurations lazily inside task actions.
+      // Preload their exact artifacts too: Prefab uses the shaded "all" JAR,
+      // not an unclassified CLI artifact. No native task is executed here.
       fs.appendFileSync(init, `allprojects { p ->\n  if (p == p.rootProject) {\n    tasks.named('resolvePublicArtifacts').configure {\n      doLast {\n        ${JSON.stringify(policy.mavenBuildTools)}.each { coordinate ->\n          def tools = p.configurations.detachedConfiguration(p.dependencies.create(coordinate))\n          tools.attributes.attribute(org.gradle.api.attributes.Usage.USAGE_ATTRIBUTE, p.objects.named(org.gradle.api.attributes.Usage, org.gradle.api.attributes.Usage.JAVA_RUNTIME))\n          tools.attributes.attribute(org.gradle.api.attributes.java.TargetJvmEnvironment.TARGET_JVM_ENVIRONMENT_ATTRIBUTE, p.objects.named(org.gradle.api.attributes.java.TargetJvmEnvironment, org.gradle.api.attributes.java.TargetJvmEnvironment.STANDARD_JVM))\n          tools.resolve()\n        }\n      }\n    }\n  }\n}\n`);
       // Task-graph preparation also resolves lazy tool dependencies such as
       // Android lint. Dry run performs no APK compilation or signing.

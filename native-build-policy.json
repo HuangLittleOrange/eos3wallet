@@ -6,7 +6,8 @@
   "cmake": "3.22.1",
   "mavenBuildTools": [
     "com.android.tools.build:aapt2:8.12.0-13700139:osx",
-    "com.android.tools.lint:lint-gradle:31.12.0"
+    "com.android.tools.lint:lint-gradle:31.12.0",
+    "com.google.prefab:cli:2.1.0:all"
   ],
   "gradle": {
     "version": "9.3.1",
