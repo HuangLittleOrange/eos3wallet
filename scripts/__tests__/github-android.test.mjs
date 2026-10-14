@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { createHash } from 'node:crypto';
 const require = createRequire(import.meta.url);
-const { context, checksums, verifyChecksums, sameRun, unsignedFiles, signedFiles } = require('../github-android.cjs');
+const { context, checksums, verifyChecksums, sameRun, unsignedFiles, signedFiles, apkIdentity } = require('../github-android.cjs');
 const workflow = require('yaml').parse(fs.readFileSync(new URL('../../.github/workflows/android-build.yml', import.meta.url), 'utf8'));
 function sha256CertificateFixture() { return createHash('sha256').update('public certificate fixture').digest('hex'); }
 const env = {
@@ -18,6 +18,15 @@ const env = {
 };
 const sha256 = (data) => createHash('sha256').update(data).digest('hex');
 const pythonAvailable = spawnSync('python3', ['--version'], { stdio: 'ignore' }).status === 0;
+
+test('release version comes from the actual APK and must match its source configuration', () => {
+  const config = { version: '1.0.2', android: { package: 'com.eos3.wallet', versionCode: 1 } };
+  const badging = "package: name='com.eos3.wallet' versionCode='1' versionName='1.0.2' platformBuildVersionName='16'";
+  assert.deepEqual(apkIdentity(badging, config), { appVersion: '1.0.2', androidVersionCode: 1, applicationId: 'com.eos3.wallet' });
+  for (const changed of [badging.replace('1.0.2', '1.0.3'), badging.replace("versionCode='1'", "versionCode='2'"), badging.replace('com.eos3.wallet', 'other.app'), badging.replace('1.0.2', 'unknown'), 'no package metadata']) {
+    assert.throws(() => apkIdentity(changed, config), /version|configuration/);
+  }
+});
 
 test('provenance context refuses PRs, other branches, missing commit and malformed repository', () => {
   const info = context(env);
@@ -179,7 +188,7 @@ function evidenceFixture(directory) {
   files['android-signing-policy.json'] = sha256(policy);
   files['docs/android-release-certificate.der'] = certificate;
   const manifest = JSON.stringify({ files }); fs.writeFileSync(path.join(unsigned, 'source-manifest.json'), manifest);
-  fs.writeFileSync(path.join(unsigned, 'build-info.json'), JSON.stringify({ ...info, productionSigning: false, sha256: unsignedHash, sourceManifestSha256: sha256(manifest) }));
+  fs.writeFileSync(path.join(unsigned, 'build-info.json'), JSON.stringify({ ...info, appVersion: '1.0.2', androidVersionCode: 1, productionSigning: false, sha256: unsignedHash, sourceManifestSha256: sha256(manifest) }));
   fs.writeFileSync(path.join(signed, 'sign-info.json'), JSON.stringify({ ...info, productionSigning: true, signingPolicySha256: sha256(policy), sha256: signedHash, unsignedSha256: unsignedHash, certificateSha256: certificate }));
   fs.writeFileSync(path.join(signed, 'wallet-release.apk.json'), JSON.stringify({ productionSigning: true, signingPolicySha256: sha256(policy), unsignedSha256: unsignedHash, signedSha256: signedHash, certificateSha256: certificate, signatureVerified: true, alignment16KbVerified: true }));
   checksums(unsigned, unsignedFiles); checksums(signed, signedFiles);
@@ -243,7 +252,7 @@ test('release preparation refuses foreign builds, unsigned evidence, replaced AP
   const prepare = inlinePython(workflow.jobs.release.steps.find((step) => step.name?.startsWith('Verify release inventory')));
   const assemble = inlinePython(workflow.jobs.attest.steps.find((step) => step.name?.startsWith('Verify artifacts')));
   const manifest = inlinePython(workflow.jobs.attest.steps.find((step) => step.name?.startsWith('Publish SHA256')));
-  for (const variant of ['valid', 'replacement', 'other-run', 'signature-missing', 'symlink', 'traversal', 'extra-file', 'other-branch']) {
+  for (const variant of ['valid', 'replacement', 'other-run', 'signature-missing', 'symlink', 'traversal', 'extra-file', 'other-branch', 'bad-version']) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ci-release-test-'));
     try {
       evidenceFixture(dir);
@@ -261,6 +270,10 @@ test('release preparation refuses foreign builds, unsigned evidence, replaced AP
         const file = path.join(input, 'build-info.json');
         const info = JSON.parse(fs.readFileSync(file)); info.runId = '456'; fs.writeFileSync(file, JSON.stringify(info));
       }
+      if (variant === 'bad-version') {
+        const file = path.join(input, 'build-info.json');
+        const info = JSON.parse(fs.readFileSync(file)); info.appVersion = 'unverified'; fs.writeFileSync(file, JSON.stringify(info));
+      }
       if (variant === 'signature-missing') {
         const file = path.join(input, 'wallet-release.apk.json');
         const proof = JSON.parse(fs.readFileSync(file)); proof.signatureVerified = false; fs.writeFileSync(file, JSON.stringify(proof));
@@ -269,7 +282,7 @@ test('release preparation refuses foreign builds, unsigned evidence, replaced AP
         fs.writeFileSync(path.join(dir, 'external'), 'external data');
         fs.symlinkSync(path.join(dir, 'external'), path.join(input, 'linked-secret'));
       }
-      if (['other-run', 'signature-missing', 'symlink'].includes(variant)) {
+      if (['other-run', 'signature-missing', 'symlink', 'bad-version'].includes(variant)) {
         const names = fs.readFileSync(path.join(input, 'SHA256SUMS'), 'utf8').trim().split('\n').map((line) => line.split('  ')[1]);
         if (variant === 'symlink') names.push('linked-secret');
         fs.writeFileSync(path.join(input, 'SHA256SUMS'), names.map((name) => `${sha256(fs.readFileSync(path.join(input, name)))}  ${name}\n`).join(''));
@@ -286,10 +299,15 @@ test('release preparation refuses foreign builds, unsigned evidence, replaced AP
         const plan = JSON.parse(fs.readFileSync(path.join(dir, 'release-output/plan.json')));
         assert.equal(plan.commit, env.GITHUB_SHA);
         assert.equal(plan.tag, `android-prerelease-${env.GITHUB_SHA}-123-1`);
-        assert.ok(plan.assets.some((asset) => asset.name === 'provenance.jsonl'));
+        assert.equal(plan.title, 'EOS³ Wallet v1.0.2 · Android 预发布版');
+        assert.deepEqual(plan.assets.map((asset) => asset.name), ['wallet-release.apk', 'SHA256SUMS', 'android-release-evidence.zip']);
         for (const asset of plan.assets) assert.equal(sha256(fs.readFileSync(asset.path)), asset.sha256);
+        const sums = fs.readFileSync(plan.assets[1].path, 'utf8').trim().split('\n');
+        assert.deepEqual(sums, [plan.assets[0], plan.assets[2]].map((asset) => `${asset.sha256}  ${asset.name}`));
+        const checkZip = spawnSync('python3', ['-c', `import zipfile,hashlib,pathlib,sys\nz=zipfile.ZipFile(sys.argv[1]);source=pathlib.Path(sys.argv[2]);assert sorted(z.namelist())==sorted(p.relative_to(source).as_posix() for p in source.rglob('*') if p.is_file());assert all(z.read(n)==(source/n).read_bytes() for n in z.namelist());assert b'provenance.jsonl' in z.read('SHA256SUMS')`, plan.assets[2].path, input], { encoding: 'utf8' });
+        assert.equal(checkZip.status, 0, checkZip.stderr);
         const notes = fs.readFileSync(plan.notes, 'utf8');
-        assert.match(notes, /预发布测试版/);
+        assert.match(notes, /v1\.0\.2 · Android 预发布版/);
         assert.ok(notes.includes(`--source-digest ${env.GITHUB_SHA}`));
       } else {
         assert.notEqual(result.status, 0);

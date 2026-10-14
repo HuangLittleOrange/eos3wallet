@@ -11,6 +11,17 @@ const sha256 = (data) => crypto.createHash('sha256').update(data).digest('hex');
 const unsignedName = 'wallet-review-unsigned.apk';
 const signedName = 'wallet-release.apk';
 
+function apkIdentity(badging, config) {
+  const match = /^package: name='([^']+)' versionCode='([0-9]+)' versionName='([^']+)'/m.exec(badging);
+  if (!match || !/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(match[3])) throw new Error('Invalid APK application version.');
+  const androidVersionCode = Number(match[2]);
+  if (!Number.isSafeInteger(androidVersionCode) || androidVersionCode < 1 ||
+      match[1] !== config.android?.package || match[3] !== config.version || androidVersionCode !== (config.android?.versionCode ?? 1)) {
+    throw new Error('APK application version or package differs from source configuration.');
+  }
+  return { appVersion: match[3], androidVersionCode, applicationId: match[1] };
+}
+
 function context(env = process.env) {
   if (env.GITHUB_ACTIONS !== 'true' || env.GITHUB_REF !== 'refs/heads/main' ||
       !['push', 'workflow_dispatch'].includes(env.GITHUB_EVENT_NAME) ||
@@ -87,8 +98,11 @@ function packageBuild(input, destination) {
   }
   for (const name of ['LICENSE', 'THIRD_PARTY_NOTICES.md']) fs.writeFileSync(path.join(destination, name), checkedFile(root, name));
   const policy = JSON.parse(checkedFile(root, 'native-build-policy.json'));
+  const sdk = fs.realpathSync(process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT);
+  const identity = apkIdentity(execFileSync(path.join(sdk, 'build-tools', policy.buildTools, 'aapt2'),
+    ['dump', 'badging', path.join(input, unsignedName)], { encoding: 'utf8' }), JSON.parse(checkedFile(root, 'app.json')).expo);
   fs.writeFileSync(path.join(destination, 'build-info.json'), JSON.stringify({
-    ...info, artifact: unsignedName, sha256: sha256(apk), node: process.version,
+    ...info, ...identity, artifact: unsignedName, sha256: sha256(apk), node: process.version,
     expo: verification.expo, platform: `${process.platform}-${process.arch}`,
     android: { sdk: policy.platform, buildTools: policy.buildTools, ndk: policy.ndk, cmake: policy.cmake, gradle: policy.gradle.version },
     lockfileSha256: sha256(checkedFile(root, 'package-lock.json')),
@@ -137,7 +151,7 @@ function installSdk(signOnly = false) {
   for (const component of components) if (!fs.existsSync(path.join(sdk, component))) throw new Error('Required SDK component was not installed.');
 }
 
-module.exports = { context, checkedFile, checksums, verifyChecksums, sameRun, unsignedFiles, signedFiles };
+module.exports = { context, checkedFile, checksums, verifyChecksums, sameRun, unsignedFiles, signedFiles, apkIdentity };
 if (require.main === module) {
   try {
     const [command, input, destination, ...extra] = process.argv.slice(2);

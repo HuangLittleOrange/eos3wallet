@@ -405,6 +405,9 @@ jobs:
           build = json.loads((source / 'build-info.json').read_text())
           sign = json.loads((source / 'sign-info.json').read_text())
           proof = json.loads((source / 'wallet-release.apk.json').read_text())
+          version = build.get('appVersion', '')
+          if not isinstance(version, str) or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?', version) or type(build.get('androidVersionCode')) is not int or build['androidVersionCode'] < 1:
+              raise SystemExit('Invalid attested application version')
           expected = {'repository': repo, 'ref': 'refs/heads/main', 'commit': commit, 'runId': run_id, 'runAttempt': attempt}
           for metadata in [build, sign]:
               if any(metadata.get(key) != value for key, value in expected.items()):
@@ -426,19 +429,20 @@ jobs:
                   bundle.write(source / name, name)
           tag = f'android-prerelease-{commit}-{run_id}-{attempt}'
           run_url = f'https://github.com/{repo}/actions/runs/{run_id}/attempts/{attempt}'
-          notes = f'''## Android 预发布测试版 / Android test prerelease
+          notes = f'''## EOS³ Wallet v{version} · Android 预发布版
 
           本 APK 使用固定正式证书，在独立离线环境签名，作为预发布版提供测试。同一证书签名的后续版本可覆盖升级；之前的临时测试证书安装不能直接覆盖。尚未进行真机运行测试。
 
           - Source / 源码提交: [{commit}](https://github.com/{repo}/tree/{commit})
           - Build / 公开构建记录: {run_url}
           - 流程：离线原生编译、独立正式签名、GitHub 来源证明。
+          - 应用版本：`{version}`（Android versionCode `{build['androidVersionCode']}`）。
           - APK SHA256: `{signed_hash}`
           - Certificate SHA256: `{pinned}`
           - Evidence ZIP SHA256: `{digest(archive)}`
 
           下载 `wallet-release.apk` 安装测试。`android-release-evidence.zip` 包含原样 APK、未签名 APK、完整 SHA256 清单、来源证明、构建日志和第三方声明。
-          解压证据 ZIP 后执行 `sha256sum -c SHA256SUMS`，macOS 使用 `shasum -a 256 -c SHA256SUMS`。
+          下载同一发布的 APK、ZIP 和 `SHA256SUMS`，先执行 `sha256sum -c SHA256SUMS` 核对两个下载文件。证据 ZIP 解压到单独目录后，其中原始 `SHA256SUMS` 可核对全部核验材料。macOS 使用 `shasum -a 256 -c SHA256SUMS`。来源证明、公开证书和元数据均在 ZIP 内，以下命令在解压目录执行。
 
           ```bash
           gh attestation verify wallet-release.apk --bundle provenance.jsonl --repo {repo} --signer-workflow {repo}/.github/workflows/android-build.yml --signer-digest {commit} --source-ref refs/heads/main --source-digest {commit} --deny-self-hosted-runners
@@ -447,10 +451,11 @@ jobs:
           # Dedent the workflow's multiline note without modifying the evidence.
           notes = '\n'.join(line.strip() for line in notes.splitlines()) + '\n'
           (output / 'notes.md').write_text(notes)
-          names = ['wallet-release.apk', 'SHA256SUMS', 'provenance.jsonl', 'build-info.json', 'sign-info.json', 'source-manifest.json', 'android-signing-policy.json', 'android-release-certificate.der']
-          assets = [{'path': str(source / name), 'name': name, 'sha256': digest(source / name)} for name in names]
-          assets.append({'path': str(archive), 'name': archive.name, 'sha256': digest(archive)})
-          (output / 'plan.json').write_text(json.dumps({'repository': repo, 'commit': commit, 'tag': tag, 'title': f'Android 测试版 {commit[:7]} · build {run_id}.{attempt}', 'notes': str(output / 'notes.md'), 'assets': assets}))
+          checksum = output / 'SHA256SUMS'
+          checksum.write_text(f'{signed_hash}  wallet-release.apk\n{digest(archive)}  {archive.name}\n')
+          downloads = [source / 'wallet-release.apk', checksum, archive]
+          assets = [{'path': str(file), 'name': file.name, 'sha256': digest(file)} for file in downloads]
+          (output / 'plan.json').write_text(json.dumps({'repository': repo, 'commit': commit, 'tag': tag, 'title': f'EOS³ Wallet v{version} · Android 预发布版', 'notes': str(output / 'notes.md'), 'assets': assets}))
           PY
       - name: Verify GitHub provenance before publishing
         env:
