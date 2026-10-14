@@ -136,7 +136,7 @@ function packageSignature(input, destination) {
   fs.writeFileSync(path.join(destination, 'sign-info.json'), JSON.stringify({
     ...info, artifact: signedName, sha256: signed.signedSha256,
     unsignedSha256: metadata.sha256, certificateSha256: signed.certificateSha256,
-    productionSigning: true, signingPolicySha256: sha256(policyBytes), purpose: 'fixed release signing; prerelease distribution',
+    productionSigning: true, signingPolicySha256: sha256(policyBytes), purpose: 'fixed release signing; release distribution',
   }, null, 2) + '\n');
   checksums(destination, signedFiles);
 }

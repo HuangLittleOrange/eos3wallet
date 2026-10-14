@@ -1,51 +1,53 @@
 # EOS³ Wallet
 
-基于 Expo SDK 57、React Native 和 TypeScript 的 EOS / Vaulta 移动钱包，支持 Vaulta 主网和 Jungle4 测试网。
+**English** | [简体中文](README.zh-CN.md)
 
-## 功能
+An EOS / Vaulta mobile wallet for the Vaulta mainnet, built with Expo SDK 57, React Native, and TypeScript.
 
-- 私钥导入、观察账户、付费开户、Google / Passkey 登录和设备密钥授权导入。
-- 代币余额、资产估值、资源管理、交易记录、转账和 Memo。
-- RAM、抵押、REX、PowerUp 和资源代付。
-- 主密码加密、生物识别解锁、私钥导出和授权管理。
-- 内置 DApp 浏览器、Scatter / TokenPocket 兼容接口、ESR / Anchor 签名和会话管理。
-- 地址簿、二维码、多语言、发现页和 Android 更新检查。
+## Features
 
-## 本地开发
+- Private key import, watch-only accounts, paid account creation, Google / Passkey login, and device key authorization.
+- Token balances, asset valuations, resource management, transaction history, transfers, and memos.
+- RAM, staking, REX, PowerUp, and sponsored resources.
+- Master-password encryption, biometric unlock, private key export, and permission management.
+- An in-app DApp browser, Scatter / TokenPocket compatibility, ESR / Anchor signing, and session management.
+- Contacts, QR codes, multiple languages, discovery content, and Android update checks.
 
-使用 Node.js 22.13 或更高版本，并通过仓库中的锁文件安装依赖。SDK 要求见 [Expo 57 文档](https://docs.expo.dev/versions/v57.0.0/)。
+## Local development
 
-默认禁用依赖安装脚本。使用下面的安装入口明确应用已审查的安全补丁；测试和 Metro 构建会检查依赖来源、锁文件及补丁，详见[依赖安全维护](docs/dependency-security.md)。
+Use Node.js 22.13 or later and install dependencies from the committed lockfile. See the [Expo SDK 57 documentation](https://docs.expo.dev/versions/v57.0.0/).
+
+Dependency installation scripts are disabled by default. The following entry point explicitly applies reviewed security patches. Tests and Metro builds check dependency origins, the lockfile, and patches; see [dependency security maintenance](docs/dependency-security.md).
 
 ```bash
 npm run install:safe
 npm start
 ```
 
-完整钱包功能需要原生开发构建。Android 需要 Android SDK；iOS 需要 macOS 和 Xcode。
+Full wallet functionality requires a native development build. Android requires the Android SDK; iOS requires macOS and Xcode.
 
 ```bash
 npm run android
 npm run ios
 ```
 
-网页预览：
+For a web preview:
 
 ```bash
 npm run web
 ```
 
-网页预览不支持全部原生密钥存储、Passkey 和生物识别能力。
+The web preview does not provide every native secure storage, Passkey, or biometric capability.
 
-可选环境配置：
+Optional environment configuration:
 
 ```bash
 cp .env.example .env.local
 ```
 
-`EXPO_PUBLIC_CONTENT_API_URL` 用于指定发现页、公告和帮助内容的数据服务。不设置时使用默认服务。`EXPO_PUBLIC_*` 会进入客户端安装包，仅用于公开配置。
+`EXPO_PUBLIC_CONTENT_API_URL` selects the service for discovery content, announcements, and help. The default service is used when this variable is unset. `EXPO_PUBLIC_*` values are included in the app bundle and must contain only public configuration.
 
-## 验证
+## Validation
 
 ```bash
 npm test -- --runInBand
@@ -53,90 +55,92 @@ npm run typecheck
 npm run check:source
 ```
 
-原生存储、Passkey、深链和签名流程还需真机验证。主网操作会改变真实链上状态，请在确认网络、账户和交易内容后签名。
+Native storage, Passkey, deep links, and signing flows also require testing on physical devices. Mainnet operations change real on-chain state; review the network, account, and transaction before signing.
 
-使用 Docker 可在不挂载本机环境文件、钱包备份和签名凭据的容器内安装、核验依赖来源、测试并生成 Android / iOS JavaScript 包：
+Docker can install and verify dependencies, run tests, and generate Android / iOS JavaScript bundles without mounting host environment files, wallet backups, or signing credentials:
 
 ```bash
 npm run verify:isolated
 ```
 
-结果保存于已忽略的 `exports/isolated-review/`。此入口用于 JavaScript 验证。
+Results are saved in the ignored `exports/isolated-review/` directory. This entry point validates JavaScript bundles.
 
-在装有 JDK 17、Android SDK 36、Build Tools 36.0.0、NDK 27.1.12297006 和 CMake 3.22.1 的 macOS 上，可生成原生测试 APK：
+On macOS with JDK 17, Android SDK 36, Build Tools 36.0.0, NDK 27.1.12297006, and CMake 3.22.1 installed, generate a native test APK with:
 
 ```bash
 npm run build:android:isolated
 ```
 
-该入口在 macOS 沙箱内生成未签名 APK，随后在独立沙箱中用一次性测试密钥签名，输出位于 `exports/native-review/`。编译使用离线 Gradle 依赖缓存，不复制本机 Gradle 初始化脚本或凭据配置；缓存不足时停止。测试签名与正式签名不同，不能用于覆盖正式安装。流程与限制见[原生构建与签名](docs/native-build-security.md)。
+This local entry point builds an unsigned APK in a macOS sandbox, then signs it with a one-time test key in a separate sandbox. Outputs are saved in `exports/native-review/`. Compilation uses an offline Gradle dependency cache without copying host Gradle initialization scripts or credential settings; missing cache entries stop the build. Test signatures cannot replace an installation signed with the release certificate. See [native builds and signing](docs/native-build-security.md).
 
-## 公开 APK 构建
+## Public Android builds
 
-[GitHub Actions 流程](.github/workflows/android-build.yml)在 `main` 更新时构建，也支持从 `main` 手动运行。每次构建记录具体提交、依赖锁文件和源码文件哈希，并公开固定正式证书签名的 APK、未签名 APK、`SHA256SUMS` 和 GitHub 来源证明。编译、独立正式签名、来源证明和发布分别在新 runner 上执行；签名秘密仅供独立签名步骤使用。全部验证成功后自动发布到 Releases，保留预发布标记。
+The [GitHub Actions workflow](.github/workflows/android-build.yml) builds on updates to `main` and supports manual runs from `main`. Each build records its source commit, dependency lockfile, and source file hashes, and provides a fixed-certificate release APK, an unsigned APK, checksums, and GitHub artifact attestations. Compilation, independent release signing, attestation, and publication run on separate runners. Signing secrets are available only to the independent signing step.
 
-在公开仓库的 **Actions → Public Android APK** 中查看日志、APK 哈希和校验命令，下载成功运行的 `android-public-…` 产物。启用方式、用户校验方法与正式发行说明见[公开构建与来源核验](docs/github-android-build.md)。
+After all checks pass, the workflow publishes a regular GitHub Release. Titles and release notes are in English, and the title uses the actual APK application version. Each release has three downloads: the APK, an outer checksum file, and a complete evidence ZIP. Provenance, the public certificate, and metadata are included in the ZIP.
 
-来源证明将文件绑定到仓库、工作流和具体源码提交；它不代表独立安全审计或已实现可复现构建。
+Open **Actions → Public Android APK** to view logs, APK hashes, and verification commands, or download the successful run's `android-public-…` artifact. See [public builds and provenance verification](docs/github-android-build.md) for setup and verification instructions.
 
-## 钱包安全
+Provenance binds files to a repository, workflow, and specific source commit. It does not establish an independent security audit or byte-for-byte reproducible builds.
 
-普通私钥通过主密码派生密钥进行 AES-GCM 加密，并保存于系统安全存储。启用生物识别后，主密码保存于需要系统认证的安全存储条目；待激活账户的临时私钥由系统安全存储保护，保存钱包后转入常规加密存储。Passkey 钱包不在客户端保存资产私钥。
+## Wallet security
 
-转账和 DApp 签名需要用户确认。代付交易会核对实际操作与手续费；第三方绑定会检查转账权限和链上额度是否符合确认内容。仅支持可验证的受限支付绑定，额外的通用合约操作会被拒绝，详见[绑定安全说明](docs/binding-security.md)。
+Ordinary private keys are encrypted with AES-GCM using a key derived from the master password and stored in system secure storage. When biometrics are enabled, the master password is saved in a secure storage entry that requires system authentication. Temporary private keys for accounts awaiting activation are protected by system secure storage and moved into the regular encrypted vault when the wallet is saved. Passkey wallets do not store the asset private key on the client.
 
-导出私钥会显示明文，复制时会写入系统剪贴板，请妥善保管。浏览器连接按网站、账户与网络授权，仅在本次浏览器会话中保留；退出连接会撤销授权。持久 DApp 会话可在会话管理中撤销。
+Transfers and DApp signatures require user confirmation. Sponsored transactions check the actual actions and fees. Third-party bindings check that transfer permissions and on-chain limits match the confirmation. Only verifiable, restricted payment bindings are supported; additional general-purpose contract actions are rejected. See [binding security](docs/binding-security.md).
 
-## 外部服务与隐私
+Exporting a private key displays it in plaintext; copying it writes it to the system clipboard. Protect exported keys carefully. Browser connections are authorized by site, account, and network, and remain available only during the current browser session. Disconnecting revokes access. Persistent DApp sessions can be revoked in session management.
 
-本仓库包含钱包客户端，部分登录、内容、更新和代付能力依赖外部服务。客户端在本机保存资产私钥，签名交易和必要的请求数据会发送给相应服务。
+## External services and privacy
 
-| 接收方 | 相关数据 |
+This repository contains the wallet client. Some login, content, update, and sponsorship features depend on external services. The client stores asset private keys locally; signed transactions and necessary request data are sent to the relevant services.
+
+| Recipient | Related data |
 | --- | --- |
-| RPC / 历史节点 | 账户、公钥反查、余额与历史请求、广播交易 |
-| 行情服务 | 代币或交易对查询 |
-| Google / Passkey 登录服务 | 登录授权、凭据注册和认证信息 |
-| Android 扫码 SDK（Google ML Kit） | 设备与应用信息、安装标识、API 性能和使用诊断；识别输入与结果在设备上处理，见 [ML Kit 隐私说明](https://developers.google.com/ml-kit/terms) |
-| 授权与代付服务 | 账户、授权设置、待签交易及签名结果 |
-| 内容、图片与更新服务 | 网络请求、更新检查所需的平台与版本信息 |
-| DApp / ESR / Anchor Link | 账户、公钥、签名结果及连接信息；持久会话消息通过转发服务传输 |
+| RPC / history nodes | Account lookups, public key lookups, balances, history requests, and broadcast transactions |
+| Market data services | Token or trading pair queries |
+| Google / Passkey login services | Login authorization, credential registration, and authentication information |
+| Android QR scanning SDK (Google ML Kit) | Device and app information, installation identifiers, API performance, and usage diagnostics; recognition inputs and results are processed on the device. See [ML Kit privacy terms](https://developers.google.com/ml-kit/terms). |
+| Authorization and sponsorship services | Accounts, authorization settings, transactions awaiting signatures, and signing results |
+| Content, image, and update services | Network requests, platform information, and app versions used for update checks |
+| DApp / ESR / Anchor Link | Accounts, public keys, signatures, and connection information; persistent session messages pass through a relay service |
 
-链上账户与交易是公开数据，外部服务也可能记录请求 IP 和时间。内置 DApp 在用户同意连接后向该 HTTPS 网站提供账户和公钥。兼容接口还提供语言、系统与应用版本，以及按网站生成的随机设备标识。
+On-chain accounts and transactions are public. External services may also record request IP addresses and times. After the user approves a connection, the DApp browser discloses the account and public key to that HTTPS site. Compatibility APIs also provide language, operating system, app version, and a random device identifier generated for each site.
 
-本节说明客户端的数据流，不代替所接入服务的隐私政策。
+This section describes client data flows and does not replace the privacy policies of connected services.
 
-## 独立构建
+## Independent distribution
 
-独立发行时，请设置自己的应用标识、域名关联、构建配置和服务地址：
+For an independent distribution, configure your own app identifiers, domain associations, build settings, and service addresses:
 
-| 位置 | 配置内容 |
+| Location | Configuration |
 | --- | --- |
-| `app.json` / `app.config.ts` / `eas.json` | 应用身份、原生权限和构建配置 |
-| `src/passkey/constants.ts` | 登录、Passkey 和代付服务配置 |
-| `src/chain/config.ts` | 网络、节点和合约配置 |
-| `src/content/defaults.json` | 内置内容与链接 |
-| `well-known/` | 域名与应用的关联声明 |
+| `app.json` / `app.config.ts` / `eas.json` | App identity, native permissions, and build configuration |
+| `src/passkey/constants.ts` | Login, Passkey, and sponsorship service configuration |
+| `src/chain/config.ts` | Networks, nodes, and contracts |
+| `src/content/defaults.json` | Built-in content and links |
+| `well-known/` | Domain-to-app association statements |
 
-更换 Passkey 域名需要配套服务与应用关联配置，并考虑既有凭据的兼容性。[深链接入说明](docs/universal-links.md)介绍相关配置。
+Changing a Passkey domain requires compatible services and app associations, as well as consideration of existing credentials. See [deep link integration](docs/universal-links.md).
 
-## 目录结构
+## Project structure
 
 ```text
 src/
-├── chain/        链配置、钱包状态、资源与交易校验
-├── crypto/       密钥生成与加密存储
-├── passkey/      登录与 Passkey 签名
-├── dapp/         DApp 协议与会话管理
-├── content/      内容加载
-├── net/          网络请求
-├── update/       Android 更新
-├── components/   公共组件
-├── screens/      页面
-├── navigation/   路由与深链
-├── i18n/         多语言
-└── theme.ts      样式
+├── chain/        Chain configuration, wallet state, resources, transaction checks
+├── crypto/       Key generation and encrypted storage
+├── passkey/      Login and Passkey signing
+├── dapp/         DApp protocols and sessions
+├── content/      Content loading
+├── net/          Network requests
+├── update/       Android updates
+├── components/   Shared components
+├── screens/      Screens
+├── navigation/   Navigation and deep links
+├── i18n/         Translations
+└── theme.ts      Styling
 ```
 
-## 许可证
+## License
 
-项目采用 [MIT 许可证](LICENSE)。第三方依赖与素材遵循各自的许可证和版权声明，见[第三方声明](THIRD_PARTY_NOTICES.md)。分发安装包时也需附带这些声明。
+The project is licensed under the [MIT License](LICENSE). Third-party dependencies and assets retain their respective licenses and copyright notices; see [third-party notices](THIRD_PARTY_NOTICES.md). Include the required notices when distributing app packages.

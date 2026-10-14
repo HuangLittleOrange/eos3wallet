@@ -140,7 +140,7 @@ sha = os.environ['GITHUB_SHA']; endpoint = args[-1]
 if '--method' in args:
     assert args[args.index('--method')+1] == 'POST'
     assert f'sha={sha}' in args
-    assert f'ref=refs/tags/android-prerelease-{sha}-123-1' in args
+    assert f'ref=refs/tags/android-release-{sha}-123-1' in args
     if s['variant'] == 'denied':
         print('Resource not accessible by integration (HTTP 403)',file=sys.stderr); sys.exit(1)
     s['exists'] = True; p.write_text(json.dumps(s)); print('{}')
@@ -298,8 +298,8 @@ test('release preparation refuses foreign builds, unsigned evidence, replaced AP
         assert.equal(result.status, 0, result.stderr);
         const plan = JSON.parse(fs.readFileSync(path.join(dir, 'release-output/plan.json')));
         assert.equal(plan.commit, env.GITHUB_SHA);
-        assert.equal(plan.tag, `android-prerelease-${env.GITHUB_SHA}-123-1`);
-        assert.equal(plan.title, 'EOS³ Wallet v1.0.2 · Android 预发布版');
+        assert.equal(plan.tag, `android-release-${env.GITHUB_SHA}-123-1`);
+        assert.equal(plan.title, 'EOS³ Wallet v1.0.2 · Android');
         assert.deepEqual(plan.assets.map((asset) => asset.name), ['wallet-release.apk', 'SHA256SUMS', 'android-release-evidence.zip']);
         for (const asset of plan.assets) assert.equal(sha256(fs.readFileSync(asset.path)), asset.sha256);
         const sums = fs.readFileSync(plan.assets[1].path, 'utf8').trim().split('\n');
@@ -307,7 +307,8 @@ test('release preparation refuses foreign builds, unsigned evidence, replaced AP
         const checkZip = spawnSync('python3', ['-c', `import zipfile,hashlib,pathlib,sys\nz=zipfile.ZipFile(sys.argv[1]);source=pathlib.Path(sys.argv[2]);assert sorted(z.namelist())==sorted(p.relative_to(source).as_posix() for p in source.rglob('*') if p.is_file());assert all(z.read(n)==(source/n).read_bytes() for n in z.namelist());assert b'provenance.jsonl' in z.read('SHA256SUMS')`, plan.assets[2].path, input], { encoding: 'utf8' });
         assert.equal(checkZip.status, 0, checkZip.stderr);
         const notes = fs.readFileSync(plan.notes, 'utf8');
-        assert.match(notes, /v1\.0\.2 · Android 预发布版/);
+        assert.match(notes, /v1\.0\.2 · Android/);
+        assert.doesNotMatch(plan.title + notes, /[\u4e00-\u9fff]/);
         assert.ok(notes.includes(`--source-digest ${env.GITHUB_SHA}`));
       } else {
         assert.notEqual(result.status, 0);
@@ -320,17 +321,17 @@ test('release preparation refuses foreign builds, unsigned evidence, replaced AP
 
 test('release publication uses creation response and verified ID even when drafts are absent from lists', { skip: !pythonAvailable }, () => {
   const script = inlinePython(workflow.jobs.release.steps.find((step) => step.name?.startsWith('Upload verified assets')));
-  for (const variant of ['create-hidden', 'draft', 'partial', 'published', 'delayed-assets', 'wrong-tag', 'wrong-release', 'wrong-created-release', 'bad-digest', 'upload-failed', 'missing-digest']) {
+  for (const variant of ['create-hidden', 'draft', 'partial', 'published', 'delayed-assets', 'wrong-tag', 'wrong-release', 'wrong-channel', 'wrong-created-release', 'bad-digest', 'upload-failed', 'missing-digest']) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ci-release-api-test-'));
     try {
       const output = path.join(dir, 'release-output'); fs.mkdirSync(output);
       const file = path.join(dir, 'fixture.apk'); fs.writeFileSync(file, 'verified fixture APK');
       const asset = { path: file, name: 'fixture.apk', sha256: sha256(fs.readFileSync(file)) };
-      const notes = path.join(dir, 'notes.md'); fs.writeFileSync(notes, 'Verified prerelease');
-      const plan = { repository: env.GITHUB_REPOSITORY, tag: 'android-prerelease-fixture', commit: env.GITHUB_SHA, title: 'Test', notes, assets: [asset] };
+      const notes = path.join(dir, 'notes.md'); fs.writeFileSync(notes, 'Verified release');
+      const plan = { repository: env.GITHUB_REPOSITORY, tag: 'android-release-fixture', commit: env.GITHUB_SHA, title: 'Test', notes, assets: [asset] };
       fs.writeFileSync(path.join(output, 'plan.json'), JSON.stringify(plan));
       const ready = ['published', 'partial'].includes(variant);
-      const release = { id: 1, tag_name: plan.tag, target_commitish: variant === 'wrong-release' ? 'b'.repeat(40) : plan.commit, draft: variant !== 'published', prerelease: true, html_url: 'https://example.test/release', assets: ready ? [{ name: asset.name, digest: 'sha256:' + asset.sha256 }] : [] };
+      const release = { id: 1, tag_name: plan.tag, target_commitish: variant === 'wrong-release' ? 'b'.repeat(40) : plan.commit, draft: variant !== 'published', prerelease: variant === 'wrong-channel', html_url: 'https://example.test/release', assets: ready ? [{ name: asset.name, digest: 'sha256:' + asset.sha256 }] : [] };
       const stateFile = path.join(dir, 'state.json');
       fs.writeFileSync(stateFile, JSON.stringify({ release, variant, calls: [], commit: plan.commit, reads: 0 }));
       const mock = `#!/usr/bin/env python3
@@ -348,8 +349,8 @@ elif '/releases?per_page=' in endpoint:
     response = [[]] if state['variant'] in ('create-hidden','wrong-created-release') else [[release]]
 elif endpoint.endswith('/releases') and method == 'POST':
     body = json.load(sys.stdin)
-    assert body['draft'] and body['prerelease'] and body['make_latest']=='false'
-    assert body['target_commitish'] == state['commit'] and body['body'] == 'Verified prerelease'
+    assert body['draft'] and body['prerelease'] is False and body['make_latest']=='false'
+    assert body['target_commitish'] == state['commit'] and body['body'] == 'Verified release'
     if state['variant']=='wrong-created-release': release['tag_name']='other-tag'
     response = release
 elif '/releases/1/assets?name=' in endpoint and method == 'POST':
@@ -362,7 +363,7 @@ elif '/releases/1/assets?name=' in endpoint and method == 'POST':
 elif endpoint.endswith('/releases/1'):
     if method=='PATCH':
         body = json.load(sys.stdin)
-        assert body == {'draft':False,'prerelease':True,'make_latest':'false'}
+        assert body == {'draft':False,'prerelease':False,'make_latest':'true'}
         release['draft']=False
     else: state['reads']+=1
     response = dict(release)
@@ -381,7 +382,7 @@ if response is not None: print(json.dumps(response))
       if (success) {
         assert.equal(result.status, 0, result.stderr);
         assert.equal(state.release.draft, false);
-        assert.equal(state.release.prerelease, true);
+        assert.equal(state.release.prerelease, false);
         assert.ok(fs.existsSync(path.join(output, 'published.json')));
         if (['published','partial'].includes(variant)) assert.ok(!state.calls.some((args) => args.includes('POST')));
         if (variant==='published') assert.ok(!state.calls.some((args) => args.includes('PATCH')));

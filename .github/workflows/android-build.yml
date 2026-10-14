@@ -47,7 +47,7 @@ jobs:
           head = json.loads(gh('api', f'repos/{repo}/git/ref/heads/main'))
           if head['object']['type'] != 'commit' or head['object']['sha'] != commit:
               raise SystemExit('Main advanced before tag reservation; no compilation was started')
-          tag = f'android-prerelease-{commit}-{run_id}-{attempt}'
+          tag = f'android-release-{commit}-{run_id}-{attempt}'
           endpoint = f'repos/{repo}/git/ref/tags/{tag}'
           result = subprocess.run(['gh', 'api', endpoint], capture_output=True, text=True)
           if result.returncode:
@@ -328,7 +328,7 @@ jobs:
           source = f'https://github.com/{repo}/tree/{commit}'
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
               summary.write(f'### Public Android build\n\nSource: [main commit `{commit}`]({source})\n\n')
-              summary.write('Fixed release certificate signing in an independent offline sandbox; distributed as a prerelease.\n\n')
+              summary.write('Fixed release certificate signing in an independent offline sandbox; published as a release.\n\n')
               summary.write('```text\n' + ''.join(line for line in lines if line.rstrip().endswith('.apk')) + '```\n\n')
               summary.write('Download the final `android-public-…` artifact and extract it. Verify every file and both APK attestations:\n\n```bash\nsha256sum -c SHA256SUMS\n')
               for name in ['wallet-review-unsigned.apk', 'wallet-release.apk']:
@@ -358,7 +358,7 @@ jobs:
           name: android-public-${{ github.sha }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/release-input
           digest-mismatch: error
-      - name: Verify release inventory and prepare signed prerelease
+      - name: Verify release inventory and prepare signed release
         run: |
           python3 - <<'PY'
           import hashlib, json, os, pathlib, re, zipfile
@@ -427,22 +427,24 @@ jobs:
           with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_STORED) as bundle:
               for name in sorted(actual):
                   bundle.write(source / name, name)
-          tag = f'android-prerelease-{commit}-{run_id}-{attempt}'
+          tag = f'android-release-{commit}-{run_id}-{attempt}'
           run_url = f'https://github.com/{repo}/actions/runs/{run_id}/attempts/{attempt}'
-          notes = f'''## EOS³ Wallet v{version} · Android 预发布版
+          notes = f'''## EOS³ Wallet v{version} · Android
 
-          本 APK 使用固定正式证书，在独立离线环境签名，作为预发布版提供测试。同一证书签名的后续版本可覆盖升级；之前的临时测试证书安装不能直接覆盖。尚未进行真机运行测试。
+          Signed with the fixed release certificate in an independent offline environment. Updates signed with the same certificate can upgrade an existing installation. Earlier temporary-certificate builds require a separate migration; back up your wallet first.
 
-          - Source / 源码提交: [{commit}](https://github.com/{repo}/tree/{commit})
-          - Build / 公开构建记录: {run_url}
-          - 流程：离线原生编译、独立正式签名、GitHub 来源证明。
-          - 应用版本：`{version}`（Android versionCode `{build['androidVersionCode']}`）。
+          - Version: `{version}` (Android versionCode `{build['androidVersionCode']}`).
+          - Source commit: [{commit}](https://github.com/{repo}/tree/{commit})
+          - Public build: {run_url}
+          - Build process: offline native compilation, independent release signing, and GitHub artifact attestations.
           - APK SHA256: `{signed_hash}`
           - Certificate SHA256: `{pinned}`
           - Evidence ZIP SHA256: `{digest(archive)}`
 
-          下载 `wallet-release.apk` 安装测试。`android-release-evidence.zip` 包含原样 APK、未签名 APK、完整 SHA256 清单、来源证明、构建日志和第三方声明。
-          下载同一发布的 APK、ZIP 和 `SHA256SUMS`，先执行 `sha256sum -c SHA256SUMS` 核对两个下载文件。证据 ZIP 解压到单独目录后，其中原始 `SHA256SUMS` 可核对全部核验材料。macOS 使用 `shasum -a 256 -c SHA256SUMS`。来源证明、公开证书和元数据均在 ZIP 内，以下命令在解压目录执行。
+          Download `wallet-release.apk` to install the app. The release provides three downloads: the APK, `SHA256SUMS`, and `android-release-evidence.zip`.
+
+          Run `sha256sum -c SHA256SUMS` to verify the downloaded APK and ZIP. On macOS, use `shasum -a 256 -c SHA256SUMS`.
+          Extract the evidence ZIP into a separate directory. It contains the original APKs, the complete internal checksum manifest, provenance, public certificate, build and signing metadata, source hashes, logs, and third-party notices. Run the same checksum command inside that directory to verify all evidence files. Then verify the APK provenance:
 
           ```bash
           gh attestation verify wallet-release.apk --bundle provenance.jsonl --repo {repo} --signer-workflow {repo}/.github/workflows/android-build.yml --signer-digest {commit} --source-ref refs/heads/main --source-digest {commit} --deny-self-hosted-runners
@@ -455,7 +457,7 @@ jobs:
           checksum.write_text(f'{signed_hash}  wallet-release.apk\n{digest(archive)}  {archive.name}\n')
           downloads = [source / 'wallet-release.apk', checksum, archive]
           assets = [{'path': str(file), 'name': file.name, 'sha256': digest(file)} for file in downloads]
-          (output / 'plan.json').write_text(json.dumps({'repository': repo, 'commit': commit, 'tag': tag, 'title': f'EOS³ Wallet v{version} · Android 预发布版', 'notes': str(output / 'notes.md'), 'assets': assets}))
+          (output / 'plan.json').write_text(json.dumps({'repository': repo, 'commit': commit, 'tag': tag, 'title': f'EOS³ Wallet v{version} · Android', 'notes': str(output / 'notes.md'), 'assets': assets}))
           PY
       - name: Verify GitHub provenance before publishing
         env:
@@ -469,7 +471,7 @@ jobs:
               --signer-digest "$GITHUB_SHA" --source-ref refs/heads/main --source-digest "$GITHUB_SHA" \
               --deny-self-hosted-runners
           done
-      - name: Upload verified assets then publish the prerelease
+      - name: Upload verified assets then publish the release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -500,13 +502,13 @@ jobs:
           if release is None:
               # The creation response is authoritative. Draft listings and
               # CLI tag lookups may not expose a just-created release yet.
-              release = write_api(f'repos/{repo}/releases', {'tag_name': tag, 'target_commitish': plan['commit'], 'name': plan['title'], 'body': pathlib.Path(plan['notes']).read_text(), 'draft': True, 'prerelease': True, 'make_latest': 'false'})
+              release = write_api(f'repos/{repo}/releases', {'tag_name': tag, 'target_commitish': plan['commit'], 'name': plan['title'], 'body': pathlib.Path(plan['notes']).read_text(), 'draft': True, 'prerelease': False, 'make_latest': 'false'})
           if type(release.get('id')) is not int or release['id'] <= 0:
               raise SystemExit('Invalid release ID')
           endpoint = f'repos/{repo}/releases/{release["id"]}'
           release_id = release['id']
           def check_identity(value):
-              if value.get('id') != release_id or value.get('tag_name') != tag or value.get('target_commitish') != plan['commit'] or value.get('prerelease') is not True:
+              if value.get('id') != release_id or value.get('tag_name') != tag or value.get('target_commitish') != plan['commit'] or value.get('prerelease') is not False:
                   raise SystemExit('Refusing to replace a different release')
           check_identity(release)
           expected = {asset['name']: 'sha256:' + asset['sha256'] for asset in plan['assets']}
@@ -536,16 +538,16 @@ jobs:
           if actual != expected:
               raise SystemExit('Uploaded release asset digest mismatch; draft left unpublished')
           if release['draft']:
-              release = json.loads(subprocess.check_output(['gh', 'api', endpoint, '--method', 'PATCH', '--input', '-'], input=json.dumps({'draft': False, 'prerelease': True, 'make_latest': 'false'}), text=True))
+              release = json.loads(subprocess.check_output(['gh', 'api', endpoint, '--method', 'PATCH', '--input', '-'], input=json.dumps({'draft': False, 'prerelease': False, 'make_latest': 'true'}), text=True))
           release = json.loads(gh('api', endpoint))
           check_identity(release)
           if {asset['name']: asset.get('digest') for asset in release['assets']} != expected:
               raise SystemExit('Published release asset digest mismatch')
           reference = json.loads(gh('api', f'repos/{repo}/git/ref/tags/{tag}'))
-          if release['draft'] or not release['prerelease'] or reference['object']['type'] != 'commit' or reference['object']['sha'] != plan['commit']:
+          if release['draft'] or release['prerelease'] or reference['object']['type'] != 'commit' or reference['object']['sha'] != plan['commit']:
               raise SystemExit('Published release or source tag mismatch')
-          (output / 'published.json').write_text(json.dumps({'url': release['html_url'], 'tag': tag, 'commit': plan['commit'], 'prerelease': True, 'assets': expected}))
+          (output / 'published.json').write_text(json.dumps({'url': release['html_url'], 'tag': tag, 'commit': plan['commit'], 'prerelease': False, 'assets': expected}))
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
-              summary.write(f"### Android test prerelease\n\n[Download verified APK and evidence]({release['html_url']})\n\n")
+              summary.write(f"### Android release\n\n[Download verified APK and evidence]({release['html_url']})\n\n")
           print(release['html_url'])
           PY
