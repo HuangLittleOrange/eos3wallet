@@ -469,12 +469,14 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           python3 - <<'PY'
-          import json, os, pathlib, subprocess
+          import json, os, pathlib, subprocess, time, urllib.parse
           output = pathlib.Path(os.environ['RUNNER_TEMP']) / 'release-output'
           plan = json.loads((output / 'plan.json').read_text())
           repo, tag = plan['repository'], plan['tag']
           def gh(*args):
               return subprocess.check_output(['gh', *args], text=True)
+          def write_api(endpoint, payload):
+              return json.loads(subprocess.check_output(['gh', 'api', endpoint, '--method', 'POST', '--input', '-'], input=json.dumps(payload), text=True))
           tag_endpoint = f'repos/{repo}/git/ref/tags/{tag}'
           # This exact source tag was reserved before compilation. Never move it
           # or create a different tag after the source branch has advanced.
@@ -491,23 +493,49 @@ jobs:
               return matching[0] if matching else None
           release = find_release()
           if release is None:
-              gh('release', 'create', tag, '--repo', repo, '--verify-tag', '--target', plan['commit'], '--title', plan['title'], '--notes-file', plan['notes'], '--draft', '--prerelease', '--latest=false')
-              release = find_release()
-          if release is None:
-              raise SystemExit('Created release was not found')
+              # The creation response is authoritative. Draft listings and
+              # CLI tag lookups may not expose a just-created release yet.
+              release = write_api(f'repos/{repo}/releases', {'tag_name': tag, 'target_commitish': plan['commit'], 'name': plan['title'], 'body': pathlib.Path(plan['notes']).read_text(), 'draft': True, 'prerelease': True, 'make_latest': 'false'})
+          if type(release.get('id')) is not int or release['id'] <= 0:
+              raise SystemExit('Invalid release ID')
           endpoint = f'repos/{repo}/releases/{release["id"]}'
-          if release['target_commitish'] != plan['commit'] or not release['prerelease']:
-              raise SystemExit('Refusing to replace a different release')
-          if release['draft']:
-              gh('release', 'upload', tag, '--repo', repo, *[asset['path'] for asset in plan['assets']], '--clobber')
-          release = json.loads(gh('api', endpoint))
+          release_id = release['id']
+          def check_identity(value):
+              if value.get('id') != release_id or value.get('tag_name') != tag or value.get('target_commitish') != plan['commit'] or value.get('prerelease') is not True:
+                  raise SystemExit('Refusing to replace a different release')
+          check_identity(release)
           expected = {asset['name']: 'sha256:' + asset['sha256'] for asset in plan['assets']}
-          actual = {asset['name']: asset.get('digest') for asset in release['assets']}
+          if release['draft']:
+              existing = {asset['name']: asset.get('digest') for asset in release['assets']}
+              if any(name not in expected or digest != expected[name] for name, digest in existing.items()) or len(existing) != len(release['assets']):
+                  raise SystemExit('Existing draft asset digest mismatch; draft left unpublished')
+              for asset in plan['assets']:
+                  if asset['name'] in existing:
+                      continue
+                  # Address uploads by the verified ID, never by a draft tag
+                  # lookup. Published releases are never overwritten.
+                  upload = f'https://uploads.github.com/repos/{repo}/releases/{release_id}/assets?name=' + urllib.parse.quote(asset['name'], safe='')
+                  gh('api', upload, '--method', 'POST', '--header', 'Content-Type: application/octet-stream', '--input', asset['path'])
+          # Only reads are repeated while asset metadata becomes visible.
+          # Mutations are never blindly retried or allowed to skip hashes.
+          for attempt in range(6):
+              release = json.loads(gh('api', endpoint))
+              check_identity(release)
+              actual = {asset['name']: asset.get('digest') for asset in release['assets']}
+              if len(actual) != len(release['assets']) or any(name not in expected or value not in (None, expected[name]) for name, value in actual.items()):
+                  raise SystemExit('Uploaded release asset digest mismatch; draft left unpublished')
+              if actual == expected:
+                  break
+              if attempt < 5:
+                  time.sleep(2)
           if actual != expected:
               raise SystemExit('Uploaded release asset digest mismatch; draft left unpublished')
           if release['draft']:
-              gh('release', 'edit', tag, '--repo', repo, '--draft=false', '--prerelease', '--latest=false')
+              release = json.loads(subprocess.check_output(['gh', 'api', endpoint, '--method', 'PATCH', '--input', '-'], input=json.dumps({'draft': False, 'prerelease': True, 'make_latest': 'false'}), text=True))
           release = json.loads(gh('api', endpoint))
+          check_identity(release)
+          if {asset['name']: asset.get('digest') for asset in release['assets']} != expected:
+              raise SystemExit('Published release asset digest mismatch')
           reference = json.loads(gh('api', f'repos/{repo}/git/ref/tags/{tag}'))
           if release['draft'] or not release['prerelease'] or reference['object']['type'] != 'commit' or reference['object']['sha'] != plan['commit']:
               raise SystemExit('Published release or source tag mismatch')

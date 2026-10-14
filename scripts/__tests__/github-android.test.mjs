@@ -300,62 +300,82 @@ test('release preparation refuses foreign builds, unsigned evidence, replaced AP
   }
 });
 
-test('release publication resumes drafts by ID and refuses wrong tags or remote asset digests', { skip: !pythonAvailable }, () => {
+test('release publication uses creation response and verified ID even when drafts are absent from lists', { skip: !pythonAvailable }, () => {
   const script = inlinePython(workflow.jobs.release.steps.find((step) => step.name?.startsWith('Upload verified assets')));
-  for (const variant of ['draft', 'published', 'wrong-tag', 'bad-digest']) {
+  for (const variant of ['create-hidden', 'draft', 'partial', 'published', 'delayed-assets', 'wrong-tag', 'wrong-release', 'wrong-created-release', 'bad-digest', 'upload-failed', 'missing-digest']) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ci-release-api-test-'));
     try {
       const output = path.join(dir, 'release-output'); fs.mkdirSync(output);
       const file = path.join(dir, 'fixture.apk'); fs.writeFileSync(file, 'verified fixture APK');
       const asset = { path: file, name: 'fixture.apk', sha256: sha256(fs.readFileSync(file)) };
-      const plan = { repository: env.GITHUB_REPOSITORY, tag: 'android-prerelease-fixture', commit: env.GITHUB_SHA, assets: [asset] };
+      const notes = path.join(dir, 'notes.md'); fs.writeFileSync(notes, 'Verified prerelease');
+      const plan = { repository: env.GITHUB_REPOSITORY, tag: 'android-prerelease-fixture', commit: env.GITHUB_SHA, title: 'Test', notes, assets: [asset] };
       fs.writeFileSync(path.join(output, 'plan.json'), JSON.stringify(plan));
-      const release = { id: 1, tag_name: plan.tag, target_commitish: plan.commit, draft: variant !== 'published', prerelease: true, html_url: 'https://example.test/release', assets: variant === 'published' ? [{ name: asset.name, digest: 'sha256:' + asset.sha256 }] : [] };
+      const ready = ['published', 'partial'].includes(variant);
+      const release = { id: 1, tag_name: plan.tag, target_commitish: variant === 'wrong-release' ? 'b'.repeat(40) : plan.commit, draft: variant !== 'published', prerelease: true, html_url: 'https://example.test/release', assets: ready ? [{ name: asset.name, digest: 'sha256:' + asset.sha256 }] : [] };
       const stateFile = path.join(dir, 'state.json');
-      fs.writeFileSync(stateFile, JSON.stringify({ release, variant, calls: [], commit: plan.commit }));
+      fs.writeFileSync(stateFile, JSON.stringify({ release, variant, calls: [], commit: plan.commit, reads: 0 }));
       const mock = `#!/usr/bin/env python3
-import json, os, pathlib, sys, hashlib
+import json, os, pathlib, sys, hashlib, urllib.parse
 state_file = pathlib.Path(os.environ['FAKE_GH_STATE'])
 state = json.loads(state_file.read_text()); args = sys.argv[1:]
-state['calls'].append(args); release = state['release']; response = None
-if args[0] == 'api':
-    endpoint = args[-1]
-    if '/git/ref/tags/' in endpoint:
-        response = {'object': {'type':'commit','sha':'b'*40 if state['variant']=='wrong-tag' else state['commit']}}
-    elif '/releases/tags/' in endpoint:
-        raise SystemExit('Drafts cannot be retrieved by tag')
-    elif '/releases?per_page=' in endpoint:
-        response = [[release]]
-    elif endpoint.endswith('/releases/1'):
-        response = release
-    else:
-        raise SystemExit('Unexpected API request')
-elif args[:2] == ['release','upload']:
-    files = [pathlib.Path(item) for item in args if pathlib.Path(item).is_file()]
-    release['assets'] = [{'name':item.name, 'digest':'sha256:'+('0'*64 if state['variant']=='bad-digest' else hashlib.sha256(item.read_bytes()).hexdigest())} for item in files]
-elif args[:2] == ['release','edit']:
-    assert '--draft=false' in args and '--prerelease' in args and '--latest=false' in args
-    release['draft'] = False
-else:
-    raise SystemExit('Unexpected CLI request')
+state['calls'].append(args); state_file.write_text(json.dumps(state))
+release = state['release']; response = None
+assert args[0] == 'api', 'No CLI release lookup is allowed'
+endpoint = args[1] if not args[1].startswith('--') else args[-1]
+method = args[args.index('--method')+1] if '--method' in args else 'GET'
+if '/git/ref/tags/' in endpoint:
+    response = {'object': {'type':'commit','sha':'b'*40 if state['variant']=='wrong-tag' else state['commit']}}
+elif '/releases?per_page=' in endpoint:
+    response = [[]] if state['variant'] in ('create-hidden','wrong-created-release') else [[release]]
+elif endpoint.endswith('/releases') and method == 'POST':
+    body = json.load(sys.stdin)
+    assert body['draft'] and body['prerelease'] and body['make_latest']=='false'
+    assert body['target_commitish'] == state['commit'] and body['body'] == 'Verified prerelease'
+    if state['variant']=='wrong-created-release': release['tag_name']='other-tag'
+    response = release
+elif '/releases/1/assets?name=' in endpoint and method == 'POST':
+    assert endpoint.startswith('https://uploads.github.com/repos/')
+    if state['variant']=='upload-failed': sys.exit('HTTP 502: upload failed')
+    name = urllib.parse.parse_qs(urllib.parse.urlparse(endpoint).query)['name'][0]
+    file = pathlib.Path(args[args.index('--input')+1])
+    release['assets'] = [{'name':name,'digest':'sha256:'+('0'*64 if state['variant']=='bad-digest' else hashlib.sha256(file.read_bytes()).hexdigest())}]
+    response = release['assets'][0]
+elif endpoint.endswith('/releases/1'):
+    if method=='PATCH':
+        body = json.load(sys.stdin)
+        assert body == {'draft':False,'prerelease':True,'make_latest':'false'}
+        release['draft']=False
+    else: state['reads']+=1
+    response = dict(release)
+    if state['variant']=='missing-digest' or (state['variant']=='delayed-assets' and state['reads']<3):
+        response['assets']=[]
+else: sys.exit('Unexpected API request: '+str(args))
 state_file.write_text(json.dumps(state))
 if response is not None: print(json.dumps(response))
 `;
-      const executable = path.join(dir, 'gh'); fs.writeFileSync(executable, mock, { mode: 0o755 });
-      const result = spawnSync('python3', ['-c', script], { env: { PATH: dir + path.delimiter + process.env.PATH, RUNNER_TEMP: dir, FAKE_GH_STATE: stateFile, GITHUB_STEP_SUMMARY: path.join(dir, 'summary.md') }, encoding: 'utf8' });
+      fs.writeFileSync(path.join(dir, 'gh'), mock, { mode: 0o755 });
+      // Keep bounded metadata polling deterministic; run the actual workflow code.
+      const launcher = 'import time; time.sleep=lambda _:None; exec(compile(' + JSON.stringify(script) + ', "workflow", "exec"))';
+      const result = spawnSync('python3', ['-c', launcher], { env: { PATH: dir + path.delimiter + process.env.PATH, RUNNER_TEMP: dir, FAKE_GH_STATE: stateFile, GITHUB_STEP_SUMMARY: path.join(dir, 'summary.md') }, encoding: 'utf8' });
       const state = JSON.parse(fs.readFileSync(stateFile));
-      if (['draft', 'published'].includes(variant)) {
+      const success = ['create-hidden', 'draft', 'partial', 'published', 'delayed-assets'].includes(variant);
+      if (success) {
         assert.equal(result.status, 0, result.stderr);
         assert.equal(state.release.draft, false);
         assert.equal(state.release.prerelease, true);
         assert.ok(fs.existsSync(path.join(output, 'published.json')));
-        if (variant === 'published') assert.ok(!state.calls.some((args) => args[0] === 'release'));
+        if (['published','partial'].includes(variant)) assert.ok(!state.calls.some((args) => args.includes('POST')));
+        if (variant==='published') assert.ok(!state.calls.some((args) => args.includes('PATCH')));
+        if (variant==='create-hidden') assert.equal(state.calls.filter((args) => args.includes('--slurp')).length, 1, 'never rediscover newly created draft');
       } else {
-        assert.notEqual(result.status, 0);
+        assert.notEqual(result.status, 0, variant);
         assert.equal(state.release.draft, true);
-        assert.ok(!state.calls.some((args) => args[1] === 'edit'));
-        if (variant === 'wrong-tag') assert.ok(!state.calls.some((args) => args[1] === 'upload'));
+        assert.ok(!state.calls.some((args) => args.includes('PATCH')));
+        assert.ok(!fs.existsSync(path.join(output, 'published.json')));
+        if (variant.startsWith('wrong-')) assert.ok(!state.calls.some((args) => args.some((arg) => arg.startsWith('https://uploads.github.com/'))));
       }
+      assert.ok(state.calls.filter((args) => args.some((arg) => arg.startsWith('https://uploads.github.com/'))).length <= 1, 'no blind upload retries');
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   }
 });
