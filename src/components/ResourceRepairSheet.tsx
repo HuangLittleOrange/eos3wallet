@@ -17,7 +17,7 @@ import {
   formatPayment,
   sumAssets,
 } from '../chain/resourceRepair';
-import { CpuNetExhaustedError, RamExhaustedError, SponsorFeeChangedError, toBroadcastError } from '../chain/sponsor';
+import { CpuNetExhaustedError, RamExhaustedError, SponsorFeeChangedError, toBroadcastError, friendlyChainErrorMessage } from '../chain/sponsor';
 import { getResourceRepairMarket, refreshResourceRepairFee } from '../chain/resourceRepairQuote';
 import { getCachedSponsorFee } from '../chain/sponsorFeeCache';
 import { sponsoredTransact, transact, type Signer } from '../chain/transact';
@@ -192,7 +192,7 @@ function ResourceRepairSheet({
           loadFee(),
         ]);
       } catch (e: any) {
-        if (alive) setErr(e?.message ?? t('send.signOrBroadcastFailed'));
+        if (alive) setErr(friendlyChainErrorMessage(e));
       } finally {
         if (alive) setQuoting(false);
       }
@@ -218,7 +218,7 @@ function ResourceRepairSheet({
     setErr(null);
     setNotice(null);
     try {
-      const { action, transfers: n } = buildPowerupTopUp({
+      const { action } = buildPowerupTopUp({
         market,
         payment,
         actor: w.account,
@@ -237,14 +237,14 @@ function ResourceRepairSheet({
         isCurrent: attempt.isCurrent,
       });
       onDismiss(true);
-      Alert.alert(t('repair.powerupDoneTitle'), t('repair.powerupDoneBody', { n, txId: res.txId }));
+      Alert.alert(t('repair.powerupDoneTitle'), t('repair.powerupDoneBody', { days: market.powerupDays, txId: res.txId }));
     } catch (e: any) {
       if (!attempt.isCurrent()) return;
       if (e instanceof SponsorFeeChangedError) {
         setFee(e.fee);
         setNotice(t('repair.feeChanged', { fee: e.fee || t('repair.free') }));
       } else {
-        setErr(e?.message ?? t('send.signOrBroadcastFailed'));
+        setErr(friendlyChainErrorMessage(e));
       }
     } finally {
       attempt.finish();
@@ -278,7 +278,7 @@ function ResourceRepairSheet({
         setKind('cpuNet');
         setNotice(t('repair.cpuNetForRam'));
       } else {
-        setErr(e?.message ?? t('send.signOrBroadcastFailed'));
+        setErr(friendlyChainErrorMessage(e));
       }
     } finally {
       attempt.finish();
@@ -331,7 +331,7 @@ function ResourceRepairSheet({
                   : !market
                     ? t('resource.powerupMarketUnavailable')
                     : transfers && transfers > 0
-                      ? t('repair.estimate', { n: transfers })
+                      ? t('resource.powerupUsage', { days: market.powerupDays })
                       : t('resource.estimateTooSmall')}
               </Text>
             </View>

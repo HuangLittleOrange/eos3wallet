@@ -11,6 +11,7 @@ import LinkSessionProvider from './src/dapp/LinkSessionProvider';
 import ModalHost from './src/components/ModalHost';
 import { I18nProvider } from './src/i18n';
 import { AppContentProvider } from './src/content/AppContentContext';
+import { NodeCatalogProvider } from './src/chain/NodeCatalogContext';
 
 export default function App() {
   return (
@@ -18,6 +19,7 @@ export default function App() {
       <StatusBar style="dark" />
       <I18nProvider>
         <AppContentProvider>
+          <NodeCatalogProvider>
           <WalletProvider>
             <MessagesProvider>
               <DappSessionProvider>
@@ -38,6 +40,7 @@ export default function App() {
               </DappSessionProvider>
             </MessagesProvider>
           </WalletProvider>
+          </NodeCatalogProvider>
         </AppContentProvider>
       </I18nProvider>
     </SafeAreaProvider>

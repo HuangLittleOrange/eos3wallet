@@ -63,7 +63,7 @@ const project = (id: string, overrides: Partial<AppBrowseProject> = {}): AppBrow
   iconUrl: '', appUrl: `https://${id}.example`, category: 'Tools', ...overrides,
 });
 const banner = (id: string): ContentBanner => ({
-  id, enabled: true, sortOrder: 0, title: { en: id }, lines: [], colors: ['#123', '#456'],
+  id, enabled: true, sortOrder: 0, imageUrl: `https://images.example/${id}.png`, url: `https://${id}.example`,
 });
 const setContent = (content = empty, projects: AppBrowseProject[] = []) => jest.mocked(useAppContent).mockReturnValue({
   content, projects, source: 'remote', loading: false, refreshing: false, error: null, refresh, activate,
@@ -121,7 +121,7 @@ it('轮播缩到一张或清空时重置位置且停止自动播放', async () =
   expect(scrollTo).toHaveBeenCalledTimes(calls);
   setContent();
   await act(async () => { renderer.update(React.createElement(DiscoverScreen)); jest.advanceTimersByTime(8000); });
-  expect(textValues()).not.toContain('replacement');
+  expect(renderer.root.findAllByType('Image').some((image: any) => image.props.source.uri === 'https://images.example/replacement.png')).toBe(false);
 });
 
 it('轮播内容同长度更新也重置并使用新卡片播放', async () => {
@@ -131,7 +131,7 @@ it('轮播内容同长度更新也重置并使用新卡片播放', async () => {
   setContent({ ...empty, banners: [banner('edited'), banner('second')] });
   await act(async () => { renderer.update(React.createElement(DiscoverScreen)); });
   expect(scrollTo).toHaveBeenLastCalledWith({ x: 0, animated: false });
-  expect(textValues()).toContain('edited');
+  expect(renderer.root.findAllByType('Image').some((image: any) => image.props.source.uri === 'https://images.example/edited.png')).toBe(true);
   await act(async () => { jest.advanceTimersByTime(4000); });
   expect(scrollTo).toHaveBeenLastCalledWith({ x: 390, animated: true });
 });
@@ -242,4 +242,24 @@ it('公告详情链接经过统一DApp打开入口，普通转入不产生可点
   expect(open).toHaveBeenCalledWith('https://news.example');
   const transfer = renderer.root.findAllByType('TouchableOpacity').find((node: any) => node.findAllByType('Text').some((text: any) => text.children.includes('Received transfer')));
   expect(transfer.props.disabled).toBe(true);
+});
+
+it('轮播只展示完整图片，点击打开链接，无图片和停用项不展示', async () => {
+  setContent({ ...empty, banners: [
+    { ...banner('linked'), title: { en: 'Legacy title' }, lines: [{ en: 'Legacy description' }], colors: ['#123', '#456'] } as ContentBanner,
+    { ...banner('missing'), imageUrl: undefined },
+    { ...banner('disabled'), enabled: false },
+    { ...banner('no-link'), url: undefined },
+  ] });
+  await render(DiscoverScreen);
+  const images = renderer.root.findAllByType('Image').filter((image: any) => image.props.source.uri?.startsWith('https://images.example/'));
+  expect(images.map((image: any) => image.props.source.uri)).toEqual(['https://images.example/linked.png', 'https://images.example/no-link.png']);
+  expect(images[0].props.resizeMode).toBe('contain');
+  expect(textValues()).not.toContain('Legacy title');
+  expect(textValues()).not.toContain('Legacy description');
+  const linked = renderer.root.findAllByType('TouchableOpacity').find((node: any) => node.props.accessibilityLabel === 'https://linked.example');
+  await act(async () => { linked.props.onPress(); });
+  expect(open).toHaveBeenCalledWith('https://linked.example');
+  const unlinked = renderer.root.findAllByType('TouchableOpacity').find((node: any) => node.findAllByType('Image').some((image: any) => image.props.source.uri === 'https://images.example/no-link.png'));
+  expect(unlinked.props.disabled).toBe(true);
 });

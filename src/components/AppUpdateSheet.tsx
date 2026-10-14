@@ -4,14 +4,14 @@
 // 安装应用,允许完回来安装器不会自己再出现,所以下载完之后「安装」按钮一直在,
 // 用户点一下就能重新拉起,不用重新下载。
 import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Linking } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
 import BottomSheet from './BottomSheet';
 import { colors, spacing } from '../theme';
 import { useI18n } from '../i18n';
-import { AppRelease, AppUpdateError, downloadRelease, installRelease } from '../update/appUpdate';
+import { AppRelease, AppUpdateError, canSelfUpdate, downloadRelease, installRelease } from '../update/appUpdate';
 
 const BLUE = '#1E88FF';
 
@@ -59,6 +59,10 @@ export default function AppUpdateSheet({
   const start = async () => {
     if (!release) return;
     setErr(null);
+    if (!canSelfUpdate) {
+      try { await Linking.openURL(release.apkUrl); } catch { setErr(t('update.openFailed')); }
+      return;
+    }
     const controller = new AbortController();
     abortRef.current = controller;
     setPhase({ kind: 'downloading', fraction: 0 });
@@ -152,7 +156,7 @@ export default function AppUpdateSheet({
                   disabled={downloading}
                   onPress={start}
                 >
-                  <Text style={styles.primaryTxt}>{t('update.updateNow')}</Text>
+                  <Text style={styles.primaryTxt}>{t(canSelfUpdate ? 'update.updateNow' : 'update.openDownload')}</Text>
                 </TouchableOpacity>
               )}
             </View>

@@ -112,6 +112,24 @@ describe('requestSponsoredBuild', () => {
 });
 
 describe('friendlyChainErrorMessage', () => {
+  it('missing token balances are explained for both direct and nested RPC errors', () => {
+    const raw = 'assertion failure with message: no balance object found';
+    expect(friendlyChainErrorMessage(new Error(raw))).toBe('chainError.noTokenBalance');
+    expect(friendlyChainErrorMessage({ message: 'Internal Service Error', response: { json: {
+      error: { details: [{ message: raw }] },
+    } } })).toBe('chainError.noTokenBalance');
+    expect(toBroadcastError(new Error(raw)).message).toBe('chainError.noTokenBalance');
+  });
+
+  it('common node errors give actionable messages and preserve readable wallet errors', () => {
+    expect(friendlyChainErrorMessage(new Error('missing required authority alice'))).toBe('chainError.authorization');
+    expect(friendlyChainErrorMessage(new Error('expired transaction'))).toBe('chainError.expired');
+    expect(friendlyChainErrorMessage(new Error('assertion failure with message: unsupported operation'))).toBe('chainError.rejected');
+    expect(friendlyChainErrorMessage(new Error('Network request failed'))).toBe('eos3Error.unstableNetwork');
+    expect(friendlyChainErrorMessage(new Error('钱包密码不正确，请重试'))).toBe('钱包密码不正确，请重试');
+    expect(friendlyChainErrorMessage(new Error('sponsorError.cpuNetInsufficient'))).toBe('sponsorError.cpuNetInsufficient');
+  });
+
   it('顶层只有 HTTP 500 时仍能识别 RPC 内部的资源错误', () => {
     const err = { message: 'Internal Service Error', response: { json: { error: {
       name: 'tx_cpu_usage_exceeded', what: 'unspecified', details: [{ message: 'CPU limit exceeded' }],

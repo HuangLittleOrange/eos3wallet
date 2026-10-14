@@ -59,6 +59,7 @@ export function parseAppContent(value: unknown): AppContent {
   const raw = record(value);
   if (raw.schemaVersion !== 1) invalid();
   const intro = raw.intro === null ? null : record(raw.intro);
+  const earnEnabled = raw.earnEnabled === undefined ? true : boolean(raw.earnEnabled);
   const earnItems = items(raw.earnItems, (e) => ({ ...item(e), title: localized(e.title, 200),
     description: localized(e.description, 2000), color: color(e.color), hot: boolean(e.hot),
     imageUrl: optionalURL(e.imageUrl), url: optionalURL(e.url) }));
@@ -66,13 +67,13 @@ export function parseAppContent(value: unknown): AppContent {
     schemaVersion: 1,
     intro: intro ? { title: localized(intro.title, 200), subtitle: localized(intro.subtitle, 2000) } : null,
     banners: items(raw.banners, (b) => {
-      if (!Array.isArray(b.lines) || b.lines.length > 5) invalid();
-      return { ...item(b), title: localized(b.title, 200), lines: b.lines.map((line) => localized(line, 2000)),
-        colors: colors(b.colors), imageUrl: optionalURL(b.imageUrl), url: optionalURL(b.url) };
+      // Older documents may still contain text and gradient fields; only the image is displayed.
+      return { ...item(b), imageUrl: optionalURL(b.imageUrl), url: optionalURL(b.url) };
     }),
     promos: items(raw.promos, (p) => ({ ...item(p), title: localized(p.title, 200), colors: colors(p.colors),
       imageUrl: optionalURL(p.imageUrl), url: optionalURL(p.url) })),
-    earnTitle: localized(raw.earnTitle, 200, earnItems.length > 0),
+    earnEnabled,
+    earnTitle: localized(raw.earnTitle, 200, earnEnabled && earnItems.some((item) => item.enabled)),
     earnDescription: localized(raw.earnDescription, 2000, false),
     earnItems,
     announcements: items(raw.announcements, (a) => {

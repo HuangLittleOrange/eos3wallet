@@ -19,7 +19,7 @@ import { colors, spacing } from '../theme';
 import { useSigningGuard } from '../chain/useSigningGuard';
 import { useWallet } from '../chain/WalletContext';
 import { useManualRefresh } from '../chain/useManualRefresh';
-import { assetValue, fmtBytes, fmtEstimatedCount, fmtUs } from '../chain/format';
+import { assetValue, fmtBytes, fmtUs } from '../chain/format';
 import { PowerupMarket } from '../chain/client';
 import { estimateTransfersForPayment, fracForResourceUnits, perTransferResourceWeights } from '../chain/powerupPricing';
 import { accountNameError, isValidAccountName } from '../chain/account';
@@ -64,10 +64,8 @@ export default function ResourceScreen() {
   const [ramBuyForOther, setRamBuyForOther] = useState(false);
   const [ramReceiverIn, setRamReceiverIn] = useState('');
 
-  // PowerUp 定价曲线(powup.state 表)——只在进这个页面时拉一次,不追着每次
-  // 静默刷新跑:它只是用来估算「这笔钱大概能买几笔转账」,不是签名要用的
-  // 权威数据,差个几秒钟的价格波动不影响这个粗略估算的意义。拉不到就不显示
-  // 估算这一行,不阻塞 PowerUp 本身正常提交。
+  // PowerUp 定价曲线用来按预算分配购买权重。max_payment 限制实际支付金额;
+  // 没有市场数据时无法构建按预算购买的请求。
   const [powerup, setPowerup] = useState<PowerupMarket | null>(null);
   useEffect(() => {
     let cancelled = false;
@@ -104,11 +102,8 @@ export default function ResourceScreen() {
     w.node.url, w.account, permission]), confirm, () => setConfirm(null));
   const prec = w.client.config.precision;
 
-  // PowerUp「最高支付」栏(cpuIn 在 mode===0 时复用来装这一个数)填的预算能
-  // 大概支撑几笔普通转账——CPU/NET 两边按 ASSUMED_TRANSFER_* 的比例同时买,
-  // 花费函数是凸的,二分出来的笔数就是 review() 里实际会提交的那个笔数,
-  // 「显示的估算」和「真正买到的」不会是两套数字(估算和提交共用
-  // powerupPricing 里同一份换算,资源修复弹窗也是)。
+  // CPU/NET 按样本比例分配购买权重。estimatedTransfers 是内部组合单位,
+  // 实际可完成的转账次数取决于交易消耗和网络负载,界面不展示这个值。
   const powerupPay = parseFloat(cpuIn) || 0;
   const transferWeights = useMemo(() => (powerup ? perTransferResourceWeights(powerup) : null), [powerup]);
   const estimatedTransfers = useMemo(
@@ -151,9 +146,7 @@ export default function ResourceScreen() {
       const num = (v: string) => parseFloat(v) || 0;
       let acts: ActionSpec[];
       if (kind === 'powerup') {
-        // cpu_frac/net_frac 不再是跟输入金额无关的写死比例——按上面二分出来
-        // 的「这笔预算能买几笔转账」反推出实际要买的资源量,花多少钱、买多少
-        // 资源,和页面上「预计支持约 x 笔转账」这行显示的是同一个数。
+        // 按预算求得的组合单位反推出 CPU/NET 购买比例。
         const pay = num(cpuIn);
         if (!powerup || !transferWeights) throw new Error(t('resource.powerupMarketUnavailable'));
         const n = estimatedTransfers ?? 0;
@@ -313,19 +306,17 @@ export default function ResourceScreen() {
                 ) : undefined
               }
               afterRows={
-                // powerup 市场数据还没拉到之前不显示——不确定"多少笔"这件事,
-                // 宁可不说,也别拿一句猜的话糊弄用户
                 mode === 0 && powerupPay > 0 && powerup ? (
                   <Text style={styles.estimateTxt}>
                     {estimatedTransfers && estimatedTransfers > 0
-                      ? t('resource.estimatedTransfers', { n: fmtEstimatedCount(estimatedTransfers) })
+                      ? t('resource.powerupUsage', { days: powerup.powerupDays })
                       : t('resource.estimateTooSmall')}
                   </Text>
                 ) : undefined
               }
               hint={
                 mode === 0
-                  ? t('resource.powerUpHint') + (powerupPay > 0 && powerup ? ` ${t('resource.estimatedTransfersNote')}` : '')
+                  ? t('resource.powerUpHint')
                   : mode === 1
                   ? t('resource.stakeHint')
                   : t('resource.unstakeHint')

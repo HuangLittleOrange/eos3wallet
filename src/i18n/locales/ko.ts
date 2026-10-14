@@ -1,6 +1,11 @@
 import type zh from './zh';
 
 const ko: Record<keyof typeof zh, string> = {
+  'chainError.noTokenBalance': "이 거래에 필요한 토큰 잔액이 없습니다. 해당 토큰을 입금한 후 다시 시도해 주세요.",
+  'chainError.authorization': "이 지갑에는 거래에 필요한 권한이 없습니다. 필요한 권한이 있는 지갑으로 전환해 주세요.",
+  'chainError.expired': "거래가 만료되었습니다. 내용을 확인하고 다시 서명해 주세요.",
+  'chainError.rejected': "네트워크에서 거래를 거부했습니다. 거래 내용을 확인한 후 다시 시도해 주세요.",
+  'resource.powerupUsage': "리소스는 {{days}}일 동안 유효합니다. 전송 횟수는 실제 사용량과 네트워크 부하에 따라 달라집니다.",
   'dappBrowser.connectTitle': "지갑 연결",
   'dappBrowser.connectBody': "{{origin}}에서 계정 {{account}} 및 공개 키 접근을 요청합니다. 연결만으로 송금은 허용되지 않으며 각 서명에는 확인이 필요합니다.",
   'dappBrowser.connectAllow': "연결 허용",
@@ -18,6 +23,8 @@ const ko: Record<keyof typeof zh, string> = {
   'me.linkSessions': '연결된 DApp',
   'me.telegram': '텔레그램 그룹',
   'me.checkUpdate': '버전 업데이트',
+  'update.openDownload': '다운로드 페이지 열기',
+  'update.openFailed': '다운로드 페이지를 열 수 없습니다. 다시 시도해 주세요.',
   'update.title': '새 버전이 있습니다',
   'update.upToDateTitle': '최신 버전입니다',
   'update.upToDateBody': '현재 버전 v{{version}}',
@@ -112,7 +119,6 @@ const ko: Record<keyof typeof zh, string> = {
   'repair.cpuNetTitle': '리소스 부족',
   'repair.cpuNetBody': '계정의 CPU/NET이 부족해 이 거래를 전송할 수 없습니다. 본인 잔액으로 PowerUp(1일 리소스)을 구매한 뒤 확인 창으로 돌아가 다시 서명하세요. 구매 거래의 CPU는 Sponsor가 대납하며 소액의 대납 수수료가 부과됩니다.',
   'repair.amountLabel': '구매 금액',
-  'repair.estimate': '약 {{n}}회 전송 가능',
   'repair.quoting': '견적 조회 중…',
   'repair.powerupLine': 'PowerUp',
   'repair.feeLine': '대납 수수료',
@@ -122,7 +128,7 @@ const ko: Record<keyof typeof zh, string> = {
   'repair.buyPowerup': '구매 후 충전',
   'repair.feeChanged': '대납 수수료가 {{fee}}(으)로 변경되었습니다. 확인 후 다시 눌러 주세요',
   'repair.powerupDoneTitle': '충전 완료',
-  'repair.powerupDoneBody': '약 {{n}}회 전송 분량의 리소스를 구매했습니다. 확인 창으로 돌아가 다시 서명하세요.\nTxID\n{{txId}}',
+  'repair.powerupDoneBody': "{{days}}일 동안 사용할 CPU/NET 리소스를 구매했습니다. 확인 창으로 돌아가 다시 서명해 주세요.\nTxID\n{{txId}}",
   'repair.ramTitle': 'RAM 부족',
   'repair.ramBody': '이 거래에는 더 많은 온체인 저장공간(RAM)이 필요합니다. 본인 잔액으로 1KB를 구매한 뒤 확인 창으로 돌아가 다시 서명하세요.',
   'repair.ramCost': '약 {{cost}}',
@@ -270,9 +276,7 @@ const ko: Record<keyof typeof zh, string> = {
   'resource.buyForOther': '다른 계정 대신 구매',
   'resource.payForOther': '다른 계정에 대신 충전',
   'resource.receiverPlaceholder': '받는 계정',
-  'resource.estimatedTransfers': '약 {{n}}건의 송금을 지원합니다',
   'resource.estimateTooSmall': '금액이 너무 적어 사용 가능한 자원을 구매할 수 없습니다. 금액을 늘려주세요',
-  'resource.estimatedTransfersNote': '(건당 약 300μs CPU / 200바이트 NET로 추정한 값이며 참고용입니다. 실제 소모량은 온체인 실행 결과에 따릅니다)',
   'resource.powerupMarketUnavailable': 'PowerUp 시장 데이터를 아직 가져오지 못했습니다. 잠시 후 다시 시도해 주세요',
 
   'scan.title': '스캔',
@@ -804,7 +808,7 @@ const ko: Record<keyof typeof zh, string> = {
   'walletDetail.privateKey': '개인키',
   'walletDetail.revealWarning': '절대 스크린샷, 사진 촬영, 타인에게 전달하지 마세요 —— 개인키를 요구하는 사람은 모두 사기꾼입니다.',
   'walletDetail.copySecret': '개인 키 복사',
-  'walletDetail.secretCopyHint': "30초 후와 내보내기 종료 시 삭제를 시도합니다. 클립보드 기록과 동기화된 사본은 회수할 수 없습니다.",
+  'walletDetail.secretCopyHint': "복사 후 시간 제한은 없습니다. 내보내기 종료 시 또는 앱이 백그라운드로 전환될 때 삭제를 시도합니다. 클립보드 기록과 동기화된 사본은 회수할 수 없습니다.",
   'walletDetail.copiedAndClose': '기록했습니다, 닫기',
 
   'dappMore.copyLink': '링크 복사',
@@ -917,7 +921,7 @@ const ko: Record<keyof typeof zh, string> = {
   'sponsorError.notConfigured': '자원 대납 기능이 아직 열리지 않았습니다. 계정에 충분한 CPU/NET 자원이 있는지 확인한 뒤 다시 시도해 주세요.',
   'sponsorError.tooManyActions': '이 트랜잭션에 포함된 작업이 너무 많아 자원 대납이 지원되지 않습니다. 여러 트랜잭션으로 나눠 주세요.',
   'sponsorError.expired': '이 대납 거래가 만료되었습니다. 다시 확인한 후 서명해 주세요.',
-  'sponsorError.feeInsufficientBalance': '이번 대납 수수료를 지불하기에 잔액이 부족합니다. A가 충분한지 확인한 후 다시 시도해 주세요.',
+  'sponsorError.feeInsufficientBalance': "거래 금액과 수수료를 지불할 잔액이 부족합니다. 필요한 토큰을 입금한 후 다시 시도해 주세요.",
 
   'chainConfig.legacyVaulta': 'EOS 메인넷',
   'chainConfig.legacyJungle4': '테스트넷',

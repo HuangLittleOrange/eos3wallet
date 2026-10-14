@@ -1,4 +1,5 @@
 import { buildInjectedScript } from '../injected';
+import { DappAccessGuard } from '../accessGuard';
 
 // 注入脚本是"字符串里的代码",tsc 检查不到它——语法错了要到真机 WebView
 // 里才炸,而且表现是 DApp 静默连不上钱包,很难排查。这里至少把语法兜住。
@@ -95,8 +96,30 @@ function runInjected() {
     win.__auroraResolve(msg.id, ok, payload);
   };
 
-  return { win, sent, settle };
+  const clickLink = (href: string) => {
+    const event = { target: { tagName: 'A', getAttribute: () => href }, preventDefault: jest.fn(), stopPropagation: jest.fn() };
+    listeners.click.forEach((listener) => listener(event));
+    return event;
+  };
+  return { win, sent, settle, clickLink };
 }
+
+it('a clicked ESR link on a LAN HTTP page reaches native confirmation without wallet access', () => {
+  const { win, sent, clickLink } = runInjected();
+  const page = 'http://192.168.31.51:8787/';
+  const guard = new DappAccessGuard();
+  guard.navigate(page, 'wallet');
+  const click = clickLink('esr://request-payload');
+  expect(click.preventDefault).toHaveBeenCalledTimes(1);
+  expect(sent).toHaveLength(1);
+  const request = sent[0];
+  expect(request.method).toBe('esrRequest');
+  expect(request.params.uri).toBe('esr://request-payload');
+  expect(guard.accept(request.id, request.documentId, page, 'wallet', request.method)).toBe(true);
+  expect(guard.connect(request.id, 'wallet')).toBe(false);
+  win.__auroraResolve(request.id, true, true);
+  expect(win.scatter.identity).toBeNull();
+});
 
 describe('scatter-js 2.0 接口契约', () => {
   // WalletInterface.js 的 WALLET_METHODS + ALTERNATES

@@ -9,7 +9,7 @@ import { useI18n } from '../i18n';
 import { useFocusedAppContent } from '../content/useFocusedAppContent';
 import { localizedText, visibleItems } from '../content/types';
 import AppUpdateSheet from '../components/AppUpdateSheet';
-import { AppRelease, AppUpdateError, canSelfUpdate, checkForUpdate, currentAppVersion } from '../update/appUpdate';
+import { AppRelease, AppUpdateError, canCheckUpdates, checkForUpdate, currentAppVersion } from '../update/appUpdate';
 
 type Item = {
   icon: string;
@@ -17,7 +17,7 @@ type Item = {
   lib?: 'mc' | 'fa';
   id?: string;
   label?: string;
-  labelKey?: 'me.security' | 'me.linkSessions' | 'me.language' | 'me.checkUpdate';
+  labelKey?: 'me.security' | 'me.language' | 'me.checkUpdate';
   route?: string;
   url?: string;
   /** 点了不跳页、原地做事的行(目前只有检查更新) */
@@ -28,12 +28,11 @@ type Item = {
 const GROUPS: Item[][] = [
   [
     { icon: 'shield-plus-outline', labelKey: 'me.security', route: 'Security' },
-    { icon: 'link-variant', labelKey: 'me.linkSessions', route: 'LinkSessions' },
   ],
   [
     { icon: 'translate', labelKey: 'me.language', route: 'Language' },
-    // 只有安卓能在 App 里下载安装更新;iOS 的更新走 App Store,这一行不显示
-    ...(canSelfUpdate ? [{ icon: 'cellphone-arrow-down', labelKey: 'me.checkUpdate', action: 'checkUpdate' } as Item] : []),
+    // Android 可下载安装包；iOS 打开后台配置的安装或商店页面。
+    ...(canCheckUpdates ? [{ icon: 'cellphone-arrow-down', labelKey: 'me.checkUpdate', action: 'checkUpdate' } as Item] : []),
   ],
 ];
 
@@ -42,7 +41,8 @@ export default function MeScreen() {
   const nav = useNavigation<any>();
   const { t, locale } = useI18n();
   const { content } = useFocusedAppContent();
-  const links: Item[] = visibleItems(content.links).map((link) => ({
+  // 条款页面尚未上线，暂时隐藏入口，远程内容和旧缓存也不能重新显示它。
+  const links: Item[] = visibleItems(content.links).filter((link) => link.id !== 'terms').map((link) => ({
     id: link.id,
     icon: link.id === 'telegram' ? 'telegram' : link.id === 'support' ? 'lifebuoy' : 'open-in-new',
     lib: link.id === 'telegram' ? 'fa' : 'mc',

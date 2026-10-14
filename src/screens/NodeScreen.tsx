@@ -18,6 +18,7 @@ import CenterDialog from '../components/CenterDialog';
 import { colors, spacing } from '../theme';
 import { useWalletSession } from '../chain/WalletContext';
 import { CHAINS, NodeInfo, legacyLabel } from '../chain/config';
+import { useNodeCatalogRefresh } from '../chain/NodeCatalogContext';
 import { probeHistoryNode, probeNode } from '../chain/client';
 import { addCustomNode, listCustomNodes, NodeKind, removeCustomNode } from '../chain/customNodes';
 import { PRICE_SOURCES, PriceSourceId, probePriceSource } from '../chain/prices';
@@ -57,8 +58,9 @@ export default function NodeScreen() {
   const [customUrl, setCustomUrl] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const defaultRpcNodes = CHAINS[w.chainId].nodes;
-  const defaultHistoryNodes = CHAINS[w.chainId].historyNodes;
+  const refreshCatalog=useNodeCatalogRefresh();
+  const defaultRpcNodes = w.rpcNodes ?? CHAINS[w.chainId].nodes;
+  const defaultHistoryNodes = w.defaultHistoryNodes ?? CHAINS[w.chainId].historyNodes;
   const rpcNodes = [...defaultRpcNodes, ...customRpcNodes];
   const historyNodes = [...defaultHistoryNodes, ...customHistoryNodes];
 
@@ -104,12 +106,12 @@ export default function NodeScreen() {
       if (!alive) return;
       setCustomRpcNodes(rpc);
       setCustomHistoryNodes(hist);
-      runProbes([...CHAINS[w.chainId].nodes, ...rpc], [...CHAINS[w.chainId].historyNodes, ...hist]);
+      runProbes([...defaultRpcNodes, ...rpc], [...defaultHistoryNodes, ...hist]);
     })();
     return () => {
       alive = false;
     };
-  }, [w.chainId, runProbes]);
+  }, [w.chainId, defaultRpcNodes, defaultHistoryNodes, runProbes]);
 
   const openAdd = (kind: NodeKind) => {
     setCustomName('');
@@ -317,7 +319,7 @@ export default function NodeScreen() {
         <TouchableOpacity
           hitSlop={10}
           style={[styles.side, { alignItems: 'flex-end' }]}
-          onPress={() => runProbes(rpcNodes, historyNodes)}
+          onPress={() => void refreshCatalog().then(next=>{if(next[w.chainId].rpc===defaultRpcNodes&&next[w.chainId].history===defaultHistoryNodes)void runProbes(rpcNodes,historyNodes);})}
         >
           <Text style={styles.moreTxt}>{t('node.refresh')}</Text>
         </TouchableOpacity>

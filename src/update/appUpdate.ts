@@ -4,7 +4,7 @@
 // 管理后台维护:
 //   GET {EOS3_BASE_URL}/api/app-update/check?platform=android&versionCode=<当前>
 //   → { updateAvailable: boolean, release: AppRelease | null }
-// 只支持安卓:iOS 不能侧载安装包,更新只能走 App Store,后端也直接回 400。
+// Android 下载 APK；iOS 读取同一版本目录并打开 HTTPS 安装或商店页面。
 //
 // 版本比较用 versionCode(整数,每次出包必须递增,见 app.json 的
 // expo.android.versionCode),不用 versionName 字符串——"1.10.0" 和 "1.9.0"
@@ -20,6 +20,7 @@ import { fetchWithTimeout } from '../net/fetchRetry';
 
 export type AppRelease = {
   id: string;
+  platform?: 'android' | 'ios';
   versionName: string;
   versionCode: number;
   title: string;
@@ -42,6 +43,7 @@ export function currentVersionCode(): number {
 
 /** 这个平台能不能在 App 里直接下载安装更新 */
 export const canSelfUpdate = Platform.OS === 'android';
+export const canCheckUpdates = canSelfUpdate || Platform.OS === 'ios';
 
 export class AppUpdateError extends Error {
   constructor(public readonly code: 'network' | 'server' | 'insecure-url' | 'download' | 'install') {
@@ -51,8 +53,8 @@ export class AppUpdateError extends Error {
 
 /** 有比当前更新的版本就返回它,否则返回 null */
 export async function checkForUpdate(): Promise<AppRelease | null> {
-  if (!canSelfUpdate) return null;
-  const url = `${EOS3_BASE_URL}/api/app-update/check?platform=android&versionCode=${currentVersionCode()}`;
+  if (!canCheckUpdates) return null;
+  const url = `${EOS3_BASE_URL}/api/app-update/check?platform=${Platform.OS}&versionCode=${currentVersionCode()}`;
 
   let res: Response;
   try {
@@ -70,6 +72,7 @@ export async function checkForUpdate(): Promise<AppRelease | null> {
 
   // 安装包只从 https 下载。安卓装更新时会校验签名和已装的是否一致,被篡改的包装不上,
   // 但明文下载仍然可能被中途换成别的东西、白白让用户下一个装不了的包
+  if (release.platform && release.platform !== Platform.OS) throw new AppUpdateError('server');
   if (!/^https:\/\//i.test(release.apkUrl ?? '')) throw new AppUpdateError('insecure-url');
   return release;
 }

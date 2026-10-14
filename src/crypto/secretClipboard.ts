@@ -10,7 +10,6 @@ export class SecretClipboard {
   private value: string | null = null;
   private generation = 0;
   private queue: Promise<unknown> = Promise.resolve();
-  private timer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(private clipboard: Clipboard) {}
 
@@ -37,16 +36,12 @@ export class SecretClipboard {
         await this.clearOwnedValue();
         return false;
       }
-      if (this.timer) clearTimeout(this.timer);
-      this.timer = setTimeout(() => { void this.clear(); }, 30_000);
       return true;
     });
   }
 
   clear(): Promise<void> {
     this.generation++;
-    if (this.timer) clearTimeout(this.timer);
-    this.timer = undefined;
     return this.enqueue(() => this.clearOwnedValue());
   }
 

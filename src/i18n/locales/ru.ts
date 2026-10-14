@@ -1,6 +1,11 @@
 import type zh from './zh';
 
 const ru: Record<keyof typeof zh, string> = {
+  'chainError.noTokenBalance': "На счёте нет токена, необходимого для этой транзакции. Пополните баланс этого токена и повторите попытку.",
+  'chainError.authorization': "У кошелька нет прав для этой транзакции. Выберите кошелёк с необходимыми правами.",
+  'chainError.expired': "Срок действия транзакции истёк. Проверьте её и подпишите снова.",
+  'chainError.rejected': "Сеть отклонила транзакцию. Проверьте её содержимое и повторите попытку.",
+  'resource.powerupUsage': "Ресурсы действуют {{days}} дн. Число переводов зависит от фактического расхода и нагрузки сети.",
   'dappBrowser.connectTitle': "Подключить кошелёк",
   'dappBrowser.connectBody': "{{origin}} запрашивает доступ к аккаунту {{account}} и его открытому ключу. Подключение не разрешает переводы: каждую подпись нужно подтвердить.",
   'dappBrowser.connectAllow': "Разрешить подключение",
@@ -18,6 +23,8 @@ const ru: Record<keyof typeof zh, string> = {
   'me.linkSessions': 'Подключённые DApp',
   'me.telegram': 'Группа в Telegram',
   'me.checkUpdate': 'Обновление',
+  'update.openDownload': 'Открыть страницу загрузки',
+  'update.openFailed': 'Не удалось открыть страницу загрузки. Повторите попытку.',
   'update.title': 'Доступна новая версия',
   'update.upToDateTitle': 'У вас последняя версия',
   'update.upToDateBody': 'Текущая версия v{{version}}',
@@ -112,7 +119,6 @@ const ru: Record<keyof typeof zh, string> = {
   'repair.cpuNetTitle': 'Недостаточно ресурсов',
   'repair.cpuNetBody': 'На счёте недостаточно CPU/NET для отправки этой транзакции. Купите PowerUp (ресурсы на 1 день) со своего баланса, затем вернитесь к окну подтверждения и подпишите ещё раз. CPU для самой покупки оплачивает Sponsor, за это взимается небольшая комиссия.',
   'repair.amountLabel': 'Сумма покупки',
-  'repair.estimate': 'Примерно {{n}} переводов',
   'repair.quoting': 'Получаем расчёт…',
   'repair.powerupLine': 'PowerUp',
   'repair.feeLine': 'Комиссия спонсора',
@@ -122,7 +128,7 @@ const ru: Record<keyof typeof zh, string> = {
   'repair.buyPowerup': 'Купить и пополнить',
   'repair.feeChanged': 'Комиссия спонсора изменилась на {{fee}} — проверьте и нажмите ещё раз',
   'repair.powerupDoneTitle': 'Ресурсы пополнены',
-  'repair.powerupDoneBody': 'Куплены ресурсы примерно на {{n}} переводов. Вернитесь к окну подтверждения и подпишите ещё раз.\nTxID\n{{txId}}',
+  'repair.powerupDoneBody': "Ресурсы CPU/NET куплены на {{days}} дн. Вернитесь к окну подтверждения и подпишите снова.\nTxID\n{{txId}}",
   'repair.ramTitle': 'Недостаточно RAM',
   'repair.ramBody': 'Для этой транзакции нужно больше хранилища в сети (RAM). Купите 1 КБ со своего баланса, затем вернитесь к окну подтверждения и подпишите ещё раз.',
   'repair.ramCost': 'Около {{cost}}',
@@ -270,9 +276,7 @@ const ru: Record<keyof typeof zh, string> = {
   'resource.buyForOther': 'Купить для другого аккаунта',
   'resource.payForOther': 'Пополнить ресурсы для другого аккаунта',
   'resource.receiverPlaceholder': 'Аккаунт-получатель',
-  'resource.estimatedTransfers': 'Хватит примерно на {{n}} переводов',
   'resource.estimateTooSmall': 'Сумма слишком мала для покупки доступных ресурсов — увеличьте сумму',
-  'resource.estimatedTransfersNote': '(Оценка исходя из ~300 мкс CPU / 200 байт NET на перевод — только для справки, фактический расход зависит от исполнения в сети)',
   'resource.powerupMarketUnavailable': 'Данные рынка PowerUp ещё не загружены — попробуйте снова через некоторое время',
 
   'scan.title': 'Сканировать',
@@ -804,7 +808,7 @@ const ru: Record<keyof typeof zh, string> = {
   'walletDetail.privateKey': 'Закрытый ключ',
   'walletDetail.revealWarning': 'Никогда не делайте скриншот, фото или не отправляйте это кому-либо — любой, кто просит закрытый ключ, мошенник.',
   'walletDetail.copySecret': 'Скопировать приватный ключ',
-  'walletDetail.secretCopyHint': "Очистка выполняется по возможности через 30 секунд и при выходе из экспорта. Историю и синхронизированные копии отозвать нельзя.",
+  'walletDetail.secretCopyHint': "После копирования ограничения по времени нет. Очистка выполняется по возможности при выходе из экспорта или переходе приложения в фоновый режим. Историю и синхронизированные копии отозвать нельзя.",
   'walletDetail.copiedAndClose': 'Я записал(а), закрыть',
 
   'dappMore.copyLink': 'Скопировать ссылку',
@@ -917,7 +921,7 @@ const ru: Record<keyof typeof zh, string> = {
   'sponsorError.notConfigured': 'Функция спонсорства ресурсов пока недоступна — убедитесь, что у аккаунта достаточно собственных CPU/NET, и попробуйте снова.',
   'sponsorError.tooManyActions': 'В этой транзакции слишком много действий для спонсорства ресурсов — разбейте её на несколько транзакций.',
   'sponsorError.expired': 'Срок действия этой спонсируемой транзакции истёк — подтвердите ещё раз перед подписанием.',
-  'sponsorError.feeInsufficientBalance': 'Недостаточно средств для оплаты этой комиссии за спонсорство — убедитесь, что у вас достаточно A, и повторите попытку.',
+  'sponsorError.feeInsufficientBalance': "Баланса недостаточно для суммы транзакции и комиссий. Пополните баланс нужного токена и повторите попытку.",
 
   'chainConfig.legacyVaulta': 'Основная сеть EOS',
   'chainConfig.legacyJungle4': 'Тестовая сеть',

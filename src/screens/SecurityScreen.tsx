@@ -25,10 +25,9 @@ import {
   disableBiometric,
   enableBiometric,
   hasMasterPassword,
-  StoredWallet,
   WrongPasswordError,
 } from '../crypto/vault';
-import { useI18n, TranslationKey } from '../i18n';
+import { useI18n } from '../i18n';
 
 const BLUE = '#1E88FF';
 
@@ -197,15 +196,6 @@ export default function SecurityScreen() {
           />
         </View>
 
-        {/* 当前账户 */}
-        <View style={styles.card}>
-          <Row label={t('security.currentAccount')} value={w.account} />
-          <View style={styles.sep} />
-          <Row label={t('security.keySource')} value={wallet ? sourceLabel(wallet.source, t) : t('security.notImported')} />
-          <View style={styles.sep} />
-          <Row label={t('security.localWalletCount')} value={String(w.wallets.length)} />
-        </View>
-
         <View style={{ flex: 1 }} />
       </ScrollView>
 
@@ -252,19 +242,6 @@ export default function SecurityScreen() {
       </CenterDialog>
     </View>
   );
-}
-
-function sourceLabel(source: StoredWallet['source'], t: (key: TranslationKey) => string): string {
-  switch (source) {
-    case 'mnemonic':
-      return t('walletList.mnemonic');
-    case 'privatekey':
-      return t('walletList.privateKey');
-    case 'watch':
-      return t('security.watchOnly');
-    case 'passkey':
-      return t('security.passkeySource');
-  }
 }
 
 function Row({ label, value }: { label: string; value: string }) {

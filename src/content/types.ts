@@ -4,9 +4,6 @@ export type LocalizedText = Partial<Record<LocaleId, string>>;
 
 export type ContentItem = { id: string; enabled: boolean; sortOrder: number };
 export type ContentBanner = ContentItem & {
-  title: LocalizedText;
-  lines: LocalizedText[];
-  colors: [string, string];
   imageUrl?: string;
   url?: string;
 };
@@ -38,6 +35,7 @@ export type AppContent = {
   intro: { title: LocalizedText; subtitle: LocalizedText } | null;
   banners: ContentBanner[];
   promos: ContentPromo[];
+  earnEnabled?: boolean;
   earnTitle: LocalizedText;
   earnDescription: LocalizedText;
   earnItems: ContentEarnItem[];

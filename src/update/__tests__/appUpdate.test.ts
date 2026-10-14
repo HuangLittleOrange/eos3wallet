@@ -1,3 +1,4 @@
+jest.mock('react-native', () => ({Platform: {OS: 'android'}}));
 // 版本检查:按 versionCode 比新旧、只接受 https 的安装包地址、网络和服务端
 // 出错各给一个可区分的错误码。接口是 eospasskey go-api 的
 // GET /api/app-update/check,响应形状 { updateAvailable, release }。
@@ -38,6 +39,14 @@ function mockFetch(impl: () => Promise<any>) {
 const ok = (body: unknown) => Promise.resolve({ ok: true, status: 200, json: async () => body });
 
 describe('checkForUpdate', () => {
+  it('iOS 按 iOS 版本目录检查 HTTPS 安装或商店链接', async () => {
+    let mod!: Mod;
+    jest.isolateModules(() => { require('react-native').Platform.OS = 'ios'; mod = require('../appUpdate'); });
+    const f = mockFetch(() => ok({ updateAvailable: true, release: release({platform:'ios',apkUrl:'https://apps.apple.com/app/example'}) }));
+    await expect(mod.checkForUpdate()).resolves.toMatchObject({platform:'ios'});
+    expect(String(f.mock.calls[0][0])).toContain('platform=ios&versionCode=3');
+    expect(mod.canSelfUpdate).toBe(false);
+  });
   it('带上当前的 versionCode 去问后端', async () => {
     const f = mockFetch(() => ok({ updateAvailable: false, release: null }));
     await loadAndroid().checkForUpdate();

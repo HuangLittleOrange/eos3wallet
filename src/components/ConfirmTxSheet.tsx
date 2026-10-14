@@ -15,6 +15,7 @@ import BottomSheet from './BottomSheet';
 import CenterDialog from './CenterDialog';
 import { colors, spacing } from '../theme';
 import { ActionSpec } from '../chain/transact';
+import { friendlyChainErrorMessage } from '../chain/sponsor';
 import { biometricEnabled } from '../crypto/vault';
 import { useI18n } from '../i18n';
 
@@ -75,6 +76,7 @@ export default function ConfirmTxSheet({
   const { t } = useI18n();
   // 广播中锁住所有签名入口(生物识别快捷键、passkey/普通签名按钮、密码校验)
   const locked = busy;
+  const errorMessage = error ? friendlyChainErrorMessage(error) : null;
   const authorizations = [...new Set(actions.flatMap((action) =>
     (action.authorization ?? [{ actor, permission: permission ?? 'active' }]).map((auth) => `${auth.actor}@${auth.permission}`)))];
   const usesOwner = permission === 'owner' || authorizations.some((auth) => auth.endsWith('@owner'));
@@ -137,9 +139,11 @@ export default function ConfirmTxSheet({
 
         <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 12 }}>
 
-          <View style={[styles.netBar, testnet ? styles.netTest : styles.netMain]}>
-            <Text style={styles.netTxt}>{chainName}{testnet ? ` · ${t('wallet.testnet')}` : ''}</Text>
-          </View>
+          {testnet ? (
+            <View style={[styles.netBar, styles.netTest]}>
+              <Text style={styles.netTxt}>{chainName} · {t('wallet.testnet')}</Text>
+            </View>
+          ) : null}
 
           {/* 是谁在要这个签名——注入通道/iframe 里的第三方内容都能发起请求,
               不把来源亮出来,用户没法区分"主站要的"还是"页面里嵌的广告要的" */}
@@ -229,7 +233,7 @@ export default function ConfirmTxSheet({
           {error && !pwdModal ? (
             <View style={styles.errBox}>
               <Ionicons name="alert-circle-outline" size={16} color="#F0644E" />
-              <Text style={styles.errTxt}>{error}</Text>
+              <Text style={styles.errTxt}>{errorMessage}</Text>
             </View>
           ) : null}
         </ScrollView>
@@ -287,7 +291,7 @@ export default function ConfirmTxSheet({
           {error ? (
             <View style={[styles.errBox, { marginTop: 0, marginBottom: 14 }]}>
               <Ionicons name="alert-circle-outline" size={16} color="#F0644E" />
-              <Text style={styles.errTxt}>{error}</Text>
+              <Text style={styles.errTxt}>{errorMessage}</Text>
             </View>
           ) : null}
           <TouchableOpacity
@@ -317,7 +321,6 @@ const styles = StyleSheet.create({
 
   netBar: { flexDirection: 'row', alignItems: 'center', gap: 7, borderRadius: 8, padding: 12, marginBottom: 12 },
   netTest: { backgroundColor: '#E0F2FE' },
-  netMain: { backgroundColor: '#FEF3C7' },
   netTxt: { fontSize: 13.5, fontWeight: '600' },
 
   sponsorBar: {

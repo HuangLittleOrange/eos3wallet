@@ -20,6 +20,9 @@ import { recordLinkSession } from './linkSessions';
 import { t } from '../i18n';
 import { preflightDappResources } from './resourcePreflight';
 import { assertVisibleTransaction, decodeVisibleAction } from '../chain/transactionSafety';
+import { normalizeEsr } from './esr-links';
+
+export { isEsrLink, normalizeEsr } from './esr-links';
 
 /**
  * SigningRequest 需要一个 zlib 实现来解压缩紧凑编码的请求。
@@ -75,34 +78,6 @@ export function esrCallbackOrigin(callback: string): string | undefined {
     if (url.protocol === 'https:' && !url.username && !url.password && !/[{}]/.test(url.origin)) return url.origin;
   } catch {}
   throw new Error(t('esrError.unrecognizedLink'));
-}
-
-/**
- * 这个链接是不是签名请求。
- * eosio: 前缀只有 `eosio://link`(anchor-link 的旧传输格式)才算——不能一刀切
- * 匹配整个 eosio: scheme,不然本钱包旧版收款码 `eosio:账户名?amount=…` 会被
- * 当成签名请求吞掉,扫出来变成"无法解析"而不是回填转账(单测里有这条回归)。
- */
-export function isEsrLink(url: string): boolean {
-  const u = url.trim();
-  return /^(esr:|anchor:)/i.test(u) || /^eosio:\/\/link/i.test(u);
-}
-
-/**
- * 把各种形态的链接归一成 esr: URI。
- * anchor-link 的按钮会导航到 `anchor://link?...`,负载在 query 里。
- */
-export function normalizeEsr(url: string): string | null {
-  const u = url.trim();
-  if (/^esr:/i.test(u)) return u;
-
-  // anchor://link?<payload> 或 anchor://link/<payload>
-  const m = u.match(/^(?:anchor|eosio):\/\/link[/?]?(.*)$/i);
-  if (m && m[1]) {
-    const payload = m[1].replace(/^\?/, '');
-    return `esr://${payload}`;
-  }
-  return null;
 }
 
 /** 解析请求,填入本钱包账户 */

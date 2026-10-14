@@ -16,7 +16,8 @@
       "autoIncrement": true,
       "distribution": "internal",
       "ios": {
-        "credentialsSource": "local"
+        "credentialsSource": "local",
+        "config": "ios-locked.yml"
       }
     },
     "apk": {

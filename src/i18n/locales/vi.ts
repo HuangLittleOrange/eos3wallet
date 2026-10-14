@@ -1,6 +1,11 @@
 import type zh from './zh';
 
 const vi: Record<keyof typeof zh, string> = {
+  'chainError.noTokenBalance': "Tài khoản không có số dư token cần cho giao dịch này. Hãy nạp token đó rồi thử lại.",
+  'chainError.authorization': "Ví này không có quyền thực hiện giao dịch. Hãy chuyển sang ví có quyền cần thiết.",
+  'chainError.expired': "Giao dịch đã hết hạn. Hãy kiểm tra và ký lại.",
+  'chainError.rejected': "Mạng đã từ chối giao dịch. Hãy kiểm tra nội dung rồi thử lại.",
+  'resource.powerupUsage': "Tài nguyên có hiệu lực {{days}} ngày. Số lần chuyển phụ thuộc vào mức sử dụng thực tế và tải mạng.",
   'dappBrowser.connectTitle': "Kết nối ví",
   'dappBrowser.connectBody': "{{origin}} yêu cầu truy cập tài khoản {{account}} và khóa công khai. Kết nối không cho phép chuyển tiền; mỗi chữ ký vẫn cần xác nhận.",
   'dappBrowser.connectAllow': "Cho phép kết nối",
@@ -18,6 +23,8 @@ const vi: Record<keyof typeof zh, string> = {
   'me.linkSessions': 'DApp đã kết nối',
   'me.telegram': 'Nhóm Telegram',
   'me.checkUpdate': 'Cập nhật phiên bản',
+  'update.openDownload': 'Mở trang tải xuống',
+  'update.openFailed': 'Không thể mở trang tải xuống. Vui lòng thử lại.',
   'update.title': 'Có phiên bản mới',
   'update.upToDateTitle': 'Bạn đang dùng bản mới nhất',
   'update.upToDateBody': 'Phiên bản hiện tại v{{version}}',
@@ -112,7 +119,6 @@ const vi: Record<keyof typeof zh, string> = {
   'repair.cpuNetTitle': 'Không đủ tài nguyên',
   'repair.cpuNetBody': 'Tài khoản không đủ CPU/NET để phát giao dịch này. Hãy dùng số dư của bạn mua PowerUp (tài nguyên 1 ngày), sau đó quay lại cửa sổ xác nhận và ký lại. Giao dịch mua được Sponsor ứng CPU và thu một khoản phí tài trợ nhỏ.',
   'repair.amountLabel': 'Số tiền mua',
-  'repair.estimate': 'Khoảng {{n}} lần chuyển',
   'repair.quoting': 'Đang lấy báo giá…',
   'repair.powerupLine': 'PowerUp',
   'repair.feeLine': 'Phí tài trợ',
@@ -122,7 +128,7 @@ const vi: Record<keyof typeof zh, string> = {
   'repair.buyPowerup': 'Mua và nạp',
   'repair.feeChanged': 'Phí tài trợ đã đổi thành {{fee}}, hãy kiểm tra rồi bấm lại',
   'repair.powerupDoneTitle': 'Đã nạp tài nguyên',
-  'repair.powerupDoneBody': 'Đã mua tài nguyên cho khoảng {{n}} lần chuyển. Hãy quay lại cửa sổ xác nhận và ký lại.\nTxID\n{{txId}}',
+  'repair.powerupDoneBody': "Đã mua tài nguyên CPU/NET có hiệu lực {{days}} ngày. Quay lại cửa sổ xác nhận và ký lại.\nTxID\n{{txId}}",
   'repair.ramTitle': 'Không đủ RAM',
   'repair.ramBody': 'Giao dịch này cần thêm bộ nhớ trên chuỗi (RAM). Hãy dùng số dư của bạn mua 1KB rồi quay lại cửa sổ xác nhận và ký lại.',
   'repair.ramCost': 'Khoảng {{cost}}',
@@ -270,9 +276,7 @@ const vi: Record<keyof typeof zh, string> = {
   'resource.buyForOther': 'Mua hộ tài khoản khác',
   'resource.payForOther': 'Thuê hộ tài khoản khác',
   'resource.receiverPlaceholder': 'Tài khoản nhận',
-  'resource.estimatedTransfers': 'Đủ cho khoảng {{n}} lượt chuyển',
   'resource.estimateTooSmall': 'Số tiền quá nhỏ để mua tài nguyên khả dụng — hãy tăng số tiền',
-  'resource.estimatedTransfersNote': '(Ước tính khoảng 300μs CPU / 200 byte NET mỗi lượt chuyển — chỉ mang tính tham khảo, mức tiêu thụ thực tế tùy theo quá trình thực thi trên chuỗi)',
   'resource.powerupMarketUnavailable': 'Chưa lấy được dữ liệu thị trường PowerUp — vui lòng thử lại sau',
 
   'scan.title': 'Quét',
@@ -804,7 +808,7 @@ const vi: Record<keyof typeof zh, string> = {
   'walletDetail.privateKey': 'Khóa riêng',
   'walletDetail.revealWarning': 'Không chụp màn hình, chụp ảnh hay gửi cho bất kỳ ai —— ai hỏi xin khóa riêng đều là lừa đảo.',
   'walletDetail.copySecret': 'Sao chép khóa riêng tư',
-  'walletDetail.secretCopyHint': "Ứng dụng cố xóa sau 30 giây và khi thoát xuất khóa. Không thể thu hồi lịch sử hay bản sao đã đồng bộ.",
+  'walletDetail.secretCopyHint': "Không giới hạn thời gian sau khi sao chép. Ứng dụng cố xóa khi thoát xuất khóa hoặc chuyển sang nền. Không thể thu hồi lịch sử hay bản sao đã đồng bộ.",
   'walletDetail.copiedAndClose': 'Tôi đã ghi lại, đóng',
 
   'dappMore.copyLink': 'Sao chép liên kết',
@@ -917,7 +921,7 @@ const vi: Record<keyof typeof zh, string> = {
   'sponsorError.notConfigured': 'Tính năng tài trợ tài nguyên chưa được mở, vui lòng đảm bảo tài khoản có đủ CPU/NET riêng rồi thử lại.',
   'sponsorError.tooManyActions': 'Giao dịch này chứa quá nhiều thao tác, tài trợ tài nguyên không hỗ trợ, vui lòng chia thành nhiều giao dịch.',
   'sponsorError.expired': 'Giao dịch tài trợ này đã hết hạn, vui lòng xác nhận lại trước khi ký.',
-  'sponsorError.feeInsufficientBalance': 'Số dư không đủ để trả phí tài trợ lần này, vui lòng đảm bảo có đủ A rồi thử lại.',
+  'sponsorError.feeInsufficientBalance': "Số dư không đủ để thanh toán giao dịch và phí. Hãy nạp token cần thiết rồi thử lại.",
 
   'chainConfig.legacyVaulta': 'Mainnet EOS',
   'chainConfig.legacyJungle4': 'Testnet',

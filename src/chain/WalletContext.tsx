@@ -1,6 +1,8 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { AppState } from 'react-native';
 import { CHAINS, ChainId, DEFAULT_CHAIN, NodeInfo } from './config';
+import { useNodeCatalog } from './NodeCatalogContext';
+import { BUILTIN_NODE_CATALOG, NodeCatalog } from './nodeCatalog';
 import { AccountResources, ChainAction, ChainClient, probeNode, TokenBalance } from './client';
 import { listCustomNodes, NodeKind } from './customNodes';
 import { listWallets, signingPermission, StoredWallet, WalletReadError } from '../crypto/vault';
@@ -17,9 +19,9 @@ type Status = 'idle' | 'loading' | 'ready' | 'error';
 const MAX_FAILOVER_ROUNDS = 2;
 
 /** 按 id 找一个节点,默认节点列表里没有就去自定义节点里找——恢复上次会话/自动切换都要用 */
-async function resolveNode(chainId: ChainId, kind: NodeKind, id: string | undefined): Promise<NodeInfo | null> {
+async function resolveNode(chainId: ChainId, kind: NodeKind, id: string | undefined, catalog: NodeCatalog = BUILTIN_NODE_CATALOG): Promise<NodeInfo | null> {
   if (!id) return null;
-  const defaults = kind === 'rpc' ? CHAINS[chainId].nodes : CHAINS[chainId].historyNodes;
+  const defaults = catalog[chainId][kind];
   const found = defaults.find((n) => n.id === id);
   if (found) return found;
   const customs = await listCustomNodes(chainId, kind).catch(() => []);
@@ -35,6 +37,8 @@ async function resolveNode(chainId: ChainId, kind: NodeKind, id: string | undefi
  */
 type WalletSessionState = {
   chainId: ChainId;
+  rpcNodes: NodeInfo[];
+  defaultHistoryNodes: NodeInfo[];
   node: NodeInfo;
   /** 历史节点(Hyperion)——和 node 各自独立选择,切 RPC 节点不会带着它一起变 */
   historyNode: NodeInfo;
@@ -114,9 +118,12 @@ const SessionCtx = createContext<WalletSessionState | null>(null);
 const LiveCtx = createContext<WalletLiveState | null>(null);
 
 export function WalletProvider({ children }: { children: React.ReactNode }) {
+  const catalog=useNodeCatalog();
+  const catalogRef=useRef(catalog);catalogRef.current=catalog;
+  const previousCatalog=useRef(catalog);
   const [chainId, setChainId] = useState<ChainId>(DEFAULT_CHAIN);
-  const [node, setNodeState] = useState<NodeInfo>(CHAINS[DEFAULT_CHAIN].nodes[0]);
-  const [historyNode, setHistoryNodeState] = useState<NodeInfo>(CHAINS[DEFAULT_CHAIN].historyNodes[0]);
+  const [node, setNodeState] = useState<NodeInfo>(catalogRef.current[DEFAULT_CHAIN].rpc[0]);
+  const [historyNode, setHistoryNodeState] = useState<NodeInfo>(catalogRef.current[DEFAULT_CHAIN].history[0]);
   const [account, setAccountState] = useState('');
   // 显式选中的具体那条 StoredWallet(而不只是账户名)——同一账户存着多把钥匙时,
   // 靠这个记住"当前是拿哪把在签",不设置就退回 currentWallet 的默认挑选逻辑
@@ -222,6 +229,17 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     [chainId, account, walletId, node, persistSession]
   );
 
+  useEffect(()=>{
+    if(!bootReady)return;
+    const previous=previousCatalog.current[chainId];
+    const next=catalog[chainId];
+    const rpc=next.rpc.find(n=>n.id===node.id)??(previous.rpc.some(n=>n.id===node.id)?next.rpc[0]:node);
+    const history=next.history.find(n=>n.id===historyNode.id)??(previous.history.some(n=>n.id===historyNode.id)?next.history[0]:historyNode);
+    const changed=rpc.url!==node.url||rpc.id!==node.id||rpc.name!==node.name||history.url!==historyNode.url||history.id!==historyNode.id||history.name!==historyNode.name;
+    if(changed){setNodeState(rpc);setHistoryNodeState(history);persistSession({chainId,account,walletId,nodeId:rpc.id,historyNodeId:history.id});}
+    previousCatalog.current=catalog;
+  },[catalog,bootReady,chainId,node,historyNode,account,walletId,persistSession]);
+
   const reloadWallets = useCallback(async () => {
     let loaded: StoredWallet[] = [];
     let readFailed = false;
@@ -264,11 +282,11 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           // 节点也要恢复成上次用的那个(可能是自定义节点)——不然每次冷启动
           // 都退回默认列表第一个,等于用户手动挑、测速选的节点白选了
           const [restoredNode, restoredHistoryNode] = await Promise.all([
-            resolveNode(session.chainId, 'rpc', session.nodeId),
-            resolveNode(session.chainId, 'history', session.historyNodeId),
+            resolveNode(session.chainId, 'rpc', session.nodeId, catalogRef.current),
+            resolveNode(session.chainId, 'history', session.historyNodeId, catalogRef.current),
           ]);
-          setNodeState(restoredNode ?? CHAINS[session.chainId].nodes[0]);
-          setHistoryNodeState(restoredHistoryNode ?? CHAINS[session.chainId].historyNodes[0]);
+          setNodeState(restoredNode ?? catalogRef.current[session.chainId].rpc[0]);
+          setHistoryNodeState(restoredHistoryNode ?? catalogRef.current[session.chainId].history[0]);
           const selected = readFailed && session.hasAccount === true
             ? { account: session.account, walletId: session.walletId }
             : pickChainAccount(session.chainId, chainAccountsRef.current[session.chainId], loaded);
@@ -277,8 +295,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           if (!readFailed) persistSession({
             chainId: session.chainId,
             ...selected,
-            nodeId: restoredNode?.id ?? CHAINS[session.chainId].nodes[0].id,
-            historyNodeId: restoredHistoryNode?.id ?? CHAINS[session.chainId].historyNodes[0].id,
+            nodeId: restoredNode?.id ?? catalogRef.current[session.chainId].rpc[0].id,
+            historyNodeId: restoredHistoryNode?.id ?? catalogRef.current[session.chainId].history[0].id,
           });
         } else if (loaded.length > 0) {
           // 还没存过 session(比如这个功能上线前就已经导入过钱包),
@@ -287,12 +305,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           setWalletIdState(loaded[0].id);
           const restoredChain = loaded[0].chainId ?? DEFAULT_CHAIN;
           setChainId(restoredChain);
-          setNodeState(CHAINS[restoredChain].nodes[0]);
-          setHistoryNodeState(CHAINS[restoredChain].historyNodes[0]);
+          setNodeState(catalogRef.current[restoredChain].rpc[0]);
+          setHistoryNodeState(catalogRef.current[restoredChain].history[0]);
           persistSession({
             chainId: restoredChain, account: loaded[0].account, walletId: loaded[0].id,
-            nodeId: CHAINS[restoredChain].nodes[0].id,
-            historyNodeId: CHAINS[restoredChain].historyNodes[0].id,
+            nodeId: catalogRef.current[restoredChain].rpc[0].id,
+            historyNodeId: catalogRef.current[restoredChain].history[0].id,
           });
         }
       } else if (!readFailed) {
@@ -464,7 +482,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         // 切节点会换出一个新 client,下面那个依赖 refresh 的 useEffect 会
         // 自动用新节点重新刷新一遍,这里不用手动重试。
         const customs = await listCustomNodes(chainId, 'rpc').catch(() => []);
-        const candidates = [...CHAINS[chainId].nodes, ...customs].filter((n) => n.id !== client.node.id);
+        const candidates = [...catalogRef.current[chainId].rpc, ...customs].filter((n) => n.id !== client.node.id);
         const probed = await Promise.all(candidates.map(async (n) => ({ n, r: await probeNode(n) })));
         if (stale()) return;
 
@@ -512,8 +530,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       );
 
       setChainId(id);
-      const nextNode = CHAINS[id].nodes[0];
-      const nextHistoryNode = CHAINS[id].historyNodes[0];
+      const nextNode = catalogRef.current[id].rpc[0];
+      const nextHistoryNode = catalogRef.current[id].history[0];
       setNodeState(nextNode);
       setHistoryNodeState(nextHistoryNode);
       setAccountState(nextAccount);
@@ -595,6 +613,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const sessionValue: WalletSessionState = useMemo(
     () => ({
       chainId,
+      rpcNodes:catalog[chainId].rpc,
+      defaultHistoryNodes:catalog[chainId].history,
       node,
       historyNode,
       account,
@@ -618,6 +638,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       refresh,
     }),
     [
+      catalog,
       chainId,
       node,
       historyNode,

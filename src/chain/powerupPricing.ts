@@ -51,11 +51,12 @@ export type PowerupMarket = {
 export const POWERUP_FRAC = 1_000_000_000_000_000;
 
 /**
- * "一笔普通转账大概花多少 CPU/NET"——用来把「预算多少钱」换算成「够转几笔」。
- * 不是拍脑袋:抽样了 2026-08-27 主网上一笔真实的单 action eosio.token::transfer
+ * CPU/NET 的预算分配比例,来自一笔小型转账样本。
+ * 抽样了 2026-08-27 主网上一笔真实的单 action eosio.token::transfer
  * (0.0100 EOS、6 位数字 memo)的链上实际计费,cpu_usage_us=232、
  * net_usage_words=17(136 字节),这里在其上留了一点余量,覆盖稍长的 memo/
- * 收款账户名差异。终究是估算,UI 上必须标"约"、"仅供参考"。
+ * 收款账户名差异。这仅用于分配购买权重,不能当作可完成的转账笔数:
+ * 合约执行、通知、账户已用资源和网络负载都会影响实际可用次数。
  */
 export const ASSUMED_TRANSFER_CPU_US = 300;
 export const ASSUMED_TRANSFER_NET_BYTES = 200;
@@ -184,8 +185,9 @@ export function estimateTransfersForBudget(
 export const POWERUP_QUOTE_SAFETY = 0.97;
 
 /**
- * 「花 payment 个系统代币买 PowerUp,大概够几笔普通转账」——资源页的 PowerUp
- * 表单和资源修复弹窗共用。市场数据缺失或金额不正时返回 null。
+ * 按预算购买的资源组合单位数,资源页和修复弹窗共用。
+ * 单位按上述样本比例分配 CPU/NET,不代表实际可转账次数,不能直接在 UI 展示。
+ * 市场数据缺失或金额不正时返回 null。
  */
 export function estimateTransfersForPayment(market: PowerupMarket, payment: number, precision: number): number | null {
   const weights = perTransferResourceWeights(market);

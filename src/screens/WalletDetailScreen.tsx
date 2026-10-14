@@ -69,9 +69,8 @@ export default function WalletDetailScreen() {
   const secretClipboard = useRef<SecretClipboard | null>(null);
   if (!secretClipboard.current) secretClipboard.current = new SecretClipboard(Clipboard);
 
-  // 私钥不能一直躺在系统剪贴板里等着被别的 App/云同步剪贴板捡走——
-  // 复制后 30 秒自动清空,但只清"还是我们刚才写进去那份"的情况,
-  // 不会误删用户这段时间里自己又复制的别的内容。
+  // 复制后不限时;退出导出或进入后台时只清理我们写入的那份内容,
+  // 不会误删用户后来复制的其他内容。
   const writeSecretClipboard = async () => {
     if (!secret || !exportOpen.current || revealedRef.current !== secret || AppState.currentState !== 'active') return;
     const justCopied = secret;

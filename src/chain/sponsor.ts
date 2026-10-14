@@ -154,7 +154,7 @@ function toSponsorActions(actions: ActionSpec[], actor: string, permission: stri
 /** 把节点/Sponsor 服务返回的英文报错,翻译成用户看得懂、知道该怎么办的提示 */
 export function friendlyChainErrorMessage(err: unknown): string {
   const message = String((err as any)?.message ?? err ?? '');
-  const lower = message.toLowerCase();
+  const lower = resourceErrorText(err);
   if (isRamExhaustedError(err)) {
     return t('sponsorError.ramInsufficient');
   }
@@ -167,6 +167,9 @@ export function friendlyChainErrorMessage(err: unknown): string {
   if (isSponsorIntentExpiredError(err)) {
     return t('sponsorError.expired');
   }
+  if (lower.includes('no balance object found')) {
+    return t('chainError.noTokenBalance');
+  }
   if (lower.includes('overdrawn balance') || lower.includes('insufficient balance')) {
     return t('sponsorError.feeInsufficientBalance');
   }
@@ -175,6 +178,20 @@ export function friendlyChainErrorMessage(err: unknown): string {
   }
   if (lower.includes('invalid project credentials')) {
     return t('sponsorError.notConfigured');
+  }
+  if (lower.includes('missing required authority') || lower.includes('unsatisfied_authorization') ||
+      lower.includes('provided keys, permissions, and delays do not satisfy')) {
+    return t('chainError.authorization');
+  }
+  if (lower.includes('expired transaction') || lower.includes('tx_expired') || lower.includes('invalid reference block')) {
+    return t('chainError.expired');
+  }
+  if (lower.includes('network request failed') || lower.includes('failed to fetch') || lower.includes('fetch failed')) {
+    return t('eos3Error.unstableNetwork');
+  }
+  if (lower.includes('assertion failure') || lower.includes('assertion_failure') ||
+      lower.includes('internal service error') || /^http 5\d\d\b/.test(lower.trim())) {
+    return t('chainError.rejected');
   }
   return message || t('send.signOrBroadcastFailed');
 }

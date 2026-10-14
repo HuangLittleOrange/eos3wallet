@@ -1,6 +1,11 @@
 import type zh from './zh';
 
 const ja: Record<keyof typeof zh, string> = {
+  'chainError.noTokenBalance': "この取引に必要なトークンの残高がありません。そのトークンを入金してから再試行してください。",
+  'chainError.authorization': "このウォレットには取引に必要な権限がありません。必要な権限を持つウォレットに切り替えてください。",
+  'chainError.expired': "取引の有効期限が切れました。内容を確認して再度署名してください。",
+  'chainError.rejected': "ネットワークが取引を拒否しました。取引内容を確認して再試行してください。",
+  'resource.powerupUsage': "リソースの有効期間は {{days}} 日です。送金回数は実際の消費量とネットワークの負荷によって変わります。",
   'dappBrowser.connectTitle': "ウォレット接続",
   'dappBrowser.connectBody': "{{origin}} がアカウント {{account}} と公開鍵へのアクセスを要求しています。接続で送金は許可されません。署名ごとに確認が必要です。",
   'dappBrowser.connectAllow': "接続を許可",
@@ -18,6 +23,8 @@ const ja: Record<keyof typeof zh, string> = {
   'me.linkSessions': '接続中の DApp',
   'me.telegram': 'Telegram グループ',
   'me.checkUpdate': 'アップデート',
+  'update.openDownload': 'ダウンロードページを開く',
+  'update.openFailed': 'ダウンロードページを開けません。もう一度お試しください。',
   'update.title': '新しいバージョンがあります',
   'update.upToDateTitle': '最新バージョンです',
   'update.upToDateBody': '現在のバージョン v{{version}}',
@@ -112,7 +119,6 @@ const ja: Record<keyof typeof zh, string> = {
   'repair.cpuNetTitle': 'リソース不足',
   'repair.cpuNetBody': 'アカウントの CPU/NET が不足しており、このトランザクションを送信できません。自分の残高で PowerUp(1 日分のリソース)を購入し、完了後に確認画面へ戻って再度署名してください。購入トランザクションの CPU は Sponsor が立て替え、少額の代行手数料がかかります。',
   'repair.amountLabel': '購入金額',
-  'repair.estimate': '約 {{n}} 回の送金分',
   'repair.quoting': '見積もりを取得中…',
   'repair.powerupLine': 'PowerUp',
   'repair.feeLine': '代行手数料',
@@ -122,7 +128,7 @@ const ja: Record<keyof typeof zh, string> = {
   'repair.buyPowerup': '購入してチャージ',
   'repair.feeChanged': '代行手数料が {{fee}} に更新されました。確認のうえ再度タップしてください',
   'repair.powerupDoneTitle': 'チャージ完了',
-  'repair.powerupDoneBody': '約 {{n}} 回分の送金リソースを購入しました。確認画面に戻って再度署名してください。\nTxID\n{{txId}}',
+  'repair.powerupDoneBody': "CPU/NET リソースを購入しました。有効期間は {{days}} 日です。確認画面に戻って再度署名してください。\nTxID\n{{txId}}",
   'repair.ramTitle': 'RAM 不足',
   'repair.ramBody': 'このトランザクションにはより多くのオンチェーンストレージ(RAM)が必要です。自分の残高で 1KB 購入し、確認画面に戻って再度署名してください。',
   'repair.ramCost': '約 {{cost}}',
@@ -270,9 +276,7 @@ const ja: Record<keyof typeof zh, string> = {
   'resource.buyForOther': '他のアカウントに代理購入',
   'resource.payForOther': '他のアカウントに代理チャージ',
   'resource.receiverPlaceholder': '受取アカウント',
-  'resource.estimatedTransfers': '約 {{n}} 回の送金をサポート',
   'resource.estimateTooSmall': '金額が少なすぎて利用可能なリソースを購入できません。金額を増やしてください',
-  'resource.estimatedTransfersNote': '(1 回あたり約 300μs の CPU / 200 バイトの NET で見積もり。参考値であり、実際の消費量はオンチェーン実行時の結果によります)',
   'resource.powerupMarketUnavailable': 'PowerUp 市場データをまだ取得できていません。しばらくしてから再試行してください',
 
   'scan.title': 'スキャン',
@@ -804,7 +808,7 @@ const ja: Record<keyof typeof zh, string> = {
   'walletDetail.privateKey': '秘密鍵',
   'walletDetail.revealWarning': 'スクリーンショットや撮影、他人への送信は絶対にしないでください —— 秘密鍵を求める人は詐欺師です。',
   'walletDetail.copySecret': '秘密鍵をコピー',
-  'walletDetail.secretCopyHint': "30秒後とエクスポート終了時に消去を試みます。履歴や同期済みのコピーは取り消せません。",
+  'walletDetail.secretCopyHint': "コピー後の時間制限はありません。エクスポート終了時やアプリがバックグラウンドに移った際に消去を試みます。履歴や同期済みのコピーは取り消せません。",
   'walletDetail.copiedAndClose': '書き写しました、閉じる',
 
   'dappMore.copyLink': 'リンクをコピー',
@@ -917,7 +921,7 @@ const ja: Record<keyof typeof zh, string> = {
   'sponsorError.notConfigured': 'リソーススポンサー機能はまだ利用できません。アカウント自身に十分な CPU/NET リソースがあるか確認して再試行してください。',
   'sponsorError.tooManyActions': 'このトランザクションには操作が多すぎるため、リソーススポンサーに対応していません。複数のトランザクションに分割してください。',
   'sponsorError.expired': 'この代行取引の有効期限が切れました。もう一度確認してから署名してください。',
-  'sponsorError.feeInsufficientBalance': '今回の代行手数料を支払うには残高が不足しています。十分な A があることを確認してから再試行してください。',
+  'sponsorError.feeInsufficientBalance': "取引額と手数料を支払う残高が不足しています。必要なトークンを入金して再試行してください。",
 
   'chainConfig.legacyVaulta': 'EOS メインネット',
   'chainConfig.legacyJungle4': 'テストネット',

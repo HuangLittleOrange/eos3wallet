@@ -1,0 +1,35 @@
+build:
+  name: iOS build with verified locked dependencies
+  steps:
+    - eas/checkout
+    - run:
+        name: Verify dependency policy
+        command: npm run eas-build-pre-install
+    - run:
+        name: Install and verify locked dependencies
+        command: |
+          set -eu
+          npm ci --include=dev --ignore-scripts
+          npm run eas-build-post-install
+    - eas/resolve_build_config
+    - eas/resolve_apple_team_id_from_credentials:
+        id: apple_team
+    - run:
+        name: Generate iOS project without reinstalling dependencies
+        inputs:
+          apple_team_id: ${ steps.apple_team.apple_team_id }
+        command: |
+          set -eu
+          APPLE_TEAM_ID="${ inputs.apple_team_id }" npx expo prebuild --no-install --platform ios
+          npm run check:dependencies
+    - run:
+        name: Install pods
+        working_directory: ./ios
+        command: pod install
+    - eas/configure_ios_credentials
+    - eas/configure_ios_version
+    - eas/generate_gymfile_from_template:
+        inputs:
+          credentials: ${ eas.job.secrets.buildCredentials }
+    - eas/run_fastlane
+    - eas/find_and_upload_build_artifacts

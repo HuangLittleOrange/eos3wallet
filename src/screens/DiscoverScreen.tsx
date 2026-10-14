@@ -39,11 +39,7 @@ export default function DiscoverScreen() {
 
   const TABS = [t('discover.tabTrending'), t('discover.tabBrowser'), t('discover.tabFavorites')];
 
-  const BANNERS = useMemo(() => visibleItems(content.banners).map((banner) => ({
-    ...banner,
-    title: localizedText(banner.title, locale),
-    lines: banner.lines.map((line) => localizedText(line, locale)),
-  })), [content.banners, locale]);
+  const BANNERS = useMemo(() => visibleItems(content.banners).filter((banner) => banner.imageUrl), [content.banners]);
   const DAPPS = useMemo(() => visibleItems(projects).filter((project) => project.featured).map((project) => ({
     ...project,
     name: project.translations?.[locale]?.name || project.name,
@@ -176,16 +172,10 @@ export default function DiscoverScreen() {
           scrollEventThrottle={16}
         >
           {BANNERS.map((b) => (
-            <TouchableOpacity key={b.id} style={{ width: W }} activeOpacity={0.8} disabled={!b.url} onPress={() => b.url && open(b.url)}>
-              <LinearGradient colors={b.colors} start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={styles.banner}>
-                {b.imageUrl ? <Image source={{ uri: b.imageUrl }} style={styles.bannerImage} resizeMode="cover" /> : null}
-                <Text style={styles.bannerTitle} numberOfLines={2}>{b.title}</Text>
-                {b.lines.map((line, i) => (
-                  <Text key={i} style={styles.bannerLine} numberOfLines={1}>
-                    {line}
-                  </Text>
-                ))}
-              </LinearGradient>
+            <TouchableOpacity key={b.id} style={{ width: W }} activeOpacity={0.8} disabled={!b.url} accessibilityRole={b.url ? 'link' : 'image'} accessibilityLabel={b.url || t('discover.tabTrending')} onPress={() => b.url && open(b.url)}>
+              <View style={styles.banner}>
+                <Image source={{ uri: b.imageUrl }} style={styles.carouselImage} resizeMode="contain" />
+              </View>
             </TouchableOpacity>
           ))}
         </ScrollView>
@@ -286,6 +276,7 @@ export default function DiscoverScreen() {
               ))}
             </View> : null}
 
+            {content.earnEnabled!==false&&EARN.length>0&&<>
             {earnTitle ? <View style={styles.earnHead}><Text style={styles.earnTitle}>{earnTitle}</Text></View> : null}
             {earnDescription ? <Text style={styles.earnDesc}>{earnDescription}</Text> : null}
 
@@ -312,6 +303,7 @@ export default function DiscoverScreen() {
                 </View>
               </TouchableOpacity>
             ))}
+            </>}
           </ScrollView>
         </View>
 
@@ -419,14 +411,11 @@ const styles = StyleSheet.create({
   banner: {
     marginHorizontal: spacing.lg,
     borderRadius: 12,
-    padding: 18,
-    minHeight: 132,
-    justifyContent: 'center',
+    aspectRatio: 3,
     overflow: 'hidden',
   },
   bannerImage: { position: 'absolute', top: 0, right: 0, bottom: 0, left: 0, opacity: 0.35 },
-  bannerTitle: { color: '#fff', fontSize: 21, fontWeight: '800', marginBottom: 10 },
-  bannerLine: { color: 'rgba(255,255,255,0.88)', fontSize: 13.5, lineHeight: 21 },
+  carouselImage: { width: '100%', height: '100%' },
   dots: {
     position: 'absolute',
     left: 0,

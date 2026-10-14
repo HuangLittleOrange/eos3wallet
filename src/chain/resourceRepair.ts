@@ -25,7 +25,8 @@ export function formatPayment(payment: number, symbol: string, precision: number
 
 /**
  * 花 payment 买 PowerUp:CPU/NET 两边按「一笔普通转账大约消耗多少」的比例同时买
- * (和资源页的 PowerUp 表单同一套换算),返回要签的 action 和"约够几笔转账"。
+ * (和资源页的 PowerUp 表单同一套换算),返回要签的 action 和内部资源组合单位数。
+ * transfers 是预算分配单位,不作为实际可转账次数展示。
  */
 export function buildPowerupTopUp(opts: {
   market: PowerupMarket;

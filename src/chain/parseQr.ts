@@ -1,7 +1,7 @@
 // 二维码内容解析 —— 从 ScanScreen 抽出来的纯逻辑,不带任何相机/UI 依赖,
 // 方便单测覆盖(扫码识别错一个分支就是把钱转错地方的事故,值得测全)。
 import { isValidAccountName } from './account';
-import { isEsrLink } from '../dapp/esr';
+import { isEsrLink } from '../dapp/esr-links';
 
 export type ScanResult =
   | {

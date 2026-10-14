@@ -9,7 +9,7 @@ import { useEffect, useRef } from 'react';
 import { AppState, AppStateStatus } from 'react-native';
 
 import { useDappSession } from './DappSessionContext';
-import { isEsrLink } from './esr';
+import { isEsrLink } from './esr-links';
 import { getLinkIdentity } from './linkIdentity';
 import { sealedMessageFromWire, unsealMessage } from './linkCrypto';
 import { listenLinkChannel, LinkChannelListener } from './linkSocket';

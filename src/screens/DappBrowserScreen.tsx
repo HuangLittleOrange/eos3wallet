@@ -27,58 +27,27 @@ import { useWallet } from '../chain/WalletContext';
 import ConfirmTxSheet from '../components/ConfirmTxSheet';
 import DappMoreSheet from '../components/DappMoreSheet';
 import WalletListSheet from '../components/WalletListSheet';
-import DappScanModal from '../components/DappScanModal';
 import { Checksum256, Transaction } from '@wharfkit/antelope';
 import { ActionSpec, Signer, signDigest, transact } from '../chain/transact';
 import { useResourceRepair } from '../components/ResourceRepairSheet';
 import { signingPermission } from '../crypto/vault';
 import { biometricSigner, passkeySigner, passwordSigner } from '../chain/signers';
 import { buildInjectedScript } from '../dapp/injected';
-import { DappAccessGuard, secureDappOrigin } from '../dapp/accessGuard';
-import { isEsrLink } from '../dapp/esr';
-import { dappDeviceId } from '../dapp/dappDeviceId';
-import { SaveImageError, saveRemoteImage } from '../dapp/saveRemoteImage';
+import { DappAccessGuard, dappPageOrigin, secureDappOrigin } from '../dapp/accessGuard';
+import EsrFlowOverlay from '../dapp/esr-flow-overlay';
 import { navigationRef } from '../navigation/navigationRef';
 import { decodeSerializedTransaction } from '../dapp/decodeTx';
 import { assertActionRequestChain, prepareActionRequest } from '../dapp/actionRequest';
 import { assertVisibleTransaction } from '../chain/transactionSafety';
 import { shouldInvalidateBackground } from '../crypto/systemAuthentication';
-import { useEsrFlow } from '../dapp/useEsrFlow';
+import { useBrowserEsr } from '../dapp/use-browser-esr';
+import { useTokenPocketBrowser } from '../dapp/use-token-pocket-browser';
+import { tokenPocketUserAgent } from '../dapp/token-pocket-user-agent';
 import { preflightDappResources } from '../dapp/resourcePreflight';
 import { addDappHistory, isDappFavorite, listDappHistory, setDappThumbnail, toggleDappFavorite } from '../dapp/dappGate';
 import { useDappSession } from '../dapp/DappSessionContext';
 import { addBackHandler } from '../components/ModalHost';
 import { useI18n, BCP47 } from '../i18n';
-
-/**
- * 挂在 UA 末尾的 TokenPocket 标记。
- *
- * 不少 EOS DApp 判断"是不是在钱包里"靠的是嗅 UA 里有没有 TokenPocket,而不是
- * 检测注入的 window.scatter——典型如 1dex:手动登录只看 window.scatter,但
- * 进页自动连接、下单签名、签消息三处都先看 UA,不含 TokenPocket 就改走
- * wharfkit 去恢复一个根本不存在的会话,报 "Wallet session expired" 把人踢回
- * 登录页。我们注入的 window.scatter / window.tp / TPJSBrigeClient 已经按
- * TokenPocket 的接口对齐,带上这个标记,这类 DApp 才会走到那几套接口上。
- *
- * 只追加标记,不动 UA 前半段——站点判断移动端看的是 Mobile 这类字段,不受影响。
- */
-const TP_UA_TOKEN = Platform.OS === 'ios' ? 'TokenPocket_iOS' : 'TokenPocket_Android';
-
-// 安卓系统 WebView 的默认 UA 里带一个 `; wv)` 标记,专门用来告诉服务端
-// "这是被 App 内嵌的 WebView,不是独立浏览器" —— 很多 DApp 前面挂的
-// Cloudflare / 反爬网关一看到这个标记就直接拦,跟真实浏览器行为无关。
-// 这里用设备的真实 Android 版本号、机型(Platform.constants,不是编的)拼一个
-// 去掉 `wv` 标记、看起来跟平时刷手机浏览器一样的 UA。iOS 的 WKWebView 默认
-// UA 本来就没有这个问题,不用处理。
-const CHROME_VERSION = '131.0.6778.135';
-
-function buildMobileUA(): string | undefined {
-  if (Platform.OS !== 'android') return undefined;
-  const c = (Platform as any).constants ?? {};
-  const release: string = c.Release || String(Platform.Version || '13');
-  const model: string = c.Model || 'Android';
-  return `Mozilla/5.0 (Linux; Android ${release}; ${model}) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${CHROME_VERSION} Mobile Safari/537.36 ${TP_UA_TOKEN}`;
-}
 
 const BLUE = '#1E88FF';
 
@@ -137,15 +106,6 @@ export default function DappBrowserScreen() {
   const [pendingTx, setPendingTx] = useState<Transaction | null>(null);
   const [pendingMessage, setPendingMessage] = useState<string | null>(null);
 
-  /** 页面调了 tp.invokeQRScanner、正在等扫码结果的那次请求 */
-  const [scanReqId, setScanReqId] = useState<string | null>(null);
-  /** tp.fullScreen:收起地址栏,把整屏让给页面 */
-  const [fullScreen, setFullScreen] = useState(false);
-  /** tp.setMenubar:全屏时要不要把「更多」按钮也露出来 */
-  const [menubarInFullScreen, setMenubarInFullScreen] = useState(false);
-  /** tp.forwardNavigationGesturesEnable:iOS 上左右滑动前进后退 */
-  const [navGestures, setNavGestures] = useState(false);
-
   /** 底部工具栏的前进/后退按钮要按页面历史置灰 */
   const [canGoBack, setCanGoBack] = useState(false);
   const [canGoForward, setCanGoForward] = useState(false);
@@ -161,17 +121,14 @@ export default function DappBrowserScreen() {
   const [txErr, setTxErr] = useState<string | null>(null);
   const repair = useResourceRepair(w, { onCancel: setTxErr });
 
-  /** Anchor/ESR 深链请求(登录/签名)——解析、签名、回调都在公共流程里
-   *  (和 EsrRequestHost 共用),redirect 回调在浏览器场景就是让当前 WebView
-   *  跳过去 */
-  const esrFlow = useEsrFlow({ onRedirect: setUrl });
+  const browserEsr = useBrowserEsr(setUrl);
 
   /** 右上角「更多」面板 —— 对齐 TP 的网站工具面板 */
   const [moreSheet, setMoreSheet] = useState(false);
   const [walletSheet, setWalletSheet] = useState(false);
   const [favorited, setFavorited] = useState(false);
   const [siteName, setSiteName] = useState('');
-  const mobileUA = useMemo(buildMobileUA, []);
+  const browserUserAgent = useMemo(() => tokenPocketUserAgent(Platform.OS, Platform.Version, (Platform as any).constants), []);
 
   const wallet = w.currentWallet;
   const isPasskey = wallet?.source === 'passkey';
@@ -251,13 +208,17 @@ export default function DappBrowserScreen() {
     webRef.current?.injectJavaScript(js);
   }, []);
 
-  /**
-   * 页面/壳层操作(TokenPocket 的扫码、分享、返回、关闭、全屏、存图……)要用到
-   * 下面才定义的 close / minimize / host。直接写进 onMessage 的依赖数组,渲染时
-   * 会在它们声明之前就去读、撞上暂时性死区直接报错,所以挂在 ref 上,每次渲染
-   * 在它们定义之后更新。返回 true 表示这条消息已经处理。
-   */
-  const pageActionRef = useRef<(msg: Req) => boolean>(() => false);
+  const tokenPocket = useTokenPocketBrowser({
+    client: w.client, account: w.account, url, pageUrl: navUrl, reply,
+    goBack: () => webRef.current?.goBack(),
+    close: () => { void close(); },
+    importWallet: async () => {
+      await minimize();
+      if (navigationRef.isReady()) navigationRef.navigate('Import');
+    },
+    onFavorited: () => setFavorited(true),
+  });
+  const { fullScreen, menubarInFullScreen, navGestures } = tokenPocket;
 
   const onMessage = useCallback(
     (e: WebViewMessageEvent) => {
@@ -271,10 +232,11 @@ export default function DappBrowserScreen() {
 
       const envelope = msg as Req & { documentId?: unknown; bridgeToken?: unknown };
       if (envelope.bridgeToken !== bridgeToken.current ||
-          !access.current.accept(msg.id, envelope.documentId, e.nativeEvent.url, contextRef.current)) return;
+          !access.current.accept(msg.id, envelope.documentId, e.nativeEvent.url, contextRef.current, msg.method)) return;
       // Only this native-created closure can bind a request to its original instance.
       const requestIsCurrent = access.current.capture(msg.id, contextRef.current);
       const capturedRequest = { ...msg, isCurrent: requestIsCurrent };
+      if (browserEsr.handleBridgeRequest(msg, () => reply(msg.id, true, true))) return;
       const needsConnection = ['arbitrarySignature', 'signTransaction', 'requestSignature'];
       if (needsConnection.includes(msg.method)) {
         if (!access.current.connected()) { reply(msg.id, false, t('dappBrowser.connectionRequired')); return; }
@@ -341,14 +303,6 @@ export default function DappBrowserScreen() {
             )
             .then((r) => reply(msg.id, true, r))
             .catch((err) => reply(msg.id, false, String(err?.message ?? err)));
-          return;
-
-        // 任意数据签名 —— 常被用于登录验证。
-        // 这也能被滥用成让用户签下他不理解的内容,一律拒绝更安全。
-        // 页面侧截获的 anchor:// / esr: 深链
-        case 'esrRequest':
-          reply(msg.id, true, true);
-          esrFlow.open(String(msg.params?.uri ?? ''));
           return;
 
         case 'getTableRows':
@@ -448,11 +402,11 @@ export default function DappBrowserScreen() {
         }
 
         default:
-          if (pageActionRef.current(msg)) return;
+          if (tokenPocket.handleRequest(msg)) return;
           reply(msg.id, false, t('dappBrowser.unsupportedMethod', { method: msg.method }));
       }
     },
-    [w, activeKey, canSign, reply, esrFlow.open, t]
+    [w, activeKey, canSign, reply, browserEsr.handleBridgeRequest, tokenPocket.handleRequest, t]
   );
 
   /** 弹窗关闭、状态归位 —— 三条路成功后都走这一下 */
@@ -677,109 +631,6 @@ export default function DappBrowserScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [canGoBack, editingUrl]);
 
-  pageActionRef.current = (msg: Req) => {
-    const p = msg.params ?? {};
-    const fail = (err: any) => reply(msg.id, false, String(err?.message ?? err));
-    switch (msg.method) {
-      // 按网站来源各给一个随机 id,不交出真实设备标识,见 dappDeviceId.ts
-      case 'getDeviceId':
-        dappDeviceId(host || url).then((id) => reply(msg.id, true, id), fail);
-        return true;
-
-      case 'getActions': {
-        const count = Math.min(Math.max(Number(p.count) || 10, 1), 100);
-        const start = Math.max(Number(p.start) || 0, 0);
-        w.client
-          .getActions(String(p.account ?? w.account), { limit: count, skip: start })
-          .then((page) => {
-            let list = page.actions;
-            if (p.contract) list = list.filter((a) => a.contract === p.contract);
-            if (p.token) list = list.filter((a) => (a.quantity ?? '').endsWith(` ${p.token}`));
-            // 历史节点只按时间倒序给,页面要正序就在这里翻过来
-            if (p.sort === 'asc') list = [...list].reverse();
-            reply(msg.id, true, list);
-          }, fail);
-        return true;
-      }
-
-      case 'scanQR':
-        setScanReqId(msg.id);
-        return true;
-
-      case 'share': {
-        const text = [p.title, p.description, p.url].filter(Boolean).join('\n');
-        Share.share({ title: p.title, message: text, url: p.url }).then(() => reply(msg.id, true, true), fail);
-        return true;
-      }
-
-      case 'goBack':
-        webRef.current?.goBack();
-        reply(msg.id, true, true);
-        return true;
-
-      case 'closeBrowser':
-        reply(msg.id, true, true);
-        close();
-        return true;
-
-      case 'fullScreen':
-        setFullScreen(!!p.on);
-        if (!p.on) setMenubarInFullScreen(false);
-        reply(msg.id, true, true);
-        return true;
-
-      case 'setMenubar':
-        setMenubarInFullScreen(!!p.visible);
-        reply(msg.id, true, true);
-        return true;
-
-      // 网页不能自己把用户带进导入私钥的流程里去填东西,这里只是把 App 的
-      // 导入页打开;私钥是用户在 App 自己的界面里输入的,页面碰不到
-      case 'importWallet':
-        reply(msg.id, true, true);
-        minimize().then(() => {
-          if (navigationRef.isReady()) navigationRef.navigate('Import');
-        });
-        return true;
-
-      case 'saveImage':
-        saveRemoteImage(String(p.url ?? '')).then(
-          () => {
-            reply(msg.id, true, true);
-            Alert.alert(t('dappBrowser.imageSaved'));
-          },
-          (err) => {
-            fail(err);
-            Alert.alert(
-              err instanceof SaveImageError && err.message === 'permission-denied'
-                ? t('dappBrowser.imagePermissionDenied')
-                : t('dappBrowser.imageSaveFailed')
-            );
-          }
-        );
-        return true;
-
-      case 'setNavGestures':
-        setNavGestures(!!p.enabled);
-        reply(msg.id, true, true);
-        return true;
-
-      case 'addFavorite': {
-        const target = String(p.url ?? url);
-        isDappFavorite(target)
-          .then((already) => (already ? true : toggleDappFavorite(target, String(p.name ?? host))))
-          .then(() => {
-            if (target === url) setFavorited(true);
-            reply(msg.id, true, true);
-          }, fail);
-        return true;
-      }
-
-      default:
-        return false;
-    }
-  };
-
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
       {/* 顶栏 —— 参考 TokenPocket:左边关闭/最小化胶囊,中间只显示域名的地址框,
@@ -877,14 +728,16 @@ export default function DappBrowserScreen() {
           // 全程都能读到语言靠的是 injected 里覆盖 navigator.language——这个
           // Accept-Language 头是给会做服务端语言判断的站点多一层信号,两边都做。
           source={{ uri: url, headers: { 'Accept-Language': BCP47[locale] } }}
+          originWhitelist={browserEsr.originWhitelist}
           injectedJavaScriptBeforeContentLoaded={injected}
           injectedJavaScriptBeforeContentLoadedForMainFrameOnly
           injectedJavaScript={injected}
           injectedJavaScriptForMainFrameOnly
           onMessage={onMessage}
+          onOpenWindow={browserEsr.onOpenWindow}
           onLoadStart={(e) => {
-            esrFlow.invalidate();
-            setScanReqId(null);
+            browserEsr.invalidate();
+            tokenPocket.cancelScan();
             currentUrl.current = e.nativeEvent.url;
             access.current.navigate(e.nativeEvent.url, contextRef.current);
             pendingRequest.current = null;
@@ -906,15 +759,11 @@ export default function DappBrowserScreen() {
             setCanGoForward(s.canGoForward);
             if (s.title) setSiteName(s.title);
           }}
-          // 拦截 anchor:// 与 esr:// —— 用户已经在手机上,不该再跳去另一个 app
           onShouldStartLoadWithRequest={(r) => {
-            if (isEsrLink(r.url)) {
-              esrFlow.open(r.url);
-              return false;
-            }
-            if (r.isTopFrame && secureDappOrigin(r.url) !== secureDappOrigin(currentUrl.current)) {
-              esrFlow.invalidate();
-              setScanReqId(null);
+            if (browserEsr.interceptUrl(r.url)) return false;
+            if (r.isTopFrame && dappPageOrigin(r.url) !== dappPageOrigin(currentUrl.current)) {
+              browserEsr.invalidate();
+              tokenPocket.cancelScan();
               currentUrl.current = r.url;
               access.current.navigate(r.url, contextRef.current);
               pendingRequest.current = null;
@@ -930,10 +779,10 @@ export default function DappBrowserScreen() {
           domStorageEnabled
           thirdPartyCookiesEnabled
           startInLoadingState
-          userAgent={mobileUA}
+          userAgent={browserUserAgent.userAgent}
           // iOS 上 userAgent 为空、用系统默认 UA,TokenPocket 标记只能靠这个属性
           // 追加;安卓设了完整 userAgent(标记已在里面),这里会被覆盖掉
-          applicationNameForUserAgent={TP_UA_TOKEN}
+          applicationNameForUserAgent={browserUserAgent.applicationNameForUserAgent}
           // tp.forwardNavigationGesturesEnable:iOS 上左右滑动前进后退,安卓忽略
           allowsBackForwardNavigationGestures={navGestures}
           renderLoading={() => (
@@ -979,49 +828,9 @@ export default function DappBrowserScreen() {
         </View>
       )}
 
-      {/* 点击 Anchor 登录/签名按钮到弹窗确认之间要等一次链上请求(get_info),
-          节点慢的时候有明显空档,不给反馈会被当成"点击没反应" */}
-      {esrFlow.parsing ? (
-        <View style={styles.esrLoading} pointerEvents="none">
-          <View style={styles.esrLoadingCard}>
-            <ActivityIndicator color={BLUE} />
-            <Text style={styles.esrLoadingTxt}>{t('dappBrowser.connectingNode')}</Text>
-          </View>
-        </View>
-      ) : null}
+      {tokenPocket.scanElement}
 
-      {/* Anchor / ESR 深链请求确认——流程和 EsrRequestHost 共用(useEsrFlow),
-          浏览器场景多给一个当前页面 host 当 scope 缺失时的兜底展示 */}
-      <DappScanModal
-        visible={scanReqId !== null}
-        onResult={(text) => {
-          if (scanReqId) reply(scanReqId, true, text);
-          setScanReqId(null);
-        }}
-        onCancel={() => {
-          if (scanReqId) reply(scanReqId, false, t('dappBrowser.userRejected'));
-          setScanReqId(null);
-        }}
-      />
-
-      <ConfirmTxSheet
-        visible={esrFlow.esr !== null}
-        callbackOrigin={esrFlow.esr?.req.callbackOrigin}
-        onClose={esrFlow.close}
-        actions={esrFlow.sheetActions(host)}
-        chainName={w.client.config.name}
-        testnet={w.client.config.testnet}
-        actor={w.account}
-        permission={permission}
-        busy={esrFlow.busy}
-        error={esrFlow.err}
-        walletId={wallet?.id}
-        passkey={isPasskey}
-        origin={host}
-        onConfirm={esrFlow.submitPassword}
-        onConfirmBiometric={esrFlow.submitBiometric}
-        onConfirmPasskey={esrFlow.submitPasskey}
-      />
+      <EsrFlowOverlay flow={browserEsr.flow} origin={host} />
 
       <ConfirmTxSheet
         visible={actions !== null}
@@ -1042,7 +851,6 @@ export default function DappBrowserScreen() {
         onConfirmPasskey={submitPasskey}
       />
       {repair.element}
-      {esrFlow.repairElement}
 
       <DappMoreSheet
         visible={moreSheet}
@@ -1155,26 +963,6 @@ const styles = StyleSheet.create({
   },
 
   progress: { height: 2, backgroundColor: BLUE },
-  esrLoading: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(0,0,0,0.15)',
-  },
-  esrLoadingCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    backgroundColor: colors.white,
-    paddingVertical: 12,
-    paddingHorizontal: 18,
-    borderRadius: 12,
-  },
-  esrLoadingTxt: { fontSize: 14, color: colors.text },
   loadingBox: {
     position: 'absolute',
     top: 0,

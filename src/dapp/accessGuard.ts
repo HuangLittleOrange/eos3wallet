@@ -1,15 +1,22 @@
-/** Browser-session permissions. Never persisted or shared across wallet contexts. */
-export function secureDappOrigin(url: string): string | null {
+/** Page origins for explicit ESR links; connecting wallet APIs still requires HTTPS. */
+export function dappPageOrigin(url: string): string | null {
   try {
     const parsed = new URL(url);
-    if (parsed.protocol !== 'https:' || parsed.username || parsed.password) return null;
+    if (!['https:', 'http:'].includes(parsed.protocol) || parsed.username || parsed.password) return null;
     return parsed.origin;
   } catch { return null; }
+}
+
+/** Browser-session permissions. Never persisted or shared across wallet contexts. */
+export function secureDappOrigin(url: string): string | null {
+  const origin = dappPageOrigin(url);
+  return origin?.startsWith('https://') ? origin : null;
 }
 
 export class DappAccessGuard {
   private context = '';
   private origin: string | null = null;
+  private pageOrigin: string | null = null;
   private document = '';
   private epoch = 0;
   private requests = new Map<string, { epoch: number }>();
@@ -17,14 +24,18 @@ export class DappAccessGuard {
 
   navigate(url: string, context: string): void {
     this.origin = secureDappOrigin(url);
+    this.pageOrigin = dappPageOrigin(url);
     this.context = context;
     this.document = '';
     this.epoch++;
     this.requests.clear();
   }
 
-  accept(id: unknown, document: unknown, sourceUrl: string, context: string): boolean {
-    if (context !== this.context || !this.origin || secureDappOrigin(sourceUrl) !== this.origin) return false;
+  accept(id: unknown, document: unknown, sourceUrl: string, context: string, method?: string): boolean {
+    // ESR links open the same explicit confirmation flow as scanned requests.
+    // Accepting a link from HTTP never grants access to account/provider APIs.
+    const expectedOrigin = method === 'esrRequest' ? this.pageOrigin : this.origin;
+    if (context !== this.context || !expectedOrigin || dappPageOrigin(sourceUrl) !== expectedOrigin) return false;
     if (typeof id !== 'string' || typeof document !== 'string' || !document || document.length > 128 ||
         !id.startsWith(document + ':') || id.length > 180 || this.requests.has(id) || this.requests.size >= 512) return false;
     if (this.document && this.document !== document) return false;

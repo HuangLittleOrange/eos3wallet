@@ -9,14 +9,18 @@ beforeEach(() => {
 });
 afterEach(() => jest.useRealTimers());
 
-test('explicit export clears its value after thirty seconds', async () => {
+test('explicit export keeps its value without a time limit', async () => {
   const owner = new SecretClipboard(clipboard);
   expect(await owner.copy('test-secret', () => true)).toBe(true);
   expect(text).toBe('test-secret');
   await jest.advanceTimersByTimeAsync(30_000);
-  expect(text).toBe('');
+  expect(text).toBe('test-secret');
+  await jest.advanceTimersByTimeAsync(24 * 60 * 60 * 1000);
+  expect(text).toBe('test-secret');
+  expect(clipboard.setStringAsync).toHaveBeenCalledTimes(1);
+  expect(jest.getTimerCount()).toBe(0);
 });
-test('exit/background cleanup does not wait for the timer', async () => {
+test('exit/background cleanup clears the exported value', async () => {
   const owner = new SecretClipboard(clipboard);
   await owner.copy('test-secret', () => true);
   await owner.clear();

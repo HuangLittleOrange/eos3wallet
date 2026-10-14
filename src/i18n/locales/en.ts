@@ -1,6 +1,11 @@
 import type zh from './zh';
 
 const en: Record<keyof typeof zh, string> = {
+  'chainError.noTokenBalance': "This account has no balance of the token needed for this transaction. Add that token and try again.",
+  'chainError.authorization': "This wallet does not have permission to complete this transaction. Switch to a wallet with the required permission.",
+  'chainError.expired': "This transaction has expired. Review and sign it again.",
+  'chainError.rejected': "The network rejected this transaction. Check its contents and try again.",
+  'resource.powerupUsage': "Resources last {{days}} day(s). The number of transfers depends on actual usage and network load.",
   'dappBrowser.connectTitle': "Connect wallet",
   'dappBrowser.connectBody': "{{origin}} requests access to account {{account}} and its public key. Connecting does not authorize transfers; each signature requires confirmation.",
   'dappBrowser.connectAllow': "Allow connection",
@@ -18,6 +23,8 @@ const en: Record<keyof typeof zh, string> = {
   'me.linkSessions': 'Connected DApps',
   'me.telegram': 'Telegram group',
   'me.checkUpdate': 'Check for updates',
+  'update.openDownload': 'Open download page',
+  'update.openFailed': 'Unable to open the download page. Please try again.',
   'update.title': 'New version available',
   'update.upToDateTitle': 'You\'re up to date',
   'update.upToDateBody': 'Current version v{{version}}',
@@ -112,7 +119,6 @@ const en: Record<keyof typeof zh, string> = {
   'repair.cpuNetTitle': 'Not enough resources',
   'repair.cpuNetBody': 'Your account doesn\'t have enough CPU/NET to broadcast this transaction. Buy a PowerUp (1 day of resources) with your own balance, then go back to the confirmation sheet and tap sign again. The Sponsor fronts the CPU for the purchase itself and charges a small fee.',
   'repair.amountLabel': 'Amount',
-  'repair.estimate': 'About {{n}} transfers',
   'repair.quoting': 'Getting a quote…',
   'repair.powerupLine': 'PowerUp',
   'repair.feeLine': 'Sponsor fee',
@@ -122,7 +128,7 @@ const en: Record<keyof typeof zh, string> = {
   'repair.buyPowerup': 'Buy & top up',
   'repair.feeChanged': 'The sponsor fee changed to {{fee}} — check it and tap again',
   'repair.powerupDoneTitle': 'Resources topped up',
-  'repair.powerupDoneBody': 'Bought resources for about {{n}} transfers. Go back to the confirmation sheet and tap sign again.\nTxID\n{{txId}}',
+  'repair.powerupDoneBody': "CPU/NET resources purchased for {{days}} day(s). Return to the confirmation sheet and sign again.\nTxID\n{{txId}}",
   'repair.ramTitle': 'Not enough RAM',
   'repair.ramBody': 'This transaction needs more on-chain storage (RAM). Buy 1KB with your own balance, then go back to the confirmation sheet and tap sign again.',
   'repair.ramCost': 'About {{cost}}',
@@ -270,9 +276,7 @@ const en: Record<keyof typeof zh, string> = {
   'resource.buyForOther': 'Buy for a different account',
   'resource.payForOther': 'Rent for a different account',
   'resource.receiverPlaceholder': 'Receiving account',
-  'resource.estimatedTransfers': 'Supports about {{n}} transfers',
   'resource.estimateTooSmall': 'Amount too small to buy any usable resources — increase the amount',
-  'resource.estimatedTransfersNote': '(Estimated at about 300 μs CPU / 200 bytes NET per transfer — for reference only, actual usage depends on on-chain execution)',
   'resource.powerupMarketUnavailable': "PowerUp market data hasn't loaded yet — try again in a moment",
 
   'scan.title': 'Scan',
@@ -804,7 +808,7 @@ const en: Record<keyof typeof zh, string> = {
   'walletDetail.privateKey': 'Private key',
   'walletDetail.revealWarning': 'Never screenshot, photograph, or send this to anyone — anyone asking for your private key is a scammer.',
   'walletDetail.copySecret': 'Copy private key',
-  'walletDetail.secretCopyHint': "Cleanup is attempted after 30s and when leaving export. Clipboard history and synced copies cannot be revoked.",
+  'walletDetail.secretCopyHint': "No time limit after copying. Cleanup is attempted when leaving export or moving the app to the background. Clipboard history and synced copies cannot be revoked.",
   'walletDetail.copiedAndClose': "I've written it down, close",
 
   'dappMore.copyLink': 'Copy link',
@@ -917,7 +921,7 @@ const en: Record<keyof typeof zh, string> = {
   'sponsorError.notConfigured': "Resource sponsorship isn't available yet — make sure the account has enough CPU/NET of its own and try again.",
   'sponsorError.tooManyActions': 'This transaction contains too many actions for resource sponsorship — please split it into multiple transactions.',
   'sponsorError.expired': 'This sponsored transaction has expired — please confirm again before signing.',
-  'sponsorError.feeInsufficientBalance': "Your balance isn't enough to cover this sponsorship fee — make sure you have enough A and try again.",
+  'sponsorError.feeInsufficientBalance': "Your balance cannot cover this transaction and its fees. Add the required token and try again.",
 
   'chainConfig.legacyVaulta': 'EOS Mainnet',
   'chainConfig.legacyJungle4': 'Testnet',
