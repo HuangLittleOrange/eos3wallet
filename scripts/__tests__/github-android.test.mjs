@@ -11,7 +11,7 @@ const { context, checksums, verifyChecksums, sameRun, unsignedFiles, signedFiles
 const workflow = require('yaml').parse(fs.readFileSync(new URL('../../.github/workflows/android-build.yml', import.meta.url), 'utf8'));
 function sha256CertificateFixture() { return createHash('sha256').update('public certificate fixture').digest('hex'); }
 const env = {
-  GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'push', GITHUB_REF: 'refs/heads/main',
+  GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'push', GITHUB_REF: 'refs/tags/v1.0.2',
   GITHUB_SHA: 'a'.repeat(40), GITHUB_REPOSITORY: 'example/wallet', GITHUB_RUN_ID: '123',
   RELEASE_CERTIFICATE_SHA256: sha256CertificateFixture(),
   GITHUB_RUN_ATTEMPT: '1', GITHUB_SERVER_URL: 'https://github.com',
@@ -32,9 +32,9 @@ test('provenance context refuses PRs, other branches, missing commit and malform
   const info = context(env);
   assert.equal(info.commit, env.GITHUB_SHA);
   assert.match(info.runUrl, /\/actions\/runs\/123\/attempts\/1$/);
-  for (const override of [{ GITHUB_EVENT_NAME: 'pull_request' }, { GITHUB_REF: 'refs/heads/dev' },
+  for (const override of [{ GITHUB_EVENT_NAME: 'pull_request' }, { GITHUB_EVENT_NAME: 'workflow_dispatch' }, { GITHUB_REF: 'refs/heads/main' }, { GITHUB_REF: 'refs/heads/dev' }, { GITHUB_REF: 'refs/tags/v01.0.2' }, { GITHUB_REF: 'refs/tags/v1.0.2-rc.1' },
     { GITHUB_SHA: undefined }, { GITHUB_REPOSITORY: 'example/wallet\nother' }, { GITHUB_ACTIONS: 'false' }]) {
-    assert.throws(() => context({ ...env, ...override }), /must use a main commit/);
+    assert.throws(() => context({ ...env, ...override }), /must use a stable version tag/);
   }
   assert.throws(() => sameRun({ ...info, runAttempt: '2' }, info), /different/);
 });
@@ -56,10 +56,11 @@ test('artifact verification refuses replacement APKs, unlisted files in checksum
   } finally { fs.rmSync(dir, { recursive: true, force: true }); }
 });
 
-test('workflow keeps main-only triggers and grants attestation authority only to a clean job', () => {
-  assert.deepEqual(workflow.on.push.branches, ['main']);
-  assert.ok(Object.hasOwn(workflow.on, 'workflow_dispatch'));
-  assert.equal(workflow.jobs.build.if, "github.ref == 'refs/heads/main'");
+test('workflow keeps version-tag-only triggers and grants attestation authority only to a clean job', () => {
+  assert.deepEqual(workflow.on.push.tags, ['v*']);
+  assert.equal(workflow.on.push.branches, undefined);
+  assert.equal(workflow.on.workflow_dispatch, undefined);
+  assert.match(workflow.jobs.build.if, /startsWith\(github.ref, 'refs\/tags\/v'\)/);
   assert.deepEqual(workflow.permissions, { contents: 'read' });
   for (const [name, job] of Object.entries(workflow.jobs)) {
     for (const step of job.steps) {
@@ -69,18 +70,18 @@ test('workflow keeps main-only triggers and grants attestation authority only to
         assert.equal(step.with['persist-credentials'], false);
       }
     }
-    if (!['attest', 'release', 'reserve-release-tag'].includes(name)) assert.equal(job.permissions, undefined);
+    if (!['attest', 'release'].includes(name)) assert.equal(job.permissions, undefined);
   }
   assert.deepEqual(workflow.jobs.attest.permissions, { contents: 'read', 'id-token': 'write', attestations: 'write' });
   assert.ok(!workflow.jobs.attest.steps.some((step) => step.uses?.startsWith('actions/checkout@')));
   assert.ok(!workflow.jobs.attest.steps.some((step) => /node |npm |scripts\//.test(step.run ?? '')));
   assert.deepEqual(workflow.jobs.release.permissions, { contents: 'write' });
-  assert.deepEqual(workflow.jobs['reserve-release-tag'].permissions, { contents: 'write' });
-  assert.equal(workflow.jobs.build.needs, 'reserve-release-tag');
-  assert.equal(workflow.jobs['reserve-release-tag'].if, "github.ref == 'refs/heads/main'");
-  assert.ok(!workflow.jobs['reserve-release-tag'].steps.some((step) => step.uses?.includes('checkout') || /node |npm |scripts\//.test(step.run ?? '')));
+  assert.equal(workflow.jobs['validate-release-tag'].permissions, undefined);
+  assert.equal(workflow.jobs.build.needs, 'validate-release-tag');
+  assert.match(workflow.jobs['validate-release-tag'].if, /refs\/tags\/v/);
+  assert.ok(!workflow.jobs['validate-release-tag'].steps.some((step) => step.uses?.includes('checkout') || /node |npm |scripts\//.test(step.run ?? '')));
   assert.deepEqual(workflow.jobs.release.needs, ['build', 'release-sign', 'attest']);
-  assert.equal(workflow.jobs.release.if, "github.ref == 'refs/heads/main'");
+  assert.match(workflow.jobs.release.if, /refs\/tags\/v/);
   assert.ok(!workflow.jobs.release.steps.some((step) => step.uses?.startsWith('actions/checkout@')));
   assert.ok(!workflow.jobs.release.steps.some((step) => /node |npm |scripts\//.test(step.run ?? '')));
   const sparse = workflow.jobs['release-sign'].steps.find((step) => step.uses?.startsWith('actions/checkout@')).with['sparse-checkout'];
@@ -126,43 +127,57 @@ function inlinePython(step) {
   return script;
 }
 
-test('actual tag preflight reserves only the current public main source and fails before compilation on denied permissions or moved source', { skip: !pythonAvailable }, () => {
-  const script = inlinePython(workflow.jobs['reserve-release-tag'].steps[0]);
-  for (const variant of ['create', 'existing', 'advanced', 'denied', 'wrong-tag', 'private']) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ci-tag-preflight-test-'));
+test('main pushes only run isolated tests without release credentials or APK compilation', () => {
+  const checks = require('yaml').parse(fs.readFileSync(new URL('../../.github/workflows/main-tests.yml', import.meta.url), 'utf8'));
+  assert.deepEqual(checks.on.push.branches, ['main']);
+  assert.equal(checks.on.push.tags, undefined);
+  assert.deepEqual(checks.permissions, { contents: 'read' });
+  assert.deepEqual(Object.keys(checks.jobs), ['tests']);
+  assert.equal(checks.jobs.tests.environment, undefined);
+  const steps = checks.jobs.tests.steps;
+  const checkout = steps.find(s => s.uses?.startsWith('actions/checkout@'));
+  assert.equal(checkout.with['persist-credentials'], false);
+  assert.equal(checkout.with.ref, '${{ github.sha }}');
+  assert.ok(steps.some(s => s.run?.includes('isolated-build.cjs --tests-only')));
+  assert.doesNotMatch(JSON.stringify(checks), /secrets[.]|id-token|attestations|build-android-isolated|release-sign|gh release/);
+});
+
+test('actual tag preflight validates lightweight and annotated tags, main ancestry and app version using read-only API calls', { skip: !pythonAvailable }, () => {
+  const script = inlinePython(workflow.jobs['validate-release-tag'].steps[0]);
+  for (const variant of ['lightweight', 'annotated', 'main-ahead', 'off-main', 'wrong-version', 'wrong-tag', 'private', 'forced', 'deleted', 'invalid-tag', 'already-published', 'denied']) {
+    const dir = fs.mkdtempSync(path.join(process.cwd(), '.ci-tag-preflight-test-'));
     try {
       const stateFile = path.join(dir, 'state.json');
-      fs.writeFileSync(stateFile, JSON.stringify({ variant, calls: [], exists: ['existing', 'wrong-tag'].includes(variant) }));
+      fs.writeFileSync(stateFile, JSON.stringify({ variant, calls: [] }));
       const mock = `#!/usr/bin/env python3
-import json, os, pathlib, sys
-p = pathlib.Path(os.environ['FAKE_GH_STATE']); s = json.loads(p.read_text()); args = sys.argv[1:]; s['calls'].append(args); p.write_text(json.dumps(s))
-sha = os.environ['GITHUB_SHA']; endpoint = args[-1]
-if '--method' in args:
-    assert args[args.index('--method')+1] == 'POST'
-    assert f'sha={sha}' in args
-    assert f'ref=refs/tags/android-release-{sha}-123-1' in args
-    if s['variant'] == 'denied':
-        print('Resource not accessible by integration (HTTP 403)',file=sys.stderr); sys.exit(1)
-    s['exists'] = True; p.write_text(json.dumps(s)); print('{}')
-elif endpoint.endswith('/git/ref/heads/main'):
-    print(json.dumps({'object':{'type':'commit','sha':'b'*40 if s['variant']=='advanced' else sha}}))
-elif '/git/ref/tags/' in endpoint:
-    if not s['exists']:
-        print('Not Found (HTTP 404)',file=sys.stderr); sys.exit(1)
-    print(json.dumps({'object':{'type':'commit','sha':'b'*40 if s['variant']=='wrong-tag' else sha}}))
-else:
-    sys.exit('Unexpected API request')
+import base64, json, os, pathlib, sys
+p=pathlib.Path(os.environ['FAKE_GH_STATE']);s=json.loads(p.read_text());args=sys.argv[1:];s['calls'].append(args);p.write_text(json.dumps(s))
+assert args[0]=='api' and len(args)==2, 'Read-only API only'
+endpoint=args[1];sha=os.environ['GITHUB_SHA'];v=s['variant']
+if v=='denied': sys.exit('HTTP 403: read denied')
+if '/git/ref/tags/' in endpoint:
+    obj={'type':'tag','sha':'c'*40} if v=='annotated' else {'type':'commit','sha':'b'*40 if v=='wrong-tag' else sha}
+    print(json.dumps({'object':obj}))
+elif '/git/tags/' in endpoint: print(json.dumps({'object':{'type':'commit','sha':sha}}))
+elif '/compare/' in endpoint: print(json.dumps({'status':'diverged' if v=='off-main' else 'ahead' if v=='main-ahead' else 'identical'}))
+elif '/contents/app.json?ref=' in endpoint:
+    config={'expo':{'version':'1.0.3' if v=='wrong-version' else '1.0.2','android':{'versionCode':1}}}
+    print(json.dumps({'encoding':'base64','content':base64.b64encode(json.dumps(config).encode()).decode()}))
+elif '/releases/tags/' in endpoint:
+    if v=='already-published': print('{}')
+    else: sys.exit('Not Found (HTTP 404)')
+else: sys.exit('Unexpected API request')
 `;
       fs.writeFileSync(path.join(dir, 'gh'), mock, { mode: 0o700 });
-      const result = spawnSync('python3', ['-c', script], { encoding: 'utf8', env: { PATH: dir + path.delimiter + process.env.PATH, ...env, REPOSITORY_PRIVATE: variant === 'private' ? 'true' : 'false', FAKE_GH_STATE: stateFile } });
-      const state = JSON.parse(fs.readFileSync(stateFile));
-      if (['create', 'existing'].includes(variant)) {
-        assert.equal(result.status, 0, result.stderr);
-        assert.match(result.stdout, /no APK or release has been published/);
-      } else assert.notEqual(result.status, 0);
-      assert.equal(state.calls.filter((args) => args.includes('POST')).length, ['create', 'denied'].includes(variant) ? 1 : 0);
-      assert.ok(state.calls.every((args) => args[0] === 'api' && args.some((arg) => arg.includes('/git/'))));
-    } finally { fs.rmSync(dir, { recursive: true, force: true }); }
+      const childEnv = { PATH: dir+path.delimiter+process.env.PATH, ...env, REPOSITORY_PRIVATE: variant==='private'?'true':'false', TAG_FORCED: variant==='forced'?'true':'false', TAG_DELETED: variant==='deleted'?'true':'false', FAKE_GH_STATE: stateFile };
+      if (variant==='invalid-tag') childEnv.GITHUB_REF='refs/tags/v1.0.2-rc.1';
+      const result=spawnSync('python3',['-c',script],{encoding:'utf8',env:childEnv});
+      if (['lightweight','annotated','main-ahead'].includes(variant)) {
+        assert.equal(result.status,0,result.stderr);assert.match(result.stdout,/Validated v1.0.2/);
+      } else assert.notEqual(result.status,0,variant);
+      const state=JSON.parse(fs.readFileSync(stateFile));
+      assert.ok(state.calls.every(a=>a.length===2 && a[0]==='api'));
+    } finally { fs.rmSync(dir,{recursive:true,force:true}); }
   }
 });
 
@@ -298,7 +313,8 @@ test('release preparation refuses foreign builds, unsigned evidence, replaced AP
         assert.equal(result.status, 0, result.stderr);
         const plan = JSON.parse(fs.readFileSync(path.join(dir, 'release-output/plan.json')));
         assert.equal(plan.commit, env.GITHUB_SHA);
-        assert.equal(plan.tag, `android-release-${env.GITHUB_SHA}-123-1`);
+        assert.equal(plan.tag, 'v1.0.2');
+        assert.equal(plan.ref, 'refs/tags/v1.0.2');
         assert.equal(plan.title, 'EOS³ Wallet v1.0.2 · Android');
         assert.deepEqual(plan.assets.map((asset) => asset.name), ['wallet-release.apk', 'SHA256SUMS', 'android-release-evidence.zip']);
         for (const asset of plan.assets) assert.equal(sha256(fs.readFileSync(asset.path)), asset.sha256);
@@ -321,14 +337,14 @@ test('release preparation refuses foreign builds, unsigned evidence, replaced AP
 
 test('release publication uses creation response and verified ID even when drafts are absent from lists', { skip: !pythonAvailable }, () => {
   const script = inlinePython(workflow.jobs.release.steps.find((step) => step.name?.startsWith('Upload verified assets')));
-  for (const variant of ['create-hidden', 'draft', 'partial', 'published', 'delayed-assets', 'wrong-tag', 'wrong-release', 'wrong-channel', 'wrong-created-release', 'bad-digest', 'upload-failed', 'missing-digest']) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ci-release-api-test-'));
+  for (const variant of ['create-hidden', 'draft', 'annotated', 'partial', 'published', 'delayed-assets', 'wrong-tag', 'moved-tag', 'wrong-release', 'wrong-channel', 'wrong-created-release', 'bad-digest', 'upload-failed', 'missing-digest']) {
+    const dir = fs.mkdtempSync(path.join(process.cwd(), '.ci-release-api-test-'));
     try {
       const output = path.join(dir, 'release-output'); fs.mkdirSync(output);
       const file = path.join(dir, 'fixture.apk'); fs.writeFileSync(file, 'verified fixture APK');
       const asset = { path: file, name: 'fixture.apk', sha256: sha256(fs.readFileSync(file)) };
       const notes = path.join(dir, 'notes.md'); fs.writeFileSync(notes, 'Verified release');
-      const plan = { repository: env.GITHUB_REPOSITORY, tag: 'android-release-fixture', commit: env.GITHUB_SHA, title: 'Test', notes, assets: [asset] };
+      const plan = { repository: env.GITHUB_REPOSITORY, tag: 'v1.0.2', commit: env.GITHUB_SHA, title: 'Test', notes, assets: [asset] };
       fs.writeFileSync(path.join(output, 'plan.json'), JSON.stringify(plan));
       const ready = ['published', 'partial'].includes(variant);
       const release = { id: 1, tag_name: plan.tag, target_commitish: variant === 'wrong-release' ? 'b'.repeat(40) : plan.commit, draft: variant !== 'published', prerelease: variant === 'wrong-channel', html_url: 'https://example.test/release', assets: ready ? [{ name: asset.name, digest: 'sha256:' + asset.sha256 }] : [] };
@@ -344,7 +360,10 @@ assert args[0] == 'api', 'No CLI release lookup is allowed'
 endpoint = args[1] if not args[1].startswith('--') else args[-1]
 method = args[args.index('--method')+1] if '--method' in args else 'GET'
 if '/git/ref/tags/' in endpoint:
-    response = {'object': {'type':'commit','sha':'b'*40 if state['variant']=='wrong-tag' else state['commit']}}
+    moved = state['variant']=='moved-tag' and bool(release['assets'])
+    response = {'object': {'type':'tag','sha':'c'*40} if state['variant']=='annotated' else {'type':'commit','sha':'b'*40 if state['variant']=='wrong-tag' or moved else state['commit']}}
+elif '/git/tags/' in endpoint:
+    response = {'object':{'type':'commit','sha':state['commit']}}
 elif '/releases?per_page=' in endpoint:
     response = [[]] if state['variant'] in ('create-hidden','wrong-created-release') else [[release]]
 elif endpoint.endswith('/releases') and method == 'POST':
@@ -378,7 +397,7 @@ if response is not None: print(json.dumps(response))
       const launcher = 'import time; time.sleep=lambda _:None; exec(compile(' + JSON.stringify(script) + ', "workflow", "exec"))';
       const result = spawnSync('python3', ['-c', launcher], { env: { PATH: dir + path.delimiter + process.env.PATH, RUNNER_TEMP: dir, FAKE_GH_STATE: stateFile, GITHUB_STEP_SUMMARY: path.join(dir, 'summary.md') }, encoding: 'utf8' });
       const state = JSON.parse(fs.readFileSync(stateFile));
-      const success = ['create-hidden', 'draft', 'partial', 'published', 'delayed-assets'].includes(variant);
+      const success = ['create-hidden', 'draft', 'annotated', 'partial', 'published', 'delayed-assets'].includes(variant);
       if (success) {
         assert.equal(result.status, 0, result.stderr);
         assert.equal(state.release.draft, false);

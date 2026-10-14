@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
@@ -33,7 +32,9 @@ test('release signing rejects absent secrets, malformed encoding, multiline pass
 test('actual release worker refuses the wrong key, multiple signers and already signed inputs without disclosing passwords', () => {
   const worker = fs.readFileSync(new URL('../release-signing-worker.cjs', import.meta.url));
   for (const variant of ['valid', 'wrong-key', 'multiple-signers', 'already-signed', 'tool-error']) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'release-worker-test-'));
+    // /tmp is noexec in the isolated Linux runner; fake tool executables
+    // belong in the writable container workspace.
+    const dir = fs.mkdtempSync(path.join(process.cwd(), '.release-worker-test-'));
     try {
       const certificate = Buffer.from('disposable public certificate');
       const fingerprint = createHash('sha256').update(certificate).digest('hex');

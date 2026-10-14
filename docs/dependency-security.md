@@ -24,7 +24,9 @@ npm run patch:dependencies
 npm run check:dependencies
 ```
 
-`install:safe` 同时执行来源签名核验，失败就停止。标准 EAS 构建通过项目维护的 `eas-build-pre-install` 检查策略，在 `eas-build-post-install` 核验来源并应用补丁；这些是 EAS 明确执行的项目步骤，不放开第三方安装脚本。自定义 EAS 构建需要显式调用同等步骤，见 [EAS 生命周期说明](https://docs.expo.dev/build-reference/npm-hooks/)。本次没有运行云端构建。
+`install:safe` 同时执行来源签名核验，失败就停止。标准 EAS 构建通过项目维护的 `eas-build-pre-install` 检查策略，在 `eas-build-post-install` 核验来源并应用补丁；这些是 EAS 明确执行的项目步骤，不放开第三方安装脚本。自定义 EAS 构建需要显式调用同等步骤，见 [EAS 生命周期说明](https://docs.expo.dev/build-reference/npm-hooks/)。
+
+iOS `preview` 使用 `.eas/build/ios-locked.yml`：先校验策略，执行 `npm ci --include=dev --ignore-scripts`，再核验来源并应用补丁。之后通过 `expo prebuild --no-install` 生成工程，并再次检查锁文件和补丁，才安装 Pods 和配置签名。这样避免标准 EAS Prebuild 阶段再次执行可修改锁文件的 `npm install`。云端构建仍使用已有的 EAS 版本管理、签名和 Fastlane 步骤。
 
 当前锁文件中唯一标记安装脚本的依赖是可选的 `fsevents@2.3.3`；其脚本也被禁用，不存在安装脚本放行列表。不要用 `--ignore-scripts=false` 绕过限制。显式 `npm run`、构建和应用运行仍会执行代码；禁用安装钩子不构成运行时沙箱。[npm 安装脚本说明](https://docs.npmjs.com/cli/v11/commands/npm-ci/#ignore-scripts)
 
@@ -48,7 +50,7 @@ npm run verify:isolated
 
 入口仅使用 Node.js 标准库和 Git 建立公开源码快照，先运行源码检查，拒绝符号链接。快照排除 Git 历史、所有环境文件、原生生成目录、本机工具、备份、导出、凭据及常见签名文件，不复用宿主机 `node_modules`、npm 配置或依赖缓存。
 
-容器镜像使用不可变摘要。容器使用非 root 用户、只读根文件系统、移除 Linux capabilities、禁止新增权限；仅挂载只读源码快照、一次性依赖卷和当前运行的公开输出目录，不挂载宿主机主目录、钥匙串、Docker socket 或发布密钥，也不传入宿主机环境变量。安装阶段联网下载依赖，强制禁用安装脚本，核验签名后结束；另一无网络容器应用补丁、运行测试和类型检查、核对 Expo 版本兼容性并导出 Android / iOS JavaScript 包。结束时删除依赖卷与临时快照。失败不会自动回退到本机构建。
+容器镜像使用官方 Node 22.23.3 Bookworm 完整镜像，并以不可变摘要固定；包含 Python 3，用于执行版本标签和发布校验的真实回归测试，缺少 Python 时检查失败，不静默跳过。容器使用非 root 用户、只读根文件系统、移除 Linux capabilities、禁止新增权限；仅挂载只读源码快照、一次性依赖卷和当前运行的公开输出目录，不挂载宿主机主目录、钥匙串、Docker socket 或发布密钥，也不传入宿主机环境变量。安装阶段联网下载依赖，强制禁用安装脚本，核验签名后结束；另一无网络容器应用补丁、运行测试和类型检查、核对 Expo 版本兼容性并导出 Android / iOS JavaScript 包。`--tests-only` 模式跳过 JavaScript 导出，仅运行依赖检查、测试、类型检查与 Expo 兼容性检查，用于 main 日常 CI；不编译或签名 APK。结束时删除依赖卷与临时快照。失败不会自动回退到本机构建。
 
 报告与包位于 `exports/isolated-review/<运行标识>/`。容器前后检查源码快照一致性。此流程不执行 Android/iOS 原生编译、应用签名、EAS 构建或商店提交。既有 `npm run android` / `ios` 和 EAS 配置仍是原来的开发与构建入口，不具备这里的容器隔离保证。
 

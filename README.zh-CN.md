@@ -75,9 +75,25 @@ npm run build:android:isolated
 
 ## 公开 APK 构建
 
-[GitHub Actions 流程](.github/workflows/android-build.yml)在 `main` 更新时构建，也支持从 `main` 手动运行。每次构建记录具体提交、依赖锁文件和源码文件哈希，并公开固定正式证书签名的 APK、未签名 APK、`SHA256SUMS` 和 GitHub 来源证明。编译、独立正式签名、来源证明和发布分别在新 runner 上执行；签名秘密仅供独立签名步骤使用。全部验证成功后自动发布到 Releases，标记为正式发布。发布标题与说明使用英文，标题显示 APK 的实际应用版本；附件仅保留 APK、外层校验文件和完整证据 ZIP，来源证明、公开证书与元数据均包含在 ZIP 内。
+推送 `main` 时只运行 [Main tests](.github/workflows/main-tests.yml)：在无宿主凭据的容器内核验依赖、执行单元测试、类型检查和 Expo 兼容性检查；执行测试时断网，不编译 APK、不读取正式签名密钥、不创建 Releases。
 
-在公开仓库的 **Actions → Public Android APK** 中查看日志、APK 哈希和校验命令，下载成功运行的 `android-public-…` 产物。启用方式、用户校验方法与正式发行说明见[公开构建与来源核验](docs/github-android-build.md)。
+推送 `v1.0.3` 这样的稳定版本标签后，才运行 [Android 正式发布流程](.github/workflows/android-build.yml)。标签版本必须与 `app.json` 中的 `expo.version` 一致，对应提交必须已合入 `main`。支持轻量标签和附注标签；标签格式错误、提交未合入 main、版本不匹配、强制移动标签或版本已发布时，在编译前停止。已发布标签不得移动或复用。
+
+发布新版本：
+
+1. 修改 `app.json` 中的应用版本和 Android `versionCode`，提交并推送 `main`，等待 Main tests 通过。这里的应用版本与 Expo SDK 依赖版本无关。
+2. 为选定的已审查提交创建版本标签，只推送该标签。例如应用版本已准备为 `1.0.3` 后：
+
+```bash
+git tag -a v1.0.3 FULL_REVIEWED_COMMIT_SHA -m "EOS3 Wallet 1.0.3"
+git push origin v1.0.3
+```
+
+标签发布依次执行离线编译、独立断网正式签名、GitHub 来源证明和英文 Releases 发布，各阶段使用独立 runner。`android-production-signing` 环境只允许版本标签部署，正式密钥仅注入独立签名步骤。
+
+发布使用原版本标签，标题显示 APK 的实际应用版本，只提供 APK、外层校验文件和完整证据 ZIP 三个附件。ZIP 内保留未签名 APK、来源证明、公开证书、元数据、源码清单、日志和第三方声明。成功后设为 Latest，介绍页在打开或刷新时读取最新正式版并同步下载信息。
+
+日常检查查看 **Actions → Main tests**，正式构建查看 **Actions → Public Android APK**。签名环境设置和用户核验方法见[公开构建与来源核验](docs/github-android-build.md)。推送 main 不会自动创建版本标签。
 
 来源证明将文件绑定到仓库、工作流和具体源码提交；它不代表独立安全审计或已实现可复现构建。
 

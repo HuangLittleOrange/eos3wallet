@@ -75,11 +75,25 @@ This local entry point builds an unsigned APK in a macOS sandbox, then signs it 
 
 ## Public Android builds
 
-The [GitHub Actions workflow](.github/workflows/android-build.yml) builds on updates to `main` and supports manual runs from `main`. Each build records its source commit, dependency lockfile, and source file hashes, and provides a fixed-certificate release APK, an unsigned APK, checksums, and GitHub artifact attestations. Compilation, independent release signing, attestation, and publication run on separate runners. Signing secrets are available only to the independent signing step.
+Pushing to `main` runs [Main tests](.github/workflows/main-tests.yml): dependency verification, unit tests, TypeScript checks, and Expo compatibility checks in credential-free containers. Test execution has no network access. These runs do not compile APKs, use signing secrets, or publish releases.
 
-After all checks pass, the workflow publishes a regular GitHub Release. Titles and release notes are in English, and the title uses the actual APK application version. Each release has three downloads: the APK, an outer checksum file, and a complete evidence ZIP. Provenance, the public certificate, and metadata are included in the ZIP.
+Pushing a stable version tag such as `v1.0.3` starts the [Android release workflow](.github/workflows/android-build.yml). The tag must match `app.json` → `expo.version`, and its source commit must already be on `main`. Lightweight and annotated tags are supported. Invalid tags, off-main commits, version mismatches, forced tag updates, and previously published versions are rejected before compilation. Never move or reuse a published version tag.
 
-Open **Actions → Public Android APK** to view logs, APK hashes, and verification commands, or download the successful run's `android-public-…` artifact. See [public builds and provenance verification](docs/github-android-build.md) for setup and verification instructions.
+For a new release:
+
+1. Update the application version and Android `versionCode` in `app.json`, commit to `main`, and wait for Main tests to pass. This application version is separate from the Expo SDK dependency.
+2. Tag that reviewed commit and push only the intended tag. For example, after preparing app version `1.0.3`:
+
+```bash
+git tag -a v1.0.3 FULL_REVIEWED_COMMIT_SHA -m "EOS3 Wallet 1.0.3"
+git push origin v1.0.3
+```
+
+The release workflow compiles offline, signs with the fixed certificate in an independent network-disabled sandbox, generates GitHub artifact attestations, and publishes an English GitHub Release. These stages use separate runners. Signing secrets are restricted to version tags in the `android-production-signing` environment and are available only to the independent signing step.
+
+Each release uses its version tag, displays the actual APK application version, and provides three downloads: the APK, an outer checksum file, and a complete evidence ZIP. The ZIP includes the original unsigned APK, provenance, public certificate, metadata, source hashes, logs, and third-party notices. A successful release becomes Latest, which the introduction website reads on page load to update its version and download information.
+
+Open **Actions → Main tests** for routine checks and **Actions → Public Android APK** for release build logs, hashes, and provenance. See [public builds and provenance verification](docs/github-android-build.md) for signing environment setup and verification commands. No version tag is created automatically by pushing to `main`.
 
 Provenance binds files to a repository, workflow, and specific source commit. It does not establish an independent security audit or byte-for-byte reproducible builds.
 

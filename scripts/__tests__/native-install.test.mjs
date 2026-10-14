@@ -1,7 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 const { installPublicDependencies, transientDownloadError, installArguments } = createRequire(import.meta.url)('../native-install.cjs');
@@ -15,7 +14,9 @@ test('only explicit transient npm download failures can be retried', () => {
 
 test('actual child retries a network timeout with unchanged safe arguments, streams output and stops at the limit', async () => {
   for (const variant of ['recover', 'exhausted', 'integrity']) {
-    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'npm-retry-test-'));
+    // The isolated container's /tmp is deliberately noexec. Keep the tiny
+    // executable fixture in its writable workspace instead of weakening /tmp.
+    const dir = fs.mkdtempSync(path.join(process.cwd(), '.npm-retry-test-'));
     try {
       const executable = path.join(dir, 'fake-npm');
       fs.writeFileSync(executable, `#!${process.execPath}\nconst fs=require('fs');const n=fs.existsSync('count')?+fs.readFileSync('count'):0;fs.writeFileSync('count',String(n+1));fs.appendFileSync('arguments.jsonl',JSON.stringify(process.argv.slice(2))+'\\n');console.log('live download progress');if(${JSON.stringify(variant)}==='recover'&&n===1)process.exit(0);console.error('npm error code '+(${JSON.stringify(variant)}==='integrity'?'EINTEGRITY':'ETIMEDOUT'));process.exit(1);\n`, { mode: 0o700 });

@@ -1,10 +1,9 @@
 name: Public Android APK
-run-name: Android APK from main @ ${{ github.sha }}
+run-name: Android release ${{ github.ref_name }} @ ${{ github.sha }}
 
 on:
   push:
-    branches: [main]
-  workflow_dispatch:
+    tags: ['v*']
 
 permissions:
   contents: read
@@ -21,48 +20,59 @@ defaults:
     shell: bash
 
 jobs:
-  reserve-release-tag:
-    if: github.ref == 'refs/heads/main'
+  validate-release-tag:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !github.event.deleted && !github.event.forced
     runs-on: ubuntu-24.04
     timeout-minutes: 5
-    permissions:
-      contents: write
     steps:
-      # No checkout, wallet code, dependency execution, signing secrets or OIDC.
-      # Reserve the immutable source tag while this commit is still main HEAD.
-      # A tag alone is not a release: publication still waits for all checks.
-      - name: Verify tag permissions and reserve this run's source
+      # Read-only API validation. No checkout, dependency execution, keys or OIDC.
+      - name: Validate version tag and source on main
         env:
           GH_TOKEN: ${{ github.token }}
           REPOSITORY_PRIVATE: ${{ github.event.repository.private }}
+          TAG_DELETED: ${{ github.event.deleted }}
+          TAG_FORCED: ${{ github.event.forced }}
         run: |
           python3 - <<'PY'
-          import json, os, re, subprocess
-          repo, commit = os.environ['GITHUB_REPOSITORY'], os.environ['GITHUB_SHA']
-          run_id, attempt = os.environ['GITHUB_RUN_ID'], os.environ['GITHUB_RUN_ATTEMPT']
-          if os.environ['GITHUB_REF'] != 'refs/heads/main' or os.environ['REPOSITORY_PRIVATE'] != 'false' or os.environ['GITHUB_EVENT_NAME'] not in ('push', 'workflow_dispatch') or not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo) or not re.fullmatch('[a-f0-9]{40}', commit) or not re.fullmatch('[0-9]+', run_id) or not re.fullmatch('[0-9]+', attempt):
-              raise SystemExit('Invalid public main source context')
-          def gh(*args):
-              return subprocess.check_output(['gh', *args], text=True)
-          head = json.loads(gh('api', f'repos/{repo}/git/ref/heads/main'))
-          if head['object']['type'] != 'commit' or head['object']['sha'] != commit:
-              raise SystemExit('Main advanced before tag reservation; no compilation was started')
-          tag = f'android-release-{commit}-{run_id}-{attempt}'
-          endpoint = f'repos/{repo}/git/ref/tags/{tag}'
-          result = subprocess.run(['gh', 'api', endpoint], capture_output=True, text=True)
-          if result.returncode:
-              if 'HTTP 404' not in result.stderr:
-                  raise SystemExit(result.stderr)
-              gh('api', '--method', 'POST', f'repos/{repo}/git/refs', '-f', f'ref=refs/tags/{tag}', '-f', f'sha={commit}')
-          reference = json.loads(gh('api', endpoint))
-          if reference['object']['type'] != 'commit' or reference['object']['sha'] != commit:
-              raise SystemExit('Reserved source tag mismatch')
-          print(f'Reserved {tag}; no APK or release has been published')
+          import base64, json, os, re, subprocess
+          repo, commit, ref = os.environ['GITHUB_REPOSITORY'], os.environ['GITHUB_SHA'], os.environ['GITHUB_REF']
+          match = re.fullmatch(r'refs/tags/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', ref)
+          if not match or os.environ['REPOSITORY_PRIVATE'] != 'false' or os.environ['GITHUB_EVENT_NAME'] != 'push' or os.environ['TAG_DELETED'] != 'false' or os.environ['TAG_FORCED'] != 'false' or not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo) or not re.fullmatch('[a-f0-9]{40}', commit):
+              raise SystemExit('Only a new stable version tag may request a release')
+          tag = ref.removeprefix('refs/tags/')
+          def gh(endpoint):
+              return json.loads(subprocess.check_output(['gh', 'api', endpoint], text=True))
+          def tag_commit():
+              obj = gh(f'repos/{repo}/git/ref/tags/{tag}')['object']
+              for _ in range(5):
+                  if obj['type'] == 'commit':
+                      return obj['sha']
+                  if obj['type'] != 'tag' or not re.fullmatch('[a-f0-9]{40}', obj['sha']):
+                      break
+                  obj = gh(f'repos/{repo}/git/tags/{obj["sha"]}')['object']
+              raise SystemExit('Invalid or excessively nested version tag')
+          if tag_commit() != commit:
+              raise SystemExit('Version tag moved or does not match this run')
+          comparison = gh(f'repos/{repo}/compare/{commit}...main')
+          if comparison.get('status') not in ('ahead', 'identical'):
+              raise SystemExit('Release source must already be merged into main')
+          content = gh(f'repos/{repo}/contents/app.json?ref={commit}')
+          if content.get('encoding') != 'base64':
+              raise SystemExit('Missing version configuration')
+          config = json.loads(base64.b64decode(content['content']))['expo']
+          if config.get('version') != tag[1:] or type(config.get('android', {}).get('versionCode')) is not int or config['android']['versionCode'] < 1:
+              raise SystemExit('Version tag differs from app.json')
+          result = subprocess.run(['gh', 'api', f'repos/{repo}/releases/tags/{tag}'], capture_output=True, text=True)
+          if result.returncode == 0:
+              raise SystemExit('This version is already published; use a new version')
+          if 'HTTP 404' not in result.stderr:
+              raise SystemExit(result.stderr)
+          print(f'Validated {tag} at {commit}; source is on main and version matches')
           PY
 
   build:
-    needs: reserve-release-tag
-    if: github.ref == 'refs/heads/main'
+    needs: validate-release-tag
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !github.event.deleted && !github.event.forced
     runs-on: macos-15-intel
     timeout-minutes: 120
     steps:
@@ -253,9 +263,9 @@ jobs:
           build = json.loads((unsigned / 'build-info.json').read_text())
           sign = json.loads((signed / 'sign-info.json').read_text())
           proof = json.loads((signed / 'wallet-release.apk.json').read_text())
-          expected = {'repository': os.environ['GITHUB_REPOSITORY'], 'ref': 'refs/heads/main', 'commit': os.environ['GITHUB_SHA'], 'runId': os.environ['GITHUB_RUN_ID'], 'runAttempt': os.environ['GITHUB_RUN_ATTEMPT']}
-          if os.environ['GITHUB_REF'] != expected['ref']:
-              raise SystemExit('Only main builds may receive this provenance')
+          expected = {'repository': os.environ['GITHUB_REPOSITORY'], 'ref': os.environ['GITHUB_REF'], 'commit': os.environ['GITHUB_SHA'], 'runId': os.environ['GITHUB_RUN_ID'], 'runAttempt': os.environ['GITHUB_RUN_ATTEMPT'], 'releaseTag': os.environ['GITHUB_REF'].removeprefix('refs/tags/')}
+          if os.environ['GITHUB_EVENT_NAME'] != 'push' or not re.fullmatch(r'refs/tags/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', expected['ref']):
+              raise SystemExit('Only stable version-tag builds may receive this provenance')
           for metadata in [build, sign]:
               if any(metadata.get(key) != value for key, value in expected.items()):
                   raise SystemExit('Source or workflow context mismatch')
@@ -326,13 +336,14 @@ jobs:
           (output / 'SHA256SUMS').write_text(''.join(lines))
           repo, commit = os.environ['GITHUB_REPOSITORY'], os.environ['GITHUB_SHA']
           source = f'https://github.com/{repo}/tree/{commit}'
+          ref = os.environ['GITHUB_REF']
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
-              summary.write(f'### Public Android build\n\nSource: [main commit `{commit}`]({source})\n\n')
+              summary.write(f'### Public Android build\n\nSource: [release commit `{commit}`]({source})\n\n')
               summary.write('Fixed release certificate signing in an independent offline sandbox; published as a release.\n\n')
               summary.write('```text\n' + ''.join(line for line in lines if line.rstrip().endswith('.apk')) + '```\n\n')
               summary.write('Download the final `android-public-…` artifact and extract it. Verify every file and both APK attestations:\n\n```bash\nsha256sum -c SHA256SUMS\n')
               for name in ['wallet-review-unsigned.apk', 'wallet-release.apk']:
-                  summary.write(f'gh attestation verify {name} --repo {repo} --signer-workflow {repo}/.github/workflows/android-build.yml --signer-digest {commit} --source-ref refs/heads/main --source-digest {commit} --deny-self-hosted-runners\n')
+                  summary.write(f'gh attestation verify {name} --repo {repo} --signer-workflow {repo}/.github/workflows/android-build.yml --signer-digest {commit} --source-ref {ref} --source-digest {commit} --deny-self-hosted-runners\n')
               summary.write('```\n\nOn macOS, use `shasum -a 256 -c SHA256SUMS`. See the repository build guide for offline verification and limits.\n')
           PY
       - name: Upload final APKs, checksums and provenance
@@ -346,7 +357,7 @@ jobs:
 
   release:
     needs: [build, release-sign, attest]
-    if: github.ref == 'refs/heads/main'
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && !github.event.deleted && !github.event.forced
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
@@ -367,7 +378,8 @@ jobs:
           output = base / 'release-output'
           repo, commit = os.environ['GITHUB_REPOSITORY'], os.environ['GITHUB_SHA']
           run_id, attempt = os.environ['GITHUB_RUN_ID'], os.environ['GITHUB_RUN_ATTEMPT']
-          if os.environ['GITHUB_REF'] != 'refs/heads/main' or not re.fullmatch('[a-f0-9]{40}', commit) or not re.fullmatch('[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo) or not re.fullmatch('[1-9][0-9]*', run_id) or not re.fullmatch('[1-9][0-9]*', attempt):
+          ref = os.environ['GITHUB_REF']
+          if os.environ['GITHUB_EVENT_NAME'] != 'push' or not re.fullmatch(r'refs/tags/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)', ref) or not re.fullmatch('[a-f0-9]{40}', commit) or not re.fullmatch('[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo) or not re.fullmatch('[1-9][0-9]*', run_id) or not re.fullmatch('[1-9][0-9]*', attempt):
               raise SystemExit('Invalid release context')
           def digest(file):
               if file.is_symlink() or not file.is_file():
@@ -408,7 +420,7 @@ jobs:
           version = build.get('appVersion', '')
           if not isinstance(version, str) or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+(?:[-+][0-9A-Za-z.-]+)?', version) or type(build.get('androidVersionCode')) is not int or build['androidVersionCode'] < 1:
               raise SystemExit('Invalid attested application version')
-          expected = {'repository': repo, 'ref': 'refs/heads/main', 'commit': commit, 'runId': run_id, 'runAttempt': attempt}
+          expected = {'repository': repo, 'ref': ref, 'commit': commit, 'runId': run_id, 'runAttempt': attempt, 'releaseTag': ref.removeprefix('refs/tags/')}
           for metadata in [build, sign]:
               if any(metadata.get(key) != value for key, value in expected.items()):
                   raise SystemExit('Release source context mismatch')
@@ -427,7 +439,9 @@ jobs:
           with zipfile.ZipFile(archive, 'w', compression=zipfile.ZIP_STORED) as bundle:
               for name in sorted(actual):
                   bundle.write(source / name, name)
-          tag = f'android-release-{commit}-{run_id}-{attempt}'
+          tag = ref.removeprefix('refs/tags/')
+          if version != tag[1:]:
+              raise SystemExit('APK version differs from release tag')
           run_url = f'https://github.com/{repo}/actions/runs/{run_id}/attempts/{attempt}'
           notes = f'''## EOS³ Wallet v{version} · Android
 
@@ -447,7 +461,7 @@ jobs:
           Extract the evidence ZIP into a separate directory. It contains the original APKs, the complete internal checksum manifest, provenance, public certificate, build and signing metadata, source hashes, logs, and third-party notices. Run the same checksum command inside that directory to verify all evidence files. Then verify the APK provenance:
 
           ```bash
-          gh attestation verify wallet-release.apk --bundle provenance.jsonl --repo {repo} --signer-workflow {repo}/.github/workflows/android-build.yml --signer-digest {commit} --source-ref refs/heads/main --source-digest {commit} --deny-self-hosted-runners
+          gh attestation verify wallet-release.apk --bundle provenance.jsonl --repo {repo} --signer-workflow {repo}/.github/workflows/android-build.yml --signer-digest {commit} --source-ref {ref} --source-digest {commit} --deny-self-hosted-runners
           ```
           '''
           # Dedent the workflow's multiline note without modifying the evidence.
@@ -457,7 +471,7 @@ jobs:
           checksum.write_text(f'{signed_hash}  wallet-release.apk\n{digest(archive)}  {archive.name}\n')
           downloads = [source / 'wallet-release.apk', checksum, archive]
           assets = [{'path': str(file), 'name': file.name, 'sha256': digest(file)} for file in downloads]
-          (output / 'plan.json').write_text(json.dumps({'repository': repo, 'commit': commit, 'tag': tag, 'title': f'EOS³ Wallet v{version} · Android', 'notes': str(output / 'notes.md'), 'assets': assets}))
+          (output / 'plan.json').write_text(json.dumps({'repository': repo, 'commit': commit, 'tag': tag, 'title': f'EOS³ Wallet v{version} · Android', 'ref': ref, 'notes': str(output / 'notes.md'), 'assets': assets}))
           PY
       - name: Verify GitHub provenance before publishing
         env:
@@ -468,7 +482,7 @@ jobs:
               --bundle "$RUNNER_TEMP/release-input/provenance.jsonl" \
               --repo "$GITHUB_REPOSITORY" \
               --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/android-build.yml" \
-              --signer-digest "$GITHUB_SHA" --source-ref refs/heads/main --source-digest "$GITHUB_SHA" \
+              --signer-digest "$GITHUB_SHA" --source-ref "$GITHUB_REF" --source-digest "$GITHUB_SHA" \
               --deny-self-hosted-runners
           done
       - name: Upload verified assets then publish the release
@@ -485,10 +499,17 @@ jobs:
           def write_api(endpoint, payload):
               return json.loads(subprocess.check_output(['gh', 'api', endpoint, '--method', 'POST', '--input', '-'], input=json.dumps(payload), text=True))
           tag_endpoint = f'repos/{repo}/git/ref/tags/{tag}'
-          # This exact source tag was reserved before compilation. Never move it
-          # or create a different tag after the source branch has advanced.
-          reference = json.loads(gh('api', tag_endpoint))
-          if reference['object']['type'] != 'commit' or reference['object']['sha'] != plan['commit']:
+          # Publishing never creates or moves a source tag.
+          def tag_commit():
+              obj = json.loads(gh('api', tag_endpoint))['object']
+              for _ in range(5):
+                  if obj['type'] == 'commit':
+                      return obj['sha']
+                  if obj['type'] != 'tag':
+                      break
+                  obj = json.loads(gh('api', f'repos/{repo}/git/tags/{obj["sha"]}'))['object']
+              raise SystemExit('Invalid version tag')
+          if tag_commit() != plan['commit']:
               raise SystemExit('Release source tag mismatch')
           def find_release():
               # The by-tag endpoint excludes drafts. List with write access,
@@ -537,14 +558,15 @@ jobs:
                   time.sleep(2)
           if actual != expected:
               raise SystemExit('Uploaded release asset digest mismatch; draft left unpublished')
+          if tag_commit() != plan['commit']:
+              raise SystemExit('Version tag moved before publication; draft left unpublished')
           if release['draft']:
               release = json.loads(subprocess.check_output(['gh', 'api', endpoint, '--method', 'PATCH', '--input', '-'], input=json.dumps({'draft': False, 'prerelease': False, 'make_latest': 'true'}), text=True))
           release = json.loads(gh('api', endpoint))
           check_identity(release)
           if {asset['name']: asset.get('digest') for asset in release['assets']} != expected:
               raise SystemExit('Published release asset digest mismatch')
-          reference = json.loads(gh('api', f'repos/{repo}/git/ref/tags/{tag}'))
-          if release['draft'] or release['prerelease'] or reference['object']['type'] != 'commit' or reference['object']['sha'] != plan['commit']:
+          if release['draft'] or release['prerelease'] or tag_commit() != plan['commit']:
               raise SystemExit('Published release or source tag mismatch')
           (output / 'published.json').write_text(json.dumps({'url': release['html_url'], 'tag': tag, 'commit': plan['commit'], 'prerelease': False, 'assets': expected}))
           with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:

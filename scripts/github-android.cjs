@@ -23,15 +23,15 @@ function apkIdentity(badging, config) {
 }
 
 function context(env = process.env) {
-  if (env.GITHUB_ACTIONS !== 'true' || env.GITHUB_REF !== 'refs/heads/main' ||
-      !['push', 'workflow_dispatch'].includes(env.GITHUB_EVENT_NAME) ||
+  if (env.GITHUB_ACTIONS !== 'true' || !/^refs\/tags\/v(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(env.GITHUB_REF ?? '') ||
+      env.GITHUB_EVENT_NAME !== 'push' ||
       !/^[a-f0-9]{40}$/.test(env.GITHUB_SHA ?? '') ||
       !/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(env.GITHUB_REPOSITORY ?? '') ||
       !/^\d+$/.test(env.GITHUB_RUN_ID ?? '') || !/^\d+$/.test(env.GITHUB_RUN_ATTEMPT ?? '') ||
-      env.GITHUB_SERVER_URL !== 'https://github.com') throw new Error('Public Android builds must use a main commit in GitHub Actions.');
+      env.GITHUB_SERVER_URL !== 'https://github.com') throw new Error('Public Android builds must use a stable version tag in GitHub Actions.');
   return {
     repository: env.GITHUB_REPOSITORY, ref: env.GITHUB_REF, commit: env.GITHUB_SHA,
-    runId: env.GITHUB_RUN_ID, runAttempt: env.GITHUB_RUN_ATTEMPT,
+    runId: env.GITHUB_RUN_ID, runAttempt: env.GITHUB_RUN_ATTEMPT, releaseTag: env.GITHUB_REF.slice(10),
     sourceUrl: `${env.GITHUB_SERVER_URL}/${env.GITHUB_REPOSITORY}/tree/${env.GITHUB_SHA}`,
     runUrl: `${env.GITHUB_SERVER_URL}/${env.GITHUB_REPOSITORY}/actions/runs/${env.GITHUB_RUN_ID}/attempts/${env.GITHUB_RUN_ATTEMPT}`,
   };
@@ -55,7 +55,7 @@ function verifyChecksums(directory, names) {
 }
 
 function sameRun(metadata, expected) {
-  for (const key of ['repository', 'ref', 'commit', 'runId', 'runAttempt']) {
+  for (const key of ['repository', 'ref', 'commit', 'runId', 'runAttempt', 'releaseTag']) {
     if (metadata[key] !== expected[key]) throw new Error('Artifact belongs to a different source commit or workflow run.');
   }
 }
@@ -101,6 +101,7 @@ function packageBuild(input, destination) {
   const sdk = fs.realpathSync(process.env.ANDROID_HOME || process.env.ANDROID_SDK_ROOT);
   const identity = apkIdentity(execFileSync(path.join(sdk, 'build-tools', policy.buildTools, 'aapt2'),
     ['dump', 'badging', path.join(input, unsignedName)], { encoding: 'utf8' }), JSON.parse(checkedFile(root, 'app.json')).expo);
+  if (identity.appVersion !== info.releaseTag.slice(1)) throw new Error('APK version differs from the release tag.');
   fs.writeFileSync(path.join(destination, 'build-info.json'), JSON.stringify({
     ...info, ...identity, artifact: unsignedName, sha256: sha256(apk), node: process.version,
     expo: verification.expo, platform: `${process.platform}-${process.arch}`,
@@ -117,6 +118,7 @@ function packageSignature(input, destination) {
   verifyChecksums(input, unsignedFiles);
   const metadata = JSON.parse(checkedFile(input, 'build-info.json'));
   sameRun(metadata, info);
+  if (metadata.appVersion !== info.releaseTag.slice(1)) throw new Error('Unsigned APK version differs from the release tag.');
   if (metadata.sha256 !== sha256(checkedFile(input, unsignedName))) throw new Error('Unsigned APK metadata mismatch.');
   fs.mkdirSync(destination, { recursive: true });
   if (fs.readdirSync(destination).length) throw new Error('Artifact destination must be empty.');

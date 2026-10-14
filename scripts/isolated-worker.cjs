@@ -26,7 +26,7 @@ function verifySource() {
 }
 
 try {
-  if (!['install', 'verify'].includes(phase) || !fs.existsSync('/source/SOURCE_MANIFEST.json')) throw new Error('Use the isolated-build entry point.');
+  if (!['install', 'verify', 'verify-tests'].includes(phase) || !fs.existsSync('/source/SOURCE_MANIFEST.json')) throw new Error('Use the isolated-build entry point.');
   process.chdir('/workspace');
   fs.mkdirSync('/tmp/home', { recursive: true });
   if (phase === 'install') {
@@ -40,14 +40,20 @@ try {
     console.log('Registry signatures and available provenance verified.');
   } else {
     verifySource();
+    // Policy tests execute the workflow's actual Python checks. Missing Python
+    // must fail this runner instead of silently skipping those checks.
+    run('python3', ['--version'], 'python-version.txt');
     run('npm', ['run', 'patch:dependencies']);
+    console.log('Running unit and build-policy tests without network access.');
     run('npm', ['test', '--', '--runInBand'], 'tests.txt');
+    console.log('Tests passed; running TypeScript and Expo compatibility checks.');
     run('npm', ['run', 'typecheck'], 'typecheck.txt');
     run('node', ['node_modules/expo/bin/cli', 'install', '--check'], 'expo-check.txt');
-    for (const platform of ['android', 'ios']) {
+    const platforms = phase === 'verify-tests' ? [] : ['android', 'ios'];
+    for (const platform of platforms) {
       run('node', ['node_modules/expo/bin/cli', 'export', '--platform', platform, '--output-dir', `/output/${platform}`, '--source-maps'], `${platform}-bundle.txt`);
     }
     verifySource();
-    fs.writeFileSync('/output/verification.json', JSON.stringify({ registrySignatures: 'passed', tests: 'passed', typecheck: 'passed', expoCompatibility: 'passed', bundles: ['android', 'ios'], networkDuringCodeExecution: 'none', nativeBuild: 'not-run', releaseApproved: false }, null, 2) + '\n');
+    fs.writeFileSync('/output/verification.json', JSON.stringify({ registrySignatures: 'passed', tests: 'passed', typecheck: 'passed', expoCompatibility: 'passed', bundles: platforms, networkDuringCodeExecution: 'none', nativeBuild: 'not-run', releaseApproved: false }, null, 2) + '\n');
   }
 } catch (error) { console.error(error.message); process.exitCode = 1; }

@@ -55,7 +55,8 @@ if (require.main === module) {
     if (result.status !== 0) throw new Error(`Isolated Docker step failed (${result.status ?? 'signal'}); no host-build fallback was used.`);
   }
   try {
-    if (process.argv.length > 2) throw new Error('This command takes no arguments and never loads local environment files.');
+    const testsOnly = process.argv.length === 3 && process.argv[2] === '--tests-only';
+    if (process.argv.length > 2 && !testsOnly) throw new Error('Only --tests-only is supported; local environment files are never loaded.');
     verifyDependencyPolicy();
     const scan = spawnSync(process.execPath, ['scripts/check-source.mjs'], { cwd: root, stdio: 'inherit' });
     if (scan.status !== 0) throw new Error('Public source scan failed.');
@@ -84,8 +85,8 @@ if (require.main === module) {
     docker(['run', '--rm', '--network=none', '--read-only', '--mount', `type=volume,src=${volume},dst=/workspace`, image, 'chown', '1000:1000', '/workspace']);
     docker(containerArgs(image, input, output, volume, 'bridge', 'install'));
     // Dependencies execute only after network access has been removed.
-    docker(containerArgs(image, input, output, volume, 'none', 'verify'));
-    console.log(`Isolated checks and Android/iOS JavaScript bundles passed. Reports: ${path.relative(root, output)}`);
+    docker(containerArgs(image, input, output, volume, 'none', testsOnly ? 'verify-tests' : 'verify'));
+    console.log(`Isolated ${testsOnly ? 'tests and typecheck' : 'checks and Android/iOS JavaScript bundles'} passed. Reports: ${path.relative(root, output)}`);
   } catch (error) { console.error(error.message); process.exitCode = 1; }
   finally {
     spawnSync('docker', ['volume', 'rm', volume], { stdio: 'ignore' });
