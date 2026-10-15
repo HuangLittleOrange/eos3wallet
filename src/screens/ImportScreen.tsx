@@ -15,8 +15,8 @@ const BLUE = '#2E7DF7';
 /**
  * 导入钱包入口页 —— 参考 TP「Import Wallets」的入口列表(而不是单页里的
  * 分段控件),真正的输入/派生/账户选择逻辑在各自子页(ImportSecretScreen /
- * ImportWatchScreen / PasskeyLoginScreen)。私钥/passkey 登录并成一组(都是
- * "已经有账户、接进本机"),观察钱包单独一组(只看不签)。助记词导入已按
+ * ImportWatchScreen / DeviceKeyImportScreen)。私钥导入和设备授权并成一组,
+ * 观察钱包单独一组(只看不签)。助记词导入已按
  * 需求去掉(ImportSecretScreen 底层仍支持 mode==='mnemonic',只是这里不再
  * 暴露入口)。
  *
@@ -68,17 +68,6 @@ export default function ImportScreen() {
             title={t('import.privateKey')}
             desc={t('import.privateKeyDesc')}
             onPress={() => nav.navigate('ImportSecret', { mode: 'privatekey' })}
-          />
-          <View style={styles.sep} />
-          {/* 「登录 passkey」跟私钥导入放一组——两条都是"已经有账户、把它接进
-              本机"的路,和下面观察钱包(只看不签)不是一类。参考 TP「Import
-              Wallets」的页面结构:私钥/助记词/邮箱登录并列一组,观察钱包/冷
-              钱包单独一组。 */}
-          <Row
-            icon={<MaterialCommunityIcons name="fingerprint" size={22} color={BLUE} />}
-            title={t('createWalletMethod.loginWithPasskey')}
-            desc={t('createWalletMethod.loginWithPasskeyDesc')}
-            onPress={() => nav.navigate('PasskeyLogin')}
           />
           <View style={styles.sep} />
           <Row

@@ -9,6 +9,8 @@
     "@noble/curves": "^2.3.0",
     "@noble/hashes": "^2.3.0",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-firebase/analytics": "26.4.0",
+    "@react-native-firebase/app": "26.4.0",
     "@react-navigation/bottom-tabs": "^7.18.16",
     "@react-navigation/elements": "^2.9.39",
     "@react-navigation/native": "^7.3.16",
@@ -70,6 +72,9 @@
   "overrides": {
     "xcode@3.0.1": {
       "uuid": "11.1.1"
+    },
+    "@firebase/firestore": {
+      "@grpc/grpc-js": "1.14.6"
     }
   },
   "scripts": {
@@ -102,7 +107,13 @@
     "testPathIgnorePatterns": [
       "/node_modules/",
       "/.claude/",
-      "<rootDir>/.codex/"
+      "<rootDir>/.codex/",
+      "<rootDir>/exports/",
+      "<rootDir>/backups/"
+    ],
+    "modulePathIgnorePatterns": [
+      "<rootDir>/exports/",
+      "<rootDir>/backups/"
     ],
     "setupFiles": [
       "<rootDir>/jest.setup.js"

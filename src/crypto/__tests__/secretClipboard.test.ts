@@ -56,4 +56,3 @@ test('a stale confirmation never writes and native failures never report success
   clipboard.setStringAsync.mockResolvedValueOnce(false);
   expect(await owner.copy('test-secret', () => true)).toBe(false);
 });
-

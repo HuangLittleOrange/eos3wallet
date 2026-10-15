@@ -19,6 +19,7 @@ import {
 import { t } from '../i18n';
 import { rememberSponsorFee } from './sponsorFeeCache';
 import { assertResolvedActionsMatch } from './transactionSafety';
+import { AuthorizationFailureError, explainAuthorizationFailure, isAuthorizationFailure } from './authorizationError';
 
 export type ActionSpec = {
   account: string; // 合约账户
@@ -58,7 +59,7 @@ function walletPluginFor(signer: Signer): WalletPlugin {
  * 就把原始系统异常糊给用户看,还得手动重新走一遍 passkey 认证。重放已签名的
  * push_transaction 是安全的:节点对同一笔交易会去重,不会重复入账。
  */
-function makeSession(chainId: ChainId, node: NodeInfo, actor: string, signer: Signer, permission = 'active', isCurrent?: () => boolean, actions?: ActionSpec[]) {
+function makeSession(chainId: ChainId, node: NodeInfo, actor: string, signer: Signer, permission = 'active', isCurrent?: () => boolean, actions?: ActionSpec[], onRpcFailure?: (error: unknown) => void) {
   const checkContext = () => { if (isCurrent && !isCurrent()) throw new Error(t('dappBrowser.requestChanged')); };
   const walletPlugin = walletPluginFor(signer);
   const originalSign = walletPlugin.sign.bind(walletPlugin);
@@ -79,6 +80,16 @@ function makeSession(chainId: ChainId, node: NodeInfo, actor: string, signer: Si
         checkContext();
         const response = await fetchWithRetry(...args);
         checkContext();
+        // Session discards RPC error metadata and assumes details[0] exists.
+        // Preserve permission failures before that normalization, without
+        // changing the response or retrying/restricting the original operation.
+        if (!response.ok && onRpcFailure && typeof response.clone === 'function') {
+          try {
+            const body: unknown = await response.clone().json();
+            if (isAuthorizationFailure(body)) onRpcFailure(body);
+          } catch { /* Keep the original SDK failure if the body is unreadable. */ }
+          checkContext();
+        }
         return response;
       },
       transactPlugins: isCurrent ? [{ id: 'wallet-request-context', register(context) {
@@ -138,12 +149,25 @@ type TransactOpts = {
   isCurrent?: () => boolean;
 };
 
+/** Error explanation only; successful transactions incur no extra RPC calls. */
+export async function transactionFailure(err: unknown, opts: Pick<TransactOpts, 'chainId' | 'node' | 'actor' | 'permission' | 'signer' | 'isCurrent'>): Promise<Error> {
+  const failure = toBroadcastError(err, { actor: opts.actor, permission: opts.permission ?? 'active' });
+  if (!(failure instanceof AuthorizationFailureError)) return failure;
+  let publicKey: string | undefined;
+  try { publicKey = opts.signer.kind === 'passkey' ? opts.signer.chainPublicKey : PrivateKey.from(opts.signer.privateKey).toPublic().toString(); }
+  catch { /* Never expose a private key or key-parser error in diagnostics. */ }
+  return explainAuthorizationFailure(failure, {
+    nodeUrl: opts.node.url, chainId: CHAINS[opts.chainId].chainIdHash, publicKey, isCurrent: opts.isCurrent,
+  });
+}
+
 /**
  * 本地拼、本地签、直接广播到节点——不预检资源、失败了也不自动转代付。
  * 资源不够(CPU/NET、RAM)的失败带着专门的 Error 子类抛出去,UI 据此弹
  * 修复弹窗让用户一键买资源,充完再回来点一次(见 ResourceRepairSheet)。
  */
 export async function transact(opts: TransactOpts): Promise<TransactResult> {
+  let rpcFailure: unknown;
   try {
     if (opts.isCurrent && !opts.isCurrent()) throw new Error(t('dappBrowser.requestChanged'));
     // Snapshot before the first asynchronous operation. The UI's authorization must
@@ -156,7 +180,7 @@ export async function transact(opts: TransactOpts): Promise<TransactResult> {
         throw new Error(t('dappBrowser.requestChanged'));
       }
     }
-    const session = makeSession(opts.chainId, opts.node, opts.actor, opts.signer, opts.permission, opts.isCurrent, actions);
+    const session = makeSession(opts.chainId, opts.node, opts.actor, opts.signer, opts.permission, opts.isCurrent, actions, failure => { rpcFailure = failure; });
     const result = await session.transact(
       {
         actions: actions.map((a) => ({
@@ -175,7 +199,7 @@ export async function transact(opts: TransactOpts): Promise<TransactResult> {
       explorerUrl: explorerTx(opts.chainId, txId),
     };
   } catch (err) {
-    throw toBroadcastError(err);
+    throw await transactionFailure(rpcFailure ?? err, opts);
   }
 }
 
@@ -229,7 +253,7 @@ export async function sponsoredTransact(opts: TransactOpts & { approvedFee?: str
     }
     return { txId, explorerUrl: explorerTx(opts.chainId, txId) };
   } catch (err) {
-    throw toBroadcastError(err);
+    throw await transactionFailure(err, opts);
   }
 }
 

@@ -1,5 +1,5 @@
 import { ABI, Action, Serializer, Transaction } from '@wharfkit/antelope';
-import { coreTransferAbi } from './coreTokenAbi';
+import { coreActionAbi } from './coreTokenAbi';
 import type { ActionSpec } from './transact';
 
 /** Fields not represented by the confirmation UI must never be signed silently. */
@@ -16,7 +16,7 @@ export function assertVisibleTransaction(transaction: Transaction): void {
 
 /** A partial ABI decode may hide trailing action bytes. Require a complete round trip. */
 export function decodeVisibleAction(action: Action, abi: ABI): Record<string, any> {
-  abi = coreTransferAbi(String(action.account), String(action.name)) ?? abi;
+  abi = coreActionAbi(String(action.account), String(action.name)) ?? abi;
   const data = Serializer.objectify(action.decodeData(abi)) as Record<string, any>;
   const encoded = Action.from({ account: action.account, name: action.name,
     authorization: action.authorization, data }, abi);
@@ -32,9 +32,9 @@ export function assertResolvedActionsMatch(transaction: Transaction, actions: Ac
     if (String(actual.account) !== expected.account || String(actual.name) !== expected.name ||
         actual.authorization.length !== 1 || String(actual.authorization[0].actor) !== actor ||
         String(actual.authorization[0].permission) !== permission) throw new Error('Transaction authorization changed');
-    const abi = coreTransferAbi(expected.account, expected.name);
+    const abi = coreActionAbi(expected.account, expected.name);
     if (abi && Action.from({ ...expected, authorization: actual.authorization }, abi).data.hexString !== actual.data.hexString) {
-      throw new Error('Transfer differs from confirmed content');
+      throw new Error('Action differs from confirmed content');
     }
   });
 }

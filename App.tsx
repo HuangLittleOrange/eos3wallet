@@ -12,11 +12,13 @@ import ModalHost from './src/components/ModalHost';
 import { I18nProvider } from './src/i18n';
 import { AppContentProvider } from './src/content/AppContentContext';
 import { NodeCatalogProvider } from './src/chain/NodeCatalogContext';
+import { UsageAnalyticsProvider } from './src/analytics/UsageAnalyticsContext';
 
 export default function App() {
   return (
     <SafeAreaProvider>
       <StatusBar style="dark" />
+      <UsageAnalyticsProvider>
       <I18nProvider>
         <AppContentProvider>
           <NodeCatalogProvider>
@@ -43,6 +45,7 @@ export default function App() {
           </NodeCatalogProvider>
         </AppContentProvider>
       </I18nProvider>
+      </UsageAnalyticsProvider>
     </SafeAreaProvider>
   );
 }

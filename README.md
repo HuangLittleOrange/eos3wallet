@@ -115,6 +115,7 @@ This repository contains the wallet client. Some login, content, update, and spo
 | Market data services | Token or trading pair queries |
 | Google / Passkey login services | Login authorization, credential registration, and authentication information |
 | Android QR scanning SDK (Google ML Kit) | Device and app information, installation identifiers, API performance, and usage diagnostics; recognition inputs and results are processed on the device. See [ML Kit privacy terms](https://developers.google.com/ml-kit/terms). |
+| Google Analytics for Firebase (on by default; can be disabled) | Unless disabled: automatic first-open/session/activity events, an analytics installation identifier and standard device/app metadata; no wallet accounts, balances, keys, transactions, DApp URLs or advertising collection. See [setup and privacy controls](docs/firebase-analytics.md). |
 | Authorization and sponsorship services | Accounts, authorization settings, transactions awaiting signatures, and signing results |
 | Content, image, and update services | Network requests, platform information, and app versions used for update checks |
 | DApp / ESR / Anchor Link | Accounts, public keys, signatures, and connection information; persistent session messages pass through a relay service |

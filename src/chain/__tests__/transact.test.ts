@@ -201,3 +201,54 @@ describe('sponsoredTransact', () => {
     });
   });
 });
+
+describe('actionable authorization failures without new preflight restrictions', () => {
+  const failure = { message: 'Internal Service Error', response: { json: { error: { code: 3090003, name: 'unsatisfied_authorization' } } } };
+  const originalFetch = global.fetch;
+  const mockedNode = () => {
+    const otherKey = PrivateKey.generate('K1').toPublic().toString();
+    const fn = jest.fn(async (input: RequestInfo | URL) => ({
+      ok: true, json: async () => String(input).endsWith('get_info')
+        ? { chain_id: 'aca376f206b8fc25a6ed44dbdc66547c36c6c33e3a119ffbeaef943642f0e906' }
+        : { account_name: 'alice', permissions: [
+          { perm_name: 'active', parent: 'owner', required_auth: { threshold: 1, keys: [{ key: otherKey, weight: 1 }], accounts: [], waits: [] } },
+          { perm_name: 'owner', parent: '', required_auth: { threshold: 1, keys: [{ key: otherKey, weight: 1 }], accounts: [], waits: [] } },
+          { perm_name: 'paytransfer', parent: 'active', required_auth: { threshold: 1, keys: [{ key: otherKey, weight: 1 }], accounts: [], waits: [] } },
+        ] },
+    } as Response));
+    global.fetch = fn; return fn;
+  };
+  afterEach(() => { global.fetch = originalFetch; });
+
+  it.each(['active', 'owner', 'paytransfer'])('reports the required %s permission after the normal transaction attempt fails', async permission => {
+    const fetchMock = mockedNode();
+    mockSessionTransact.mockImplementation(async () => { expect(fetchMock).not.toHaveBeenCalled(); throw failure; });
+    const error = await transact({ ...baseOpts, permission }).catch(error => error);
+    expect(error.message).toContain('chainError.keyNotAuthorized');
+    expect(error.message).toContain(`"permission":"${permission}"`);
+    expect(error.message).toContain('"account":"alice"');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(mockSessionTransact).toHaveBeenCalledTimes(1);
+    expect(mockPush).not.toHaveBeenCalled();
+  });
+
+  it('successful operations add no authority-query RPC calls', async () => {
+    const fetchMock = mockedNode();
+    mockSessionTransact.mockResolvedValue({ resolved: { transaction: { id: 'a'.repeat(64) } } });
+    await transact(baseOpts);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('sponsored failures show the same permission explanation and do not automatically retry or pay again', async () => {
+    const fetchMock = mockedNode();
+    mockBuild.mockResolvedValue(build());
+    mockPush.mockRejectedValue(failure);
+    const error = await sponsoredTransact(baseOpts).catch(error => error);
+    expect(error.message).toContain('chainError.keyNotAuthorized');
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(mockBuild).toHaveBeenCalledTimes(1);
+    expect(mockPush).toHaveBeenCalledTimes(1);
+    expect(error).not.toBeInstanceOf(CpuNetExhaustedError);
+    expect(error).not.toBeInstanceOf(RamExhaustedError);
+  });
+});

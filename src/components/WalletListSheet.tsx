@@ -17,7 +17,7 @@ import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming
 import BottomSheet from './BottomSheet';
 import { colors, spacing } from '../theme';
 import { useWallet } from '../chain/WalletContext';
-import { resolveAuthPermissions } from '../chain/account';
+import { useWalletPermissionBadges } from '../chain/useWalletPermissionBadges';
 import { DEFAULT_CHAIN, legacyLabel } from '../chain/config';
 import { fmtUSD } from '../chain/format';
 import { priceIn } from '../chain/prices';
@@ -230,9 +230,8 @@ export default function WalletListSheet({ visible, onClose }: { visible: boolean
     walletList.unshift({ id: '__adhoc__', account: w.account, source: 'adhoc' });
   }
 
-  /** 这张卡该显示哪些权限徽标(逻辑见 resolveAuthPermissions,和资产页顶部共用) */
-  const permsFor = (x: (typeof walletList)[number]): string[] =>
-    resolveAuthPermissions(x, w.account, w.resources);
+  const livePermissions = useWalletPermissionBadges(walletList, w.client, visible, w.resources);
+  const permsFor = (x: (typeof walletList)[number]): string[] => livePermissions[x.id] ?? [];
 
   /**
    * 点已保存的钱包卡片 —— 直接切过去,不需要先删掉再重新导入。

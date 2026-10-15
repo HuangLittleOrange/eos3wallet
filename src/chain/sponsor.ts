@@ -17,6 +17,7 @@ import type { NodeInfo } from './config';
 import type { ActionSpec, Signer } from './transact';
 import { t } from '../i18n';
 import { fetchWithRetry } from '../net/fetchRetry';
+import { AuthorizationFailureError, chainErrorText, isAuthorizationFailure, type AuthorizationContext } from './authorizationError';
 
 export class SponsorError extends Eos3SignError {}
 
@@ -50,15 +51,7 @@ export class SponsorFeeChangedError extends Error {
   }
 }
 
-function resourceErrorText(err: unknown, depth = 0): string {
-  if (err == null || depth > 8) return '';
-  if (typeof err !== 'object') return String(err).toLowerCase();
-  if (Array.isArray(err)) return err.map((value) => resourceErrorText(value, depth + 1)).join(' ');
-  const value = err as Record<string, unknown>;
-  // Wharfkit/RPC 错误有时顶层只有 HTTP 500,真实原因在 error.name/details。
-  return ['message', 'name', 'what', 'error', 'details', 'response', 'json', 'processed', 'except']
-    .map((key) => resourceErrorText(value[key], depth + 1)).join(' ');
-}
+const resourceErrorText = chainErrorText;
 
 export function isCpuNetExhaustedError(err: unknown): boolean {
   const message = resourceErrorText(err);
@@ -92,18 +85,21 @@ export function isSponsorIntentExpiredError(err: unknown): boolean {
  * 用专门的 Error 子类标出来好弹修复弹窗,其余翻译成用户看得懂的文案。已经是
  * 归一过的错误原样返回,多层 catch 不会把类型抹掉。
  */
-export function toBroadcastError(err: unknown): Error {
+export function toBroadcastError(err: unknown, context?: AuthorizationContext): Error {
   if (
     err instanceof RamExhaustedError ||
     err instanceof CpuNetExhaustedError ||
     err instanceof SponsorFeeChangedError ||
-    err instanceof TxIntentMismatchError
+    err instanceof TxIntentMismatchError ||
+    err instanceof AuthorizationFailureError
   ) {
+    if (err instanceof AuthorizationFailureError && context && !err.context) return new AuthorizationFailureError(context);
     return err;
   }
   const message = friendlyChainErrorMessage(err);
   if (isRamExhaustedError(err)) return new RamExhaustedError(message);
   if (isCpuNetExhaustedError(err)) return new CpuNetExhaustedError(message);
+  if (isAuthorizationFailure(err)) return new AuthorizationFailureError(context);
   return new Error(message);
 }
 
@@ -153,6 +149,7 @@ function toSponsorActions(actions: ActionSpec[], actor: string, permission: stri
 
 /** 把节点/Sponsor 服务返回的英文报错,翻译成用户看得懂、知道该怎么办的提示 */
 export function friendlyChainErrorMessage(err: unknown): string {
+  if (err instanceof AuthorizationFailureError) return err.message;
   const message = String((err as any)?.message ?? err ?? '');
   const lower = resourceErrorText(err);
   if (isRamExhaustedError(err)) {
@@ -179,10 +176,7 @@ export function friendlyChainErrorMessage(err: unknown): string {
   if (lower.includes('invalid project credentials')) {
     return t('sponsorError.notConfigured');
   }
-  if (lower.includes('missing required authority') || lower.includes('unsatisfied_authorization') ||
-      lower.includes('provided keys, permissions, and delays do not satisfy')) {
-    return t('chainError.authorization');
-  }
+  if (isAuthorizationFailure(err)) return t('chainError.authorization');
   if (lower.includes('expired transaction') || lower.includes('tx_expired') || lower.includes('invalid reference block')) {
     return t('chainError.expired');
   }
@@ -226,7 +220,10 @@ async function sponsorRequest<T>(path: string, body: unknown): Promise<T> {
     throw new SponsorError(res.ok ? t('eos3Error.badResponseFormat') : t('eos3Error.requestFailed', { status: res.status }));
   }
   // 服务端已经返回了业务错误(非 2xx)属于确定性结果,不重试
-  if (!res.ok) throw new SponsorError(parsed?.error ?? t('eos3Error.requestFailed', { status: res.status }));
+  if (!res.ok) {
+    if (isAuthorizationFailure(parsed)) throw new AuthorizationFailureError();
+    throw new SponsorError(typeof parsed?.error === 'string' ? parsed.error : friendlyChainErrorMessage({ message: t('eos3Error.requestFailed', { status: res.status }), error: parsed?.error }));
+  }
   return parsed as T;
 }
 

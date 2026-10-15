@@ -72,6 +72,17 @@ export function parseAppContent(value: unknown): AppContent {
     }),
     promos: items(raw.promos, (p) => ({ ...item(p), title: localized(p.title, 200), colors: colors(p.colors),
       imageUrl: optionalURL(p.imageUrl), url: optionalURL(p.url) })),
+    modules: raw.modules === undefined ? undefined : items(raw.modules, (m) => {
+      const entries = items(m.items, (e) => {
+        const projectId = e.projectId === undefined || e.projectId === '' ? undefined : text(e.projectId, 80, true);
+        return { ...item(e), projectId, title: localized(e.title, 200, !projectId),
+          description: localized(e.description, 2000, false), color: color(e.color), hot: boolean(e.hot),
+          imageUrl: optionalURL(e.imageUrl), url: optionalURL(e.url) };
+      });
+      const refs = entries.flatMap((e) => e.projectId ? [e.projectId] : []);
+      if (new Set(refs).size !== refs.length) invalid();
+      return { ...item(m), title: localized(m.title, 200), description: localized(m.description, 2000, false), items: entries };
+    }),
     earnEnabled,
     earnTitle: localized(raw.earnTitle, 200, earnEnabled && earnItems.some((item) => item.enabled)),
     earnDescription: localized(raw.earnDescription, 2000, false),

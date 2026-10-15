@@ -34,6 +34,7 @@ export default function DeviceKeyImportScreen() {
   const { t } = useI18n();
 
   const busyRef = useRef(false);
+  const mountedRef = useRef(true);
   const recoveredRef = useRef(false);
   const [pending, setPending] = useState<PendingDeviceKey | null | undefined>(undefined);
   const [asking, setAsking] = useState(false);
@@ -45,9 +46,10 @@ export default function DeviceKeyImportScreen() {
 
   useEffect(() => {
     let alive = true;
+    mountedRef.current = true;
     loadPendingDeviceKey().then((value) => { if (alive) setPending(value); })
       .catch((error) => { if (alive) setHint(error?.message ?? t('signupError.pendingReadFailed')); });
-    return () => { alive = false; };
+    return () => { alive = false; mountedRef.current = false; };
   }, []);
 
   useFocusEffect(
@@ -97,7 +99,7 @@ export default function DeviceKeyImportScreen() {
       // The callback only resumes the flow; chain state decides what can be imported.
       busyRef.current = false;
       if (result.type === 'success' || result.type === 'cancel' || result.type === 'dismiss') {
-        await check(result.type !== 'success');
+        await check(result.type !== 'success', result.type === 'success' ? 5 : 1);
       }
     } catch (error: any) {
       setHint(error?.message ?? t('deviceKey.failed'));
@@ -107,22 +109,44 @@ export default function DeviceKeyImportScreen() {
     }
   };
 
-  const check = async (silent = false) => {
-    if (!pending || busyRef.current || editingName) return;
+  const checkContext = `${w.chainId}/${w.node?.url}/${pending?.id}`;
+  const checkContextRef = useRef(checkContext);
+  checkContextRef.current = checkContext;
+
+  const check = async (silent = false, attempts = 1) => {
+    if (!pending || busyRef.current || editingName || checkContextRef.current !== checkContext) return;
     busyRef.current = true;
     setBusy(true);
     setHint(null);
     try {
       assertPendingDeviceChain(pending, w.chainId);
-      const accounts = await findAccountsForDeviceKey(w.node, w.historyNode, pending);
-      if (!accounts.length) {
+      const context = checkContext;
+      const isCurrent = () => mountedRef.current && checkContextRef.current === context;
+      let account = '';
+      // Callback arrival can precede the public RPC/indexer catching up. Retry
+      // automatically, while never treating callback parameters as chain proof.
+      for (let attempt = 0; attempt < attempts; attempt++) {
+        const accounts = await findAccountsForDeviceKey(w.node, w.historyNode, pending);
+        if (!isCurrent()) return;
+        if (accounts.length) {
+          try {
+            await importPendingDeviceKey(pending, accounts[0], w.chainId, w.node);
+            if (!isCurrent()) return;
+            account = accounts[0];
+            break;
+          } catch (error: any) {
+            if (error?.message !== t('deviceKeyImport.notYet')) throw error;
+          }
+        }
+        if (attempt + 1 < attempts) await new Promise(resolve => setTimeout(resolve, 1500));
+        if (!isCurrent()) return;
+      }
+      if (!account) {
         if (!silent) setHint(t('deviceKeyImport.notYet'));
         return;
       }
       // 同一把公钥被多个账户授权极少见;真遇到就按链上返回顺序取第一个,其余账户
       // 用户可以再走一遍私钥导入(私钥就在本机)
-      const account = accounts[0];
-      await importPendingDeviceKey(pending, account, w.chainId, w.node);
       await w.reloadWallets();
       w.setAccount(account);
       nav.reset({ index: 0, routes: [{ name: 'Tabs' }] });

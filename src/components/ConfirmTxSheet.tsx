@@ -41,6 +41,7 @@ export default function ConfirmTxSheet({
   origin,
   callbackOrigin,
   message,
+  notice,
   onConfirm,
   onConfirmBiometric,
   onConfirmPasskey,
@@ -68,6 +69,8 @@ export default function ConfirmTxSheet({
    * 以为自己在签一笔转账。
    */
   message?: string | null;
+  /** Operation-specific meaning of the exact actions below. */
+  notice?: string;
   onConfirm: (password: string) => void;
   onConfirmBiometric?: () => void;
   onConfirmPasskey?: () => void;
@@ -181,6 +184,7 @@ export default function ConfirmTxSheet({
           ) : null}
 
           {/* 逐条展示实际上链内容 */}
+          {notice ? <View style={styles.sponsorBar}><Text style={styles.sponsorTxt}>{notice}</Text></View> : null}
           {actions.map((a, i) => (
             <View key={i} style={styles.actionCard}>
               <View style={styles.actionHead}>

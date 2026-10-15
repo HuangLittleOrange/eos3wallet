@@ -18,7 +18,7 @@ const request = () => ({ account: 'core.vaulta', name: 'transfer', data: {
 const transferAbi = coreTransferAbi('core.vaulta', 'transfer')!;
 let calls: { url: string; body: any }[];
 let spies: jest.SpyInstance[];
-function rpc(abi = transferAbi, beforeResponse?: (url: string) => void) {
+function rpc(abi = transferAbi, beforeResponse?: (url: string) => void, authorizationFailure = false) {
   globalThis.fetch = jest.fn(async (url: any, init: any) => {
     calls.push({ url: String(url), body: init?.body ? JSON.parse(init.body) : {} });
     beforeResponse?.(String(url));
@@ -31,9 +31,15 @@ function rpc(abi = transferAbi, beforeResponse?: (url: string) => void) {
       head_block_time: new Date().toISOString().slice(0, -1), head_block_producer: 'eosio',
       virtual_block_cpu_limit: 0, virtual_block_net_limit: 0, block_cpu_limit: 0, block_net_limit: 0,
     };
-    else if (String(url).endsWith('/send_transaction')) body = { transaction_id: 'aa'.repeat(32) };
+    else if (String(url).endsWith('/send_transaction')) body = authorizationFailure
+      ? { code: 500, message: 'Internal Service Error', error: { code: 3090003, name: 'unsatisfied_authorization', what: 'Provided keys, permissions, and delays do not satisfy declared authorizations', details: [] } }
+      : { transaction_id: 'aa'.repeat(32) };
+    else if (authorizationFailure && String(url).endsWith('/get_account')) body = { account_name: 'alice', permissions: ['active', 'owner'].map(name => ({
+      perm_name: name, parent: name === 'owner' ? '' : 'owner', required_auth: { threshold: 1, keys: [], accounts: [], waits: [] }
+    })) };
     else throw new Error('Unexpected RPC endpoint');
-    return { ok: true, status: 200, headers: { entries: () => [['content-type', 'application/json']] },
+    const rejected = authorizationFailure && String(url).endsWith('/send_transaction');
+    return { ok: !rejected, status: rejected ? 500 : 200, json: async () => body, clone: () => ({ json: async () => body }), headers: { entries: () => [['content-type', 'application/json']] },
       text: async () => JSON.stringify(body) } as any;
   });
 }
@@ -74,4 +80,22 @@ test('mutating the original action during preparation cannot change the reviewed
   const sent = calls.find((call) => call.url.endsWith('/send_transaction'))!.body;
   const transaction = PackedTransaction.from(sent).getTransaction();
   expect(String((transaction.actions[0].decodeData(transferAbi) as any).to)).toBe('bob');
+});
+
+
+test('a real Session RPC permission rejection becomes a clear error after the normal signed attempt, without retries or secret disclosure', async () => {
+  rpc(transferAbi, undefined, true);
+  await expect(transact(options())).rejects.toThrow('chainError.keyNotAuthorized');
+  const sends = calls.filter(call => call.url.endsWith('/send_transaction'));
+  expect(sends).toHaveLength(1);
+  const sendIndex = calls.findIndex(call => call.url.endsWith('/send_transaction'));
+  const readIndex = calls.findIndex(call => call.url.endsWith('/get_account'));
+  expect(readIndex).toBeGreaterThan(sendIndex);
+  const diagnostics = calls.slice(sendIndex + 1);
+  expect(diagnostics.map(call => call.url.split('/').pop()).sort()).toEqual(['get_account', 'get_info']);
+  const allOutput = JSON.stringify({ calls, logs: spies.map(spy => spy.mock.calls) });
+  for (const secret of [String(key), key.toWif(), key.data.hexString]) expect(allOutput).not.toContain(secret);
+  expect(AsyncStorage.setItem).not.toHaveBeenCalled();
+  expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
+  expect(Clipboard.setStringAsync).not.toHaveBeenCalled();
 });

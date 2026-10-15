@@ -5,7 +5,9 @@ import { Ionicons } from '@expo/vector-icons';
 
 import BottomSheet from './BottomSheet';
 import { colors, spacing } from '../theme';
-import { useWallet } from '../chain/WalletContext';
+import { useWalletSession } from '../chain/WalletContext';
+import { DEFAULT_CHAIN } from '../chain/config';
+import type { StoredWallet } from '../crypto/vault';
 import { listRecentRecipients } from '../chain/recentRecipients';
 import { useI18n } from '../i18n';
 
@@ -21,7 +23,7 @@ export default function SelectWalletSheet({
   onPick: (acct: string) => void;
 }) {
   const insets = useSafeAreaInsets();
-  const w = useWallet();
+  const w = useWalletSession();
   const { t } = useI18n();
   const TABS = [t('selectWallet.recent'), t('selectWallet.walletList')];
   const [tab, setTab] = useState(1);
@@ -29,6 +31,15 @@ export default function SelectWalletSheet({
   // 交易记录里取——那里混着 DApp 换币打给的合约、买资源打给的系统合约和别人
   // 转进来的账户,链上看都是普通 transfer,分不出哪笔是用户自己发的。
   const [recent, setRecent] = useState<string[]>([]);
+
+  // 收款账户属于当前网络,不能把其他链上的同名账户当作同一个收款方。
+  const wallets: Pick<StoredWallet, 'id' | 'account' | 'publicKey' | 'source'>[] = [...w.wallets]
+    .filter((wallet) => (wallet.chainId ?? DEFAULT_CHAIN) === w.chainId)
+    .sort((a, b) => b.createdAt - a.createdAt);
+  // 保留当前临时浏览的账户,同时展示本机已经添加的全部钱包。
+  if (w.account && !wallets.some((wallet) => wallet.account === w.account)) {
+    wallets.unshift({ id: '__current__', account: w.account, publicKey: '', source: 'watch' });
+  }
 
   const load = useCallback(async () => {
     setRecent(await listRecentRecipients(w.chainId));
@@ -67,25 +78,28 @@ export default function SelectWalletSheet({
           ))}
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
+        <ScrollView style={{ flex: 1 }} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 24 }}>
           {tab === 1 ? (
-            <TouchableOpacity style={styles.card} activeOpacity={0.6} onPress={() => pick(w.account)}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarTxt}>A</Text>
-              </View>
-              <View style={{ flex: 1, marginLeft: 14 }}>
-                {/* 不放复制小图标——它不接剪贴板,整卡的动作是"选中这个账户" */}
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                  <Text style={styles.name}>{w.account}</Text>
-                  <View style={styles.currentTag}>
-                    <Text style={styles.currentTxt}>{t('selectWallet.current')}</Text>
-                  </View>
+            wallets.map((wallet) => (
+              <TouchableOpacity key={wallet.id} style={styles.card} activeOpacity={0.6} onPress={() => pick(wallet.account)}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarTxt}>A</Text>
                 </View>
-                <Text style={styles.key} numberOfLines={1}>
-                  {w.resources?.permissions.find((x) => x.name === 'active')?.keys[0] ?? t('selectWallet.watchOnlyWallet')}
-                </Text>
-              </View>
-            </TouchableOpacity>
+                <View style={{ flex: 1, minWidth: 0, marginLeft: 14 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                    <Text style={styles.name} numberOfLines={1}>{wallet.account}</Text>
+                    {(wallet.id === w.currentWallet?.id || wallet.id === '__current__') ? (
+                      <View style={styles.currentTag}>
+                        <Text style={styles.currentTxt}>{t('selectWallet.current')}</Text>
+                      </View>
+                    ) : null}
+                  </View>
+                  <Text style={styles.key} numberOfLines={1}>
+                    {wallet.publicKey || (wallet.source === 'passkey' ? 'Passkey' : t('selectWallet.watchOnlyWallet'))}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            ))
           ) : recent.length ? (
             <View style={styles.listCard}>
               {recent.map((a, i) => (
@@ -127,10 +141,10 @@ const styles = StyleSheet.create({
   segTxt: { fontSize: 15, color: colors.textSub },
   segTxtActive: { color: colors.text, fontWeight: '700' },
 
-  card: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 10, padding: 16 },
+  card: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, borderRadius: 10, padding: 16, marginBottom: 10 },
   avatar: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#3B47D6', alignItems: 'center', justifyContent: 'center' },
   avatarTxt: { color: '#fff', fontSize: 18, fontWeight: '800' },
-  name: { fontSize: 16.5, color: colors.text },
+  name: { flexShrink: 1, fontSize: 16.5, color: colors.text },
   currentTag: { borderWidth: 1, borderColor: BLUE, borderRadius: 5, paddingHorizontal: 7, paddingVertical: 1 },
   currentTxt: { color: BLUE, fontSize: 11.5 },
   key: { fontSize: 13, color: colors.textFaint, marginTop: 6 },

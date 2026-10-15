@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, NativeSynt
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 
 import { colors, spacing } from '../theme';
 import { useOpenDapp } from '../dapp/useOpenDapp';
@@ -21,10 +21,12 @@ import {
 import { useI18n } from '../i18n';
 import { useFocusedAppContent } from '../content/useFocusedAppContent';
 import { localizedText, visibleItems } from '../content/types';
+import { discoveryModules } from '../content/modules';
 
 const BANNER_AUTOPLAY_MS = 4000;
 const GRID_GAP = 10;
 const emptyDappBrowser = require('../../assets/illustrations/empty-dapp-browser.png');
+const emptyFavorites = require('../../assets/illustrations/empty-favorites.png');
 
 export default function DiscoverScreen() {
   const { width: W } = useWindowDimensions();
@@ -47,13 +49,7 @@ export default function DiscoverScreen() {
     letter: project.letter || (project.translations?.[locale]?.name || project.name).slice(0, 1),
   })), [projects, locale]);
   const PROMOS = useMemo(() => visibleItems(content.promos), [content.promos]);
-  const EARN = useMemo(() => visibleItems(content.earnItems).map((item) => ({
-    ...item,
-    name: localizedText(item.title, locale),
-    desc: localizedText(item.description, locale),
-  })), [content.earnItems, locale]);
-  const earnTitle = localizedText(content.earnTitle, locale);
-  const earnDescription = localizedText(content.earnDescription, locale);
+  const MODULES = useMemo(() => discoveryModules(content, projects, locale), [content, projects, locale]);
   // 卡片内容改变时重启轮播，即使数量没有变化。
   const bannerRevision = JSON.stringify(BANNERS);
 
@@ -276,11 +272,11 @@ export default function DiscoverScreen() {
               ))}
             </View> : null}
 
-            {content.earnEnabled!==false&&EARN.length>0&&<>
-            {earnTitle ? <View style={styles.earnHead}><Text style={styles.earnTitle}>{earnTitle}</Text></View> : null}
-            {earnDescription ? <Text style={styles.earnDesc}>{earnDescription}</Text> : null}
+            {MODULES.map((module) => <View key={module.id}>
+            {module.title ? <View style={styles.earnHead}><Text style={styles.earnTitle}>{module.title}</Text></View> : null}
+            {module.description ? <Text style={styles.earnDesc}>{module.description}</Text> : null}
 
-            {EARN.map((e) => (
+            {module.items.map((e) => (
               <TouchableOpacity key={e.id} style={styles.earnRow} activeOpacity={0.6} disabled={!e.url} onPress={() => e.url && open(e.url)}>
                 <View style={[styles.earnIcon, { backgroundColor: e.color }]}>
                   {e.imageUrl ? <Image source={{ uri: e.imageUrl }} style={styles.earnImage} resizeMode="cover" /> : <Text style={styles.earnIconTxt}>{e.name.slice(0, 1)}</Text>}
@@ -299,11 +295,11 @@ export default function DiscoverScreen() {
                   </Text>
                 </View>
                 <View style={styles.earnThumb}>
-                  <MaterialCommunityIcons name="trending-up" size={18} color={e.color} />
+                  <Ionicons name="chevron-forward" size={18} color={e.color} />
                 </View>
               </TouchableOpacity>
             ))}
-            </>}
+            </View>)}
           </ScrollView>
         </View>
 
@@ -365,7 +361,7 @@ export default function DiscoverScreen() {
                 ))
               ) : (
                 <View style={styles.emptyBlock}>
-                  <Image source={emptyDappBrowser} style={styles.emptyImage} resizeMode="contain" />
+                  <Image source={emptyFavorites} style={styles.emptyImage} resizeMode="contain" />
                   <Text style={styles.emptyTxt}>{t('discover.noFavorites')}</Text>
                   <Text style={styles.emptySub}>{t('discover.noFavoritesSub')}</Text>
                 </View>

@@ -74,10 +74,10 @@ describe('resolveAuthPermissions', () => {
     ],
   };
 
-  it('优先用钱包记录里的 authPermissions', () => {
+  it('链上权限覆盖导入时保存的旧标识', () => {
     expect(
       resolveAuthPermissions({ account: 'alice', publicKey: 'PUB_K1_active', authPermissions: ['owner'] }, 'alice', resources)
-    ).toEqual(['owner']);
+    ).toEqual(['active']);
   });
 
   it('没有记录时按公钥反查链上权限', () => {
@@ -92,5 +92,23 @@ describe('resolveAuthPermissions', () => {
 
   it('无钱包返回空', () => {
     expect(resolveAuthPermissions(undefined, 'alice', resources)).toEqual([]);
+  });
+});
+
+
+describe('live permission badge regressions', () => {
+  const wallet = { account: 'alice', publicKey: 'PUB_K1_old', authPermissions: ['active', 'owner'] };
+  it('revoked keys show an empty list even when imported with active and owner', () => {
+    expect(resolveAuthPermissions(wallet, 'alice', { permissions: [{ name: 'active', keys: ['PUB_K1_new'] }] })).toEqual([]);
+  });
+  it('unloaded, failed, or wrong-account reads never fall back to saved metadata', () => {
+    expect(resolveAuthPermissions(wallet, 'alice', null)).toEqual([]);
+    expect(resolveAuthPermissions(wallet, 'bob', { permissions: [] })).toEqual([]);
+    expect(resolveAuthPermissions(wallet, 'alice', { account: 'bob', permissions: [{ name: 'active', keys: [wallet.publicKey] }] })).toEqual([]);
+  });
+  it('matches legacy EOS and modern PUB_K1 encodings of the same key', () => {
+    expect(resolveAuthPermissions({ account: 'alice', publicKey: 'EOS6MRyAjQq8ud7hVNYcfnVPJqcVpscN5So8BhtHuGYqET5GDW5CV' }, 'alice', {
+      permissions: [{ name: 'owner', keys: ['PUB_K1_6MRyAjQq8ud7hVNYcfnVPJqcVpscN5So8BhtHuGYqET5BoDq63'] }]
+    })).toEqual(['owner']);
   });
 });

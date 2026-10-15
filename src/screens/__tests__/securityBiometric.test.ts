@@ -15,6 +15,7 @@ jest.mock('@react-navigation/native', () => ({
 }));
 jest.mock('../../components/PageHeader', () => 'PageHeader');
 jest.mock('../../components/CenterDialog', () => 'CenterDialog');
+jest.mock('../../analytics/UsageAnalyticsContext', () => ({ useUsageAnalytics: jest.fn() }));
 jest.mock('../../chain/WalletContext', () => ({ useWalletSession: jest.fn() }));
 jest.mock('../../crypto/vault', () => ({
   biometricAvailable: jest.fn(), biometricEnabled: jest.fn(), hasMasterPassword: jest.fn(),
@@ -30,6 +31,7 @@ import React from 'react';
 import { useWalletSession } from '../../chain/WalletContext';
 import { biometricAvailable, biometricEnabled, hasMasterPassword, enableBiometric, disableBiometric } from '../../crypto/vault';
 import SecurityScreen from '../SecurityScreen';
+import {useUsageAnalytics} from '../../analytics/UsageAnalyticsContext';
 
 const { create, act } = require('react-test-renderer');
 let renderer: any;
@@ -42,6 +44,7 @@ const button = (key: string) => renderer.root.findAllByType('TouchableOpacity').
 beforeEach(() => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   jest.resetAllMocks();
+  jest.mocked(useUsageAnalytics).mockReturnValue({ready:true,available:false,enabled:false,error:false,setEnabled:jest.fn(async()=>{})});
   jest.mocked(biometricAvailable).mockResolvedValue({ ok: true });
   jest.mocked(biometricEnabled).mockResolvedValue(false);
   jest.mocked(hasMasterPassword).mockResolvedValue(true);
@@ -57,18 +60,18 @@ it.each(['watch', 'passkey', undefined])('can manage the shared switch from %s a
     currentWallet: source ? { id: 'wallet', source } : undefined, account: '', wallets: [],
   } as any);
   await mount();
-  expect(renderer.root.findByType('Switch').props.disabled).toBe(false);
+  expect(renderer.root.findByProps({testID:'biometric-unlock-toggle'}).props.disabled).toBe(false);
   expect(hasText('security.biometricShared')).toBe(true);
   expect(biometricEnabled).toHaveBeenCalledWith();
 });
 
 it('enabling verifies only the master password, never an account id', async () => {
   await mount();
-  await act(async () => { await renderer.root.findByType('Switch').props.onValueChange(true); });
+  await act(async () => { await renderer.root.findByProps({testID:'biometric-unlock-toggle'}).props.onValueChange(true); });
   await act(async () => { renderer.root.findByType('TextInput').props.onChangeText('shared-password'); });
   await act(async () => { await button('security.enableAction').props.onPress(); });
   expect(enableBiometric).toHaveBeenCalledWith('shared-password');
-  expect(renderer.root.findByType('Switch').props.value).toBe(true);
+  expect(renderer.root.findByProps({testID:'biometric-unlock-toggle'}).props.value).toBe(true);
   expect(renderer.root.findByType('TextInput').props.value).toBe('');
 });
 
@@ -79,24 +82,24 @@ it('switching accounts keeps the device-wide enabled state', async () => {
     currentWallet: { id: 'other-wallet', source: 'watch' }, account: 'bob', wallets: [],
   } as any);
   await act(async () => { renderer.update(React.createElement(SecurityScreen)); });
-  expect(renderer.root.findByType('Switch').props.value).toBe(true);
-  expect(renderer.root.findByType('Switch').props.disabled).toBe(false);
+  expect(renderer.root.findByProps({testID:'biometric-unlock-toggle'}).props.value).toBe(true);
+  expect(renderer.root.findByProps({testID:'biometric-unlock-toggle'}).props.disabled).toBe(false);
 });
 
 it('disabling works even when fingerprints are no longer enrolled', async () => {
   jest.mocked(biometricEnabled).mockResolvedValue(true);
   jest.mocked(biometricAvailable).mockResolvedValue({ ok: false, reason: 'not-enrolled' });
   await mount();
-  expect(renderer.root.findByType('Switch').props.disabled).toBe(false);
-  await act(async () => { await renderer.root.findByType('Switch').props.onValueChange(false); });
+  expect(renderer.root.findByProps({testID:'biometric-unlock-toggle'}).props.disabled).toBe(false);
+  await act(async () => { await renderer.root.findByProps({testID:'biometric-unlock-toggle'}).props.onValueChange(false); });
   expect(disableBiometric).toHaveBeenCalledWith();
-  expect(renderer.root.findByType('Switch').props.value).toBe(false);
+  expect(renderer.root.findByProps({testID:'biometric-unlock-toggle'}).props.value).toBe(false);
 });
 
 it('no master password or no enrollment prevents enabling without tying it to an account', async () => {
   jest.mocked(hasMasterPassword).mockResolvedValue(false);
   await mount();
-  expect(renderer.root.findByType('Switch').props.disabled).toBe(true);
+  expect(renderer.root.findByProps({testID:'biometric-unlock-toggle'}).props.disabled).toBe(true);
   expect(hasText('security.masterPasswordRequired')).toBe(true);
 });
 
@@ -105,5 +108,16 @@ it('storage read failures are retryable and never look like a read-only-account 
   await mount();
   expect(hasText('read failed')).toBe(true);
   await act(async () => { await button('onboarding.retry').props.onPress(); });
-  expect(renderer.root.findByType('Switch').props.disabled).toBe(false);
+  expect(renderer.root.findByProps({testID:'biometric-unlock-toggle'}).props.disabled).toBe(false);
+});
+
+
+it('keeps analytics disabled when Firebase is not configured and discloses Google data processing',async()=>{
+ await mount();const toggle=renderer.root.findByProps({testID:'usage-analytics-toggle'});
+ expect(toggle.props.disabled).toBe(true);expect(toggle.props.value).toBe(false);expect(hasText('analytics.description')).toBe(true);
+});
+it('changes only the boolean analytics preference without wallet arguments or biometric changes',async()=>{
+ const setEnabled=jest.fn(async()=>{});jest.mocked(useUsageAnalytics).mockReturnValue({ready:true,available:true,enabled:false,error:false,setEnabled});
+ await mount();await act(async()=>{await renderer.root.findByProps({testID:'usage-analytics-toggle'}).props.onValueChange(true);});
+ expect(setEnabled).toHaveBeenCalledWith(true);expect(enableBiometric).not.toHaveBeenCalled();expect(disableBiometric).not.toHaveBeenCalled();
 });

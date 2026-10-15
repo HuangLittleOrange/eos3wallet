@@ -68,3 +68,6 @@ yarn-error.*
 # generated native folders
 /ios
 /android
+
+# Local design drafts and screenshots
+/docs/design/

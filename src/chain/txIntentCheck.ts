@@ -17,7 +17,7 @@ import { ABI, Action, Bytes, Serializer, Transaction } from '@wharfkit/antelope'
 import type { ActionSpec } from './transact';
 import { t } from '../i18n';
 import { assertVisibleTransaction } from './transactionSafety';
-import { coreTransferAbi } from './coreTokenAbi';
+import { coreActionAbi } from './coreTokenAbi';
 
 /** 服务端返回的交易和用户确认的内容对不上——一律拒签,绝不能带着疑问继续 */
 export class TxIntentMismatchError extends Error {
@@ -85,7 +85,7 @@ export async function assertSponsoredTxMatchesIntent(opts: {
         authorization: [{ actor: opts.actor, permission: opts.permission }],
         data: spec.data,
       },
-      coreTransferAbi(spec.account, spec.name) ?? abis.get(spec.account)!
+      coreActionAbi(spec.account, spec.name) ?? abis.get(spec.account)!
     ).data.hexString,
     used: false,
   }));
@@ -119,7 +119,7 @@ export async function assertSponsoredTxMatchesIntent(opts: {
       let ok = false;
       try {
         const d: any = Serializer.decode({ data: act.data, type: 'transfer',
-          abi: coreTransferAbi(account, name) ?? abis.get(opts.feeTokenContract)! });
+          abi: coreActionAbi(account, name) ?? abis.get(opts.feeTokenContract)! });
         ok =
           String(d.from) === opts.actor &&
           String(d.to) === String(opts.sponsorFeeReceiver ?? '') &&

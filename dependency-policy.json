@@ -1,7 +1,9 @@
 {
-  "lockSha256": "fa82f0b19f366d62d598515407a86347d4ce876f9908fbac02135568bb6f0646",
+  "lockSha256": "4f18a9e2cf5905e2ab28c23f7e0ce05ab5444a98d10168d7cab3d09829a21b9c",
   "blockedInstallScripts": [
-    "node_modules/fsevents@2.3.3"
+    "node_modules/@firebase/util@1.15.2",
+    "node_modules/fsevents@2.3.3",
+    "node_modules/protobufjs@7.6.6"
   ],
   "buildImage": "node@sha256:0e5f906573693feaa1e21057ebdcfdb5bd5021f050b2dc7c9deceb629c7da2a8"
 }

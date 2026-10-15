@@ -456,5 +456,275 @@
     "source": "https://raw.githubusercontent.com/react/metro/118de9fdd60fde6a7aa9c0961e65f22492afffcc/LICENSE",
     "version": "0.84.6",
     "license": "MIT"
+  },
+  "@firebase/ai@2.14.0": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/analytics@0.10.23": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/analytics-compat@0.2.29": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/analytics-types@0.8.4": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/app@0.16.0": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/app-check@0.13.0": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/app-check-compat@0.4.6": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/app-check-interop-types@0.3.4": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/app-check-types@0.5.4": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/app-compat@0.5.16": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/app-types@0.9.5": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/auth@1.13.4": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/auth-compat@0.6.9": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/auth-interop-types@0.2.5": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/auth-types@0.13.1": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/component@0.7.4": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/data-connect@0.7.3": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/database@1.1.4": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/database-compat@2.1.6": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/database-types@1.0.21": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/firestore@4.17.0": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/firestore-compat@0.4.12": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/firestore-types@3.0.4": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/functions@0.13.6": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/functions-compat@0.4.6": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/functions-types@0.6.4": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/installations@0.6.23": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/installations-compat@0.2.23": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/installations-types@0.5.4": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/logger@0.5.1": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/messaging@0.13.1": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/messaging-compat@0.2.28": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/messaging-interop-types@0.2.5": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/performance@0.7.13": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/performance-compat@0.2.26": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/performance-types@0.2.4": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/remote-config@0.9.1": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/remote-config-compat@0.2.28": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/remote-config-types@0.5.1": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/storage@0.14.4": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/storage-compat@0.4.4": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/storage-types@0.8.4": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/util@1.15.2": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "@firebase/webchannel-wrapper@1.0.6": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
+  },
+  "firebase@12.17.1": {
+    "path": "third-party/upstream/firebase-js-sdk-30eceb58aad3-LICENSE.txt",
+    "source": "https://raw.githubusercontent.com/firebase/firebase-js-sdk/30eceb58aad391d66ce9745be4cf58b4106b87a9/LICENSE",
+    "license": "Apache-2.0",
+    "note": "Pinned official Firebase JS SDK license; npm archive omits standalone license text."
   }
 }

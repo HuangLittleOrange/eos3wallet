@@ -13,8 +13,7 @@ import { ABI, APIClient, Name, PublicKey, Serializer, Signature, SignedTransacti
 
 import { getCachedAbi } from '../chain/abiCache';
 import { CHAINS, ChainConfig, ChainId, NodeInfo } from '../chain/config';
-import { toBroadcastError } from '../chain/sponsor';
-import { ActionSpec, Signer, signDigest } from '../chain/transact';
+import { ActionSpec, Signer, signDigest, transactionFailure } from '../chain/transact';
 import { getLinkIdentity, linkDeviceName } from './linkIdentity';
 import { recordLinkSession } from './linkSessions';
 import { t } from '../i18n';
@@ -261,7 +260,7 @@ export async function signAndCallback(opts: {
     } catch (e) {
       // 资源不够(CPU/NET、RAM)带专门的 Error 子类抛出去,宿主据此弹一键修复;
       // ESR 交易的字节是 resolve 时定死的,修好资源后用户重新点一次签名即可
-      throw toBroadcastError(e);
+      throw await transactionFailure(e, { chainId: opts.chainSlug, node: opts.node, actor: opts.actor, permission: opts.permission, signer: opts.signer, isCurrent: opts.isCurrent });
     }
   }
 

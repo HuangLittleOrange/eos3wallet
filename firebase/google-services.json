@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "472446921872",
+    "project_id": "eos3-wallet",
+    "storage_bucket": "eos3-wallet.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:472446921872:android:2ee6bd7fa65128b38b3c15",
+        "android_client_info": {
+          "package_name": "com.eos3.wallet"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBMRj-LXK3lmbRFWVTPyVlkuLTPqHz5cSY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

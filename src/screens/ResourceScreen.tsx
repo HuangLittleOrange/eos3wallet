@@ -24,10 +24,11 @@ import { PowerupMarket } from '../chain/client';
 import { estimateTransfersForPayment, fracForResourceUnits, perTransferResourceWeights } from '../chain/powerupPricing';
 import { accountNameError, isValidAccountName } from '../chain/account';
 import ConfirmTxSheet from '../components/ConfirmTxSheet';
+import RexOperations from '../components/RexOperations';
 import { ActionSpec, Signer, transact } from '../chain/transact';
 import { useResourceRepair } from '../components/ResourceRepairSheet';
 import {
-  buildBuyRam, buildDelegate, buildPowerUp, buildRamTransfer, buildRexDeposit, buildRexWithdraw, buildSellRam, buildUndelegate,
+  buildBuyRam, buildDelegate, buildPowerUp, buildRamTransfer, buildSellRam, buildUndelegate,
 } from '../chain/resourceActions';
 import { signingPermission } from '../crypto/vault';
 import { biometricSigner, passkeySigner, passwordSigner } from '../chain/signers';
@@ -50,6 +51,7 @@ export default function ResourceScreen() {
   const [netIn, setNetIn] = useState('');
   const [ramIn, setRamIn] = useState('');
   const [confirm, setConfirm] = useState<ActionSpec[] | null>(null);
+  const [confirmNotice, setConfirmNotice] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   const [txErr, setTxErr] = useState<string | null>(null);
   const repair = useResourceRepair(w, { onCancel: setTxErr });
@@ -142,6 +144,7 @@ export default function ResourceScreen() {
   /** 构建资源操作交易并进入确认 */
   const review = (kind: string) => {
     setTxErr(null);
+    setConfirmNotice(undefined);
     try {
       const num = (v: string) => parseFloat(v) || 0;
       let acts: ActionSpec[];
@@ -169,10 +172,8 @@ export default function ResourceScreen() {
         acts = [buildSellRam({ contract: resourceContract, account: w.account, bytes: num(ramIn) * 1024 })];
       } else if (kind === 'ramtransfer') {
         acts = [buildRamTransfer({ contract: resourceContract, from: w.account, to: ramReceiverIn.trim().toLowerCase(), bytes: num(ramIn) * 1024 })];
-      } else if (kind === 'rexin') {
-        acts = buildRexDeposit({ contract: resourceContract, owner: w.account, amount: num(ramIn), symbol: sym, precision: prec });
       } else {
-        acts = buildRexWithdraw({ contract: resourceContract, owner: w.account, rexAmount: num(ramIn), symbol: sym, precision: prec });
+        throw new Error(t('send.unknownError'));
       }
       setConfirm(acts);
     } catch (e: any) {
@@ -210,7 +211,8 @@ export default function ResourceScreen() {
     broadcast(passkeySigner(wallet!));
 
   return (
-    <View style={[styles.root, { paddingTop: insets.top }]}>
+    <View style={styles.root}>
+      <View style={{ height: insets.top, backgroundColor: colors.white }} />
       <View style={styles.header}>
         <TouchableOpacity onPress={() => nav.goBack()} hitSlop={10} style={styles.back}>
           <Ionicons name="chevron-back" size={26} color={colors.text} />
@@ -455,18 +457,9 @@ export default function ResourceScreen() {
             />
           </>
         ) : (
-          <OpCard
-            tabs={[t('resource.deposit'), t('resource.withdraw')]}
-            mode={mode}
-            setMode={setMode}
-            balance={t('resource.balance', { balance: `${liquid.toFixed(4)} ${sym}` })}
-            rows={[{ label: t('send.amount'), value: ramIn, onChange: setRamIn, unit: sym }]}
-            cta={mode === 0 ? t('resource.depositRex') : t('resource.withdraw')}
-            canSign={canSign}
-            hint={t('resource.rexHint')}
-            onSubmit={() => review(mode === 0 ? 'rexin' : 'rexout')}
-            t={t}
-          />
+          <RexOperations key={`${wallet?.id}/${wallet?.publicKey}/${w.chainId}/${w.node.url}/${w.account}/${permission}`}
+            client={w.client} account={w.account} refreshKey={w.headBlock} canSign={canSign} busy={busy}
+            onReview={(actions, notice) => { setTxErr(null); setConfirmNotice(notice); setConfirm(actions); }} />
         )}
 
         <Text style={styles.demoNote}>
@@ -484,6 +477,7 @@ export default function ResourceScreen() {
         permission={permission}
         busy={busy}
         error={txErr}
+        notice={confirmNotice}
         walletId={wallet?.id}
         passkey={isPasskey}
         onConfirm={submit}

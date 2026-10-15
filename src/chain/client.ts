@@ -134,13 +134,14 @@ export class ChainClient {
   }
 
   /** 链信息:区块高度 + 延迟 */
-  async getInfo(): Promise<{ headBlock: number; chainId: string; latencyMs: number }> {
+  async getInfo(): Promise<{ headBlock: number; chainId: string; latencyMs: number; chainTime: string }> {
     const t0 = Date.now();
     const info = await this.api.v1.chain.get_info();
     return {
       headBlock: Number(info.head_block_num),
       chainId: String(info.chain_id),
       latencyMs: Date.now() - t0,
+      chainTime: new Date(info.head_block_time.toMilliseconds()).toISOString(),
     };
   }
 

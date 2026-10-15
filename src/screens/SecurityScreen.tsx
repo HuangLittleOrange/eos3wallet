@@ -28,6 +28,7 @@ import {
   WrongPasswordError,
 } from '../crypto/vault';
 import { useI18n } from '../i18n';
+import { useUsageAnalytics } from '../analytics/UsageAnalyticsContext';
 
 const BLUE = '#1E88FF';
 
@@ -36,6 +37,8 @@ export default function SecurityScreen() {
   const nav = useNavigation<any>();
   const w = useWalletSession();
   const { t } = useI18n();
+  const analytics = useUsageAnalytics();
+  const [analyticsBusy, setAnalyticsBusy] = useState(false);
   const wallet = w.currentWallet;
   // Backup information stays account-specific; unlocking is a device setting.
   const isPasskey = wallet?.source === 'passkey';
@@ -165,6 +168,7 @@ export default function SecurityScreen() {
             </View>
             <View>
               <Switch
+                testID="biometric-unlock-toggle"
                 value={bioOn}
                 onValueChange={onToggle}
                 disabled={bioDisabled}
@@ -194,6 +198,27 @@ export default function SecurityScreen() {
             label={t('security.mnemonicOrKeyBackup')}
             value={isPasskey ? t('security.noLocalKey') : hasLocalKey ? t('security.exportable') : t('security.noKey')}
           />
+        </View>
+
+        <View style={styles.card}>
+          <View style={styles.row}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.label}>{t('analytics.title')}</Text>
+              <Text style={styles.sub}>{t('analytics.description')}</Text>
+              {!analytics.available && <Text style={styles.sub}>{t('analytics.unavailable')}</Text>}
+              {analytics.error && <Text style={styles.sub} selectable>{t('analytics.failed')}</Text>}
+            </View>
+            <Switch testID="usage-analytics-toggle" accessibilityLabel={t('analytics.title')} value={analytics.enabled}
+              disabled={!analytics.ready || !analytics.available || analyticsBusy}
+              trackColor={{ false: '#D8DBE2', true: BLUE }} thumbColor="#fff"
+              onValueChange={async enabled => {
+                if (analyticsBusy) return;
+                setAnalyticsBusy(true);
+                try { await analytics.setEnabled(enabled); }
+                catch { Alert.alert(t('analytics.title'), t('analytics.failed')); }
+                finally { setAnalyticsBusy(false); }
+              }} />
+          </View>
         </View>
 
         <View style={{ flex: 1 }} />

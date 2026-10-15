@@ -263,3 +263,15 @@ it('轮播只展示完整图片，点击打开链接，无图片和停用项不�
   const unlinked = renderer.root.findAllByType('TouchableOpacity').find((node: any) => node.findAllByType('Image').some((image: any) => image.props.source.uri === 'https://images.example/no-link.png'));
   expect(unlinked.props.disabled).toBe(true);
 });
+
+it('自定义模块使用目录元数据和实际链接，开关后整块隐藏且空列表不恢复理财', async()=>{
+ const module={id:'custom',enabled:true,sortOrder:0,title:{en:'Community'},description:{en:'Explore community'},items:[{id:'entry',enabled:true,sortOrder:0,projectId:'chosen',title:{en:'stale'},description:{},color:'#123',hot:false,url:'https://stale.example'}]};
+ setContent({...empty,modules:[module]},[project('chosen',{featured:false,name:'Selected app',appUrl:'https://current.example'})]);
+ await render(DiscoverScreen);
+ expect(textValues()).toContain('Community');expect(textValues()).toContain('Selected app');expect(textValues()).not.toContain('stale');
+ await pressText('Selected app');expect(open).toHaveBeenCalledWith('https://current.example');
+ setContent({...empty,modules:[{...module,enabled:false}]});await act(async()=>{renderer.update(React.createElement(DiscoverScreen));});
+ expect(textValues()).not.toContain('Community');expect(textValues()).not.toContain('Explore community');
+ setContent({...empty,modules:[],earnTitle:{en:'Old Earn'},earnItems:[{...module.items[0],title:{en:'Old item'}}]});await act(async()=>{renderer.update(React.createElement(DiscoverScreen));});
+ expect(textValues()).not.toContain('Old Earn');expect(textValues()).not.toContain('Old item');
+});

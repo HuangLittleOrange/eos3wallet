@@ -199,3 +199,63 @@ it('prevents duplicate saves and editor dismissal while storage is pending', asy
   await act(async () => { resolve({ ...pending, label: 'Saved phone' }); await task; });
   expect(hasText('Saved phone')).toBe(true);
 });
+
+it('automatically retries indexer propagation after a successful web callback without another tap', async () => {
+  jest.useFakeTimers();
+  try {
+    await mount();
+    jest.mocked(openAuthSessionAsync).mockResolvedValue({ type: 'success', url: 'eos3wallet://device-key-authorized' });
+    jest.mocked(findAccountsForDeviceKey).mockResolvedValueOnce([]).mockResolvedValue(['alice']);
+    let completion: Promise<void>;
+    await act(async () => { completion = button('deviceKey.openWeb').props.onPress(); });
+    expect(importPendingDeviceKey).not.toHaveBeenCalled();
+    await act(async () => { await jest.advanceTimersByTimeAsync(1500); await completion!; });
+    expect(importPendingDeviceKey).toHaveBeenCalledTimes(1);
+    expect(setAccount).toHaveBeenCalledWith('alice');
+  } finally { jest.useRealTimers(); }
+});
+
+it('retries a pending chain authority instead of trusting a successful callback or stale indexer', async () => {
+  jest.useFakeTimers();
+  try {
+    await mount();
+    jest.mocked(openAuthSessionAsync).mockResolvedValue({ type: 'success', url: 'eos3wallet://device-key-authorized' });
+    jest.mocked(findAccountsForDeviceKey).mockResolvedValue(['alice']);
+    jest.mocked(importPendingDeviceKey).mockRejectedValueOnce(new Error('deviceKeyImport.notYet')).mockResolvedValue({} as any);
+    let completion: Promise<void>;
+    await act(async () => { completion = button('deviceKey.openWeb').props.onPress(); });
+    expect(setAccount).not.toHaveBeenCalled();
+    await act(async () => { await jest.advanceTimersByTimeAsync(1500); await completion!; });
+    expect(importPendingDeviceKey).toHaveBeenCalledTimes(2);
+    expect(setAccount).toHaveBeenCalledTimes(1);
+  } finally { jest.useRealTimers(); }
+});
+
+it('stops automatic checks if the authorization screen is closed', async () => {
+  jest.useFakeTimers();
+  try {
+    await mount();
+    jest.mocked(openAuthSessionAsync).mockResolvedValue({ type: 'success', url: 'eos3wallet://device-key-authorized' });
+    jest.mocked(findAccountsForDeviceKey).mockResolvedValueOnce([]).mockResolvedValue(['alice']);
+    let completion: Promise<void>;
+    await act(async () => { completion = button('deviceKey.openWeb').props.onPress(); });
+    await act(async () => renderer.unmount()); renderer = null;
+    await act(async () => { await jest.advanceTimersByTimeAsync(1500); await completion!; });
+    expect(importPendingDeviceKey).not.toHaveBeenCalled();
+    expect(setAccount).not.toHaveBeenCalled();
+  } finally { jest.useRealTimers(); }
+});
+
+it('does not import or switch accounts if the network changes while web authorization is open', async () => {
+  await mount();
+  let finish!: (result: any) => void;
+  jest.mocked(openAuthSessionAsync).mockReturnValue(new Promise(resolve => { finish = resolve; }));
+  let completion: Promise<void>;
+  await act(async () => { completion = button('deviceKey.openWeb').props.onPress(); });
+  jest.mocked(useWalletSession).mockReturnValue({ chainId: 'jungle4', node: { url: 'https://testnet.test' }, reloadWallets, setAccount } as any);
+  await act(async () => renderer.update(React.createElement(DeviceKeyImportScreen)));
+  jest.mocked(findAccountsForDeviceKey).mockResolvedValue(['alice']);
+  await act(async () => { finish({ type: 'success', url: 'eos3wallet://device-key-authorized' }); await completion!; });
+  expect(importPendingDeviceKey).not.toHaveBeenCalled();
+  expect(setAccount).not.toHaveBeenCalled();
+});

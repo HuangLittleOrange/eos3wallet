@@ -21,6 +21,12 @@ export type ContentEarnItem = ContentItem & {
   imageUrl?: string;
   url?: string;
 };
+export type ContentModuleApp = ContentEarnItem & { projectId?: string };
+export type ContentModule = ContentItem & {
+  title: LocalizedText;
+  description: LocalizedText;
+  items: ContentModuleApp[];
+};
 export type ContentAnnouncement = ContentItem & {
   title: LocalizedText;
   body: LocalizedText;
@@ -35,6 +41,8 @@ export type AppContent = {
   intro: { title: LocalizedText; subtitle: LocalizedText } | null;
   banners: ContentBanner[];
   promos: ContentPromo[];
+  /** Missing = legacy document; [] = explicitly no modules. */
+  modules?: ContentModule[];
   earnEnabled?: boolean;
   earnTitle: LocalizedText;
   earnDescription: LocalizedText;

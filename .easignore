@@ -68,3 +68,9 @@ yarn-error.*
 # Local development tools
 /.claude/
 /.codex/
+
+# Local design drafts and screenshots are not build inputs.
+/docs/design/
+
+# Upload reviewed source files without local Git data.
+/.git/

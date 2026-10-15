@@ -23,11 +23,11 @@ const BLUE = '#2E7DF7';
  * 一直可点;本机没有可签名钱包时,CreateAccountPayScreen 的支付步骤会退化成
  * “生成新钱包 + 展示转账收款信息”,而不是在这里就拦掉。
  *
- * 主密码网关整屏一起挡——参考 TP:不管接下来走合约建号、Google 一键注册
- * 还是 passkey 登录,本机没设过主密码就先跳去 SetMasterPasswordScreen,和
+ * 主密码网关整屏一起挡——参考 TP:不管接下来走合约建号还是 Google 一键注册,
+ * 本机没设过主密码就先跳去 SetMasterPasswordScreen,和
  * ImportScreen/CreateAccountPayScreen 是同一套网关(设置完 goBack() 回这屏,
- * 取消则连这屏一起跳过,见 SetMasterPasswordScreen 顶部注释)。Google/passkey
- * 这两条本地其实不落任何需要密码保护的密钥,单看这两条本可以不用挡,但
+ * 取消则连这屏一起跳过,见 SetMasterPasswordScreen 顶部注释)。Google 开户
+ * 本地其实不落任何需要密码保护的密钥,单看这一条本可以不用挡,但
  * 统一成"进这几个入口一律先设过主密码"这一条规则更符合直觉、也和 TP 对齐,
  * 不必让用户先猜"这条要设、那条不用设"。
  */
@@ -80,13 +80,6 @@ export default function CreateWalletMethodScreen() {
             desc={t('createWalletMethod.googleOneTapDesc')}
             onPress={() => nav.navigate('PasskeyCreate')}
           />
-          <View style={styles.sep} />
-          <Row
-            icon={<MaterialCommunityIcons name="fingerprint" size={22} color={BLUE} />}
-            title={t('createWalletMethod.loginWithPasskey')}
-            desc={t('createWalletMethod.loginWithPasskeyDesc')}
-            onPress={() => nav.navigate('PasskeyLogin')}
-          />
         </View>
       </View>
     </View>
@@ -122,7 +115,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#F2F3F5' },
 
   group: { backgroundColor: colors.white, borderRadius: 12, marginBottom: 14, paddingHorizontal: 14 },
-  sep: { height: StyleSheet.hairlineWidth, backgroundColor: '#EEF0F3', marginLeft: 50 },
 
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 },
   rowOff: { opacity: 0.45 },

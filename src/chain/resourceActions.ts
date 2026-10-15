@@ -9,6 +9,7 @@ import { Asset } from '@wharfkit/antelope';
 import { ActionSpec } from './transact';
 import { assertAccountName } from './account';
 import { t } from '../i18n';
+import { rexQuantity } from './rex';
 
 const asset = (amount: number, symbol: string, precision: number) =>
   String(Asset.fromFloat(amount, `${precision},${symbol}`));
@@ -171,13 +172,13 @@ export function buildPowerUp(opts: {
 export function buildRexDeposit(opts: {
   contract: string;
   owner: string;
-  amount: number;
+  amount: string;
   symbol: string;
   precision: number;
 }): ActionSpec[] {
   const owner = assertAccountName(opts.owner, t('accountError.labelAccount'));
-  if (!(opts.amount > 0)) throw new Error(t('resourceError.depositAmountPositive'));
-  const quantity = asset(opts.amount, opts.symbol, opts.precision);
+  if (opts.precision !== 4) throw new Error(t('rex.invalidAmount'));
+  const quantity = rexQuantity(opts.amount, opts.symbol);
 
   return [
     { account: opts.contract, name: 'deposit', data: { owner, amount: quantity } },
@@ -185,19 +186,30 @@ export function buildRexDeposit(opts: {
   ];
 }
 
-/** 从 REX 取出 —— 卖出 REX 再提回,注意有成熟期限制 */
+/** Only withdraw already available core tokens. Never infer A from a REX amount. */
 export function buildRexWithdraw(opts: {
   contract: string;
   owner: string;
-  rexAmount: number;
+  amount: string;
   symbol: string;
   precision: number;
 }): ActionSpec[] {
   const owner = assertAccountName(opts.owner, t('accountError.labelAccount'));
-  if (!(opts.rexAmount > 0)) throw new Error(t('resourceError.withdrawAmountPositive'));
+  if (opts.precision !== 4) throw new Error(t('rex.invalidAmount'));
 
   return [
-    { account: opts.contract, name: 'sellrex', data: { from: owner, rex: asset(opts.rexAmount, 'REX', 4) } },
-    { account: opts.contract, name: 'withdraw', data: { owner, amount: asset(opts.rexAmount, opts.symbol, opts.precision) } },
+    { account: opts.contract, name: 'withdraw', data: { owner, amount: rexQuantity(opts.amount, opts.symbol) } },
   ];
+}
+
+export function buildRexSell(opts: { contract: string; owner: string; rexAmount: string }): ActionSpec[] {
+  const from = assertAccountName(opts.owner, t('accountError.labelAccount'));
+  return [{ account: opts.contract, name: 'sellrex', data: { from, rex: rexQuantity(opts.rexAmount, 'REX') } }];
+}
+export function buildRexUnlock(opts: { contract: string; owner: string; rexAmount: string }): ActionSpec[] {
+  const owner = assertAccountName(opts.owner, t('accountError.labelAccount'));
+  return [{ account: opts.contract, name: 'mvfrsavings', data: { owner, rex: rexQuantity(opts.rexAmount, 'REX') } }];
+}
+export function buildRexCancel(owner: string): ActionSpec[] {
+  return [{ account: 'eosio', name: 'cnclrexorder', data: { owner: assertAccountName(owner, t('accountError.labelAccount')) } }];
 }

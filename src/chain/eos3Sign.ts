@@ -11,7 +11,8 @@ import type { NodeInfo } from './config';
 import type { Signer } from './transact';
 import { t } from '../i18n';
 import { fetchWithRetry as fetchWithRetryRaw } from '../net/fetchRetry';
-import { coreTransferAbi } from './coreTokenAbi';
+import { coreActionAbi } from './coreTokenAbi';
+import { AuthorizationFailureError, isAuthorizationFailure } from './authorizationError';
 
 export class Eos3SignError extends Error {}
 
@@ -58,6 +59,7 @@ async function parseEos3Response<T>(res: Response): Promise<T> {
     throw new Eos3SignError(res.ok ? t('eos3Error.badResponseFormat') : t('eos3Error.requestFailed', { status: res.status }));
   }
   if (!res.ok) {
+    if (isAuthorizationFailure(parsed)) throw new AuthorizationFailureError();
     throw new Eos3SignError(parsed?.error ?? t('eos3Error.requestFailed', { status: res.status }));
   }
   return parsed as T;
@@ -101,7 +103,7 @@ export async function signPlainTransactionJSON(opts: {
 
   const transaction = Transaction.from({ ...opts.transactionJson,
     actions: opts.transactionJson.actions.map((action) => Action.from(action,
-      coreTransferAbi(action.account, action.name) ?? ABI.from(abis.find((entry) => String(entry.contract) === action.account)!.abi))) });
+      coreActionAbi(action.account, action.name) ?? ABI.from(abis.find((entry) => String(entry.contract) === action.account)!.abi))) });
   const chainId = Checksum256.from(opts.chainId);
   const digest = transaction.signingDigest(chainId);
 

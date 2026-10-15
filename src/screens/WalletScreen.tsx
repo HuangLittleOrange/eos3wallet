@@ -20,7 +20,7 @@ import { colors, spacing } from '../theme';
 import { useWallet } from '../chain/WalletContext';
 import { useManualRefresh } from '../chain/useManualRefresh';
 import { TokenBalance } from '../chain/client';
-import { resolveAuthPermissions } from '../chain/account';
+import { useWalletPermissionBadges } from '../chain/useWalletPermissionBadges';
 import { fmtUSD, fmtAmount, tokenColor, impersonates } from '../chain/format';
 import { priceIn, PriceSnapshot } from '../chain/prices';
 import TokenBadge from '../components/TokenBadge';
@@ -139,7 +139,8 @@ export default function WalletScreen() {
 
   const loading = w.status === 'loading';
   const { refreshing, onRefresh } = useManualRefresh(w.status, w.refresh);
-  const authPerms = resolveAuthPermissions(w.currentWallet, w.account, w.resources);
+  const permissionBadges = useWalletPermissionBadges(w.currentWallet ? [w.currentWallet] : [], w.client, !walletSheet, w.resources);
+  const authPerms = w.currentWallet ? permissionBadges[w.currentWallet.id] ?? [] : [];
   // 冷启动/切账户这段空档,tokens 还是空的但上次有留快照的话,先拿快照垫一下,
   // 别让页面一开就空转;真实数据一到(w.tokens 非空或 status 不再是 loading)
   // 就自动让位,这里只影响这个"看一眼"的展示页,不碰任何签名/广播流程
@@ -268,7 +269,7 @@ export default function WalletScreen() {
               </View>
             ) : null}
             {/* 这把钥匙实际控制的权限(active/owner)——只读账户没有对应的钥匙,自然没有这个标。
-                没有 authPermissions 记录的旧钱包会退回按公钥反查链上权限,不至于一直空着 */}
+                按当前公钥查链上权限，导入时保存的旧标识不能证明现在仍有权限 */}
             {!w.readOnly && authPerms.length ? (
               <View style={styles.tag}>
                 <Ionicons name="key-outline" size={10} color="#fff" />

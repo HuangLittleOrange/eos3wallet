@@ -1,4 +1,4 @@
-import { Name } from '@wharfkit/antelope';
+import { Name, PublicKey } from '@wharfkit/antelope';
 import { t } from '../i18n';
 
 /**
@@ -51,26 +51,20 @@ export function accountNameError(s: string): string | null {
   return null;
 }
 
-/**
- * 这把钥匙实际控制着哪些权限(active / owner / …),给权限徽标用。
- *
- * 优先用导入(或建号)时记录下来的 authPermissions;这份记录是后来才加的字段,
- * 早先存进去的钱包没有 —— 那就退而用当前已经拉到手的链上权限结构按公钥反查一次,
- * 免得非要用户删掉重新导入才看得出这张卡是哪个权限。
- *
- * 反查只在"正在看的就是这个账户"时才有意义(resources 只覆盖当前账户);
- * 对不上就返回空数组,宁可不显示也不瞎猜。
- */
+/** Permission badges describe fresh chain membership, never import-time metadata. */
 export function resolveAuthPermissions(
   wallet: { account: string; publicKey?: string; authPermissions?: string[] } | null | undefined,
   currentAccount: string,
-  resources: { permissions: { name: string; keys: string[] }[] } | null | undefined
+  resources: { account?: string; permissions: { name: string; keys: string[] }[] } | null | undefined
 ): string[] {
-  if (!wallet) return [];
-  if (wallet.authPermissions?.length) return wallet.authPermissions;
-  if (wallet.account !== currentAccount || !wallet.publicKey) return [];
-  const pub = wallet.publicKey;
-  return (resources?.permissions ?? []).filter((p) => p.keys.includes(pub)).map((p) => p.name);
+  if (!wallet?.publicKey || wallet.account !== currentAccount || !resources ||
+    (resources.account !== undefined && resources.account !== wallet.account)) return [];
+  const matchesKey = (key: string) => {
+    if (key === wallet.publicKey) return true;
+    try { return PublicKey.from(key).equals(PublicKey.from(wallet.publicKey!)); }
+    catch { return false; }
+  };
+  return resources.permissions.filter(permission => permission.keys.some(matchesKey)).map(permission => permission.name);
 }
 
 /**
