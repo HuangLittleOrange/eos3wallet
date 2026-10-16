@@ -19,6 +19,22 @@ const bytesToUtf8 = (b: Uint8Array) => new TextDecoder().decode(b);
 
 const KEY_PREFIX = 'aurora.wallet.';
 const INDEX_KEY = 'aurora.wallet.index';
+const SECRET_GENERATION_KEY = 'aurora.vault.generation';
+const SECRET_IDS_KEY = 'aurora.vault.secretIds';
+let secretWriteQueue: Promise<void> = Promise.resolve();
+function withSecretStorage<T>(operation: () => Promise<T>): Promise<T> {
+  const result = secretWriteQueue.then(operation);
+  secretWriteQueue = result.then(() => {}, () => {});
+  return result;
+}
+const secretSlot = (id: string, generation: string | null) => `${KEY_PREFIX}${generation ? `g${generation}.` : ''}${id}`;
+const activeSecretSlot = async (id: string) => secretSlot(id, await getItemWithRetry(SECRET_GENERATION_KEY));
+async function storedSecretIds(): Promise<string[]> {
+  const raw = await getItemWithRetry(SECRET_IDS_KEY);
+  const ids: unknown = raw ? JSON.parse(raw) : [];
+  if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string')) throw new WalletReadError();
+  return ids;
+}
 
 /**
  * PBKDF2 迭代次数。越高越慢也越安全;走 react-native-quick-crypto 的原生实现
@@ -169,7 +185,22 @@ async function getItemWithRetry(key: string, opts?: SecureStore.SecureStoreOptio
  * 多花一点时间,也不要用户以为保存成功了,真要签名的时候才发现读不出来。
  * 校验失败会把这条写坏的记录删掉,不留半成品。
  */
-export async function saveSecret(id: string, secret: string, password: string): Promise<void> {
+export function saveSecret(id: string, secret: string, password: string): Promise<void> {
+  return withSecretStorage(async () => {
+    const generation = await getItemWithRetry(SECRET_GENERATION_KEY);
+    // An import already holding the old password must not save an obsolete
+    // credential after a password change has committed.
+    if (generation && id !== MASTER_ID) {
+      await decryptSecretAtSlot(secretSlot(MASTER_ID, generation), password);
+    }
+    const ids = await storedSecretIds();
+    await saveSecretAtSlot(secretSlot(id, generation), secret, password, async () => {
+      if (!ids.includes(id)) await SecureStore.setItemAsync(SECRET_IDS_KEY, JSON.stringify([...ids, id]));
+    });
+  });
+}
+
+async function saveSecretAtSlot(slot: string, secret: string, password: string, beforeWrite?: () => Promise<void>): Promise<void> {
   const salt = randomBytes(16);
   const nonce = randomBytes(12);
   const key = await deriveAesKey(password, salt, PBKDF2_ITERATIONS);
@@ -189,13 +220,14 @@ export async function saveSecret(id: string, secret: string, password: string): 
     cipher: bytesToHex(cipher),
     iterations: PBKDF2_ITERATIONS,
   };
-  await SecureStore.setItemAsync(KEY_PREFIX + id, JSON.stringify(env), {
+  await beforeWrite?.();
+  await SecureStore.setItemAsync(slot, JSON.stringify(env), {
     keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
   });
 
-  const check = await loadSecret(id, password).catch(() => null);
+  const check = await decryptSecretAtSlot(slot, password).catch(() => null);
   if (check !== secret) {
-    await SecureStore.deleteItemAsync(KEY_PREFIX + id).catch(() => {});
+    await SecureStore.deleteItemAsync(slot).catch(() => {});
     throw new Error(t('vaultError.saveVerifyFailed'));
   }
 }
@@ -212,7 +244,11 @@ export class WrongPasswordError extends Error {
 
 /** 读取并解密私钥。密码错误会抛异常(GCM 认证失败) */
 export async function loadSecret(id: string, password: string): Promise<string> {
-  const raw = await getItemWithRetry(KEY_PREFIX + id);
+  return decryptSecretAtSlot(await activeSecretSlot(id), password);
+}
+
+async function decryptSecretAtSlot(slot: string, password: string): Promise<string> {
+  const raw = await getItemWithRetry(slot);
   if (!raw) throw new Error(t('vaultError.keyNotFound'));
 
   const env: Envelope = JSON.parse(raw);
@@ -232,8 +268,12 @@ export async function loadSecret(id: string, password: string): Promise<string> 
   }
 }
 
-export async function removeSecret(id: string): Promise<void> {
-  await SecureStore.deleteItemAsync(KEY_PREFIX + id);
+export function removeSecret(id: string): Promise<void> {
+  return withSecretStorage(async () => {
+    await SecureStore.deleteItemAsync(await activeSecretSlot(id));
+    const ids = await storedSecretIds();
+    if (ids.includes(id)) await SecureStore.setItemAsync(SECRET_IDS_KEY, JSON.stringify(ids.filter(value => value !== id)));
+  });
 }
 
 // ---------- 待激活账户的临时密钥 ----------
@@ -357,7 +397,7 @@ export function importStoredPendingDeviceKey(pending: PendingDeviceKey, wallet: 
       (current.chainId !== undefined && current.chainId !== wallet.chainId)) {
       throw new Error(t('signupError.pendingChanged'));
     }
-    if (!await getItemWithRetry(KEY_PREFIX + current.id)) throw new Error(t('vaultError.keyNotFound'));
+    if (!await getItemWithRetry(await activeSecretSlot(current.id))) throw new Error(t('vaultError.keyNotFound'));
     const all = await listWallets();
     const duplicate = all.find((entry) => entry.id !== wallet.id && entry.account === wallet.account &&
       entry.publicKey === wallet.publicKey &&
@@ -366,7 +406,7 @@ export function importStoredPendingDeviceKey(pending: PendingDeviceKey, wallet: 
       ? { ...wallet, id: duplicate.id, createdAt: duplicate.createdAt,
           authPermissions: mergePermissions(duplicate.authPermissions, wallet.authPermissions) }
       : wallet;
-    if (duplicate && !await getItemWithRetry(KEY_PREFIX + duplicate.id)) throw new Error(t('vaultError.keyNotFound'));
+    if (duplicate && !await getItemWithRetry(await activeSecretSlot(duplicate.id))) throw new Error(t('vaultError.keyNotFound'));
     // Publish the wallet before removing the recovery record or redundant ciphertext.
     await SecureStore.setItemAsync(INDEX_KEY, JSON.stringify([...all.filter((entry) => entry.id !== stored.id), stored]));
     await SecureStore.deleteItemAsync(PENDING_DEVICE_KEY);
@@ -543,7 +583,7 @@ const MASTER_ID = '__master_verifier__';
 /** 本机是否已经设置过主密码。走 getItemWithRetry —— 和 listWallets() 读索引一致,
  *  避免 Keystore 抖动导致的假阴性把"验证已有主密码"误判成"设置新主密码"。 */
 export async function hasMasterPassword(): Promise<boolean> {
-  return (await getItemWithRetry(KEY_PREFIX + MASTER_ID)) !== null;
+  return (await getItemWithRetry(await activeSecretSlot(MASTER_ID))) !== null;
 }
 
 /** 首次设置主密码。验证器内容本身没有意义,只用来事后验证密码对不对。 */
@@ -559,6 +599,64 @@ export async function verifyMasterPassword(password: string): Promise<boolean> {
   } catch {
     return false;
   }
+}
+
+/** Stage and verify every ciphertext before selecting the new generation with
+ * one SecureStore write. A crash before that write leaves the old vault usable;
+ * a crash afterwards leaves the complete new vault usable. Passwords and keys
+ * never enter the generation marker or secret-id registry.
+ */
+export function changeMasterPassword(currentPassword: string, newPassword: string): Promise<void> {
+  return withBiometricStorage(() => withSecretStorage(async () => {
+    if (newPassword.length < 8 || newPassword === currentPassword) throw new Error(t('changePwd.invalidNew'));
+    const previous = await getItemWithRetry(SECRET_GENERATION_KEY);
+    await decryptSecretAtSlot(secretSlot(MASTER_ID, previous), currentPassword);
+    const index = await getItemWithRetry(INDEX_KEY);
+    const wallets: StoredWallet[] = index ? JSON.parse(index) : [];
+    if (!Array.isArray(wallets)) throw new WalletReadError();
+    const pending = await loadPendingDeviceKey();
+    const pendingRaw = await getItemWithRetry(PENDING_DEVICE_KEY);
+    const required = new Set([MASTER_ID, ...wallets.filter(w => w.source === 'privatekey' || w.source === 'mnemonic' || w.deviceKey)
+      .map(w => w.id), ...(pending ? [pending.id] : [])]);
+    const ids = Array.from(new Set([...required, ...await storedSecretIds()]));
+    const next = newWalletId();
+    const staged: string[] = [];
+    let committed = false;
+    try {
+      for (const id of ids) {
+        if (!await getItemWithRetry(secretSlot(id, previous))) {
+          if (required.has(id)) throw new Error(t('vaultError.keyNotFound'));
+          continue;
+        }
+        const secret = await decryptSecretAtSlot(secretSlot(id, previous), currentPassword);
+        staged.push(id);
+        await saveSecretAtSlot(secretSlot(id, next), secret, newPassword);
+      }
+      if (await getItemWithRetry(INDEX_KEY) !== index || await getItemWithRetry(PENDING_DEVICE_KEY) !== pendingRaw) {
+        throw new Error(t('changePwd.walletsChanged'));
+      }
+      await SecureStore.setItemAsync(SECRET_IDS_KEY, JSON.stringify(staged));
+      // Re-enrollment is explicit; old authentication-gated passwords must never
+      // be reused after changing the master password.
+      await SecureStore.setItemAsync(BIO_MASTER_FLAG, '0');
+      await SecureStore.setItemAsync(SECRET_GENERATION_KEY, next);
+      committed = true;
+    } catch (error) {
+      // A native write can commit and then reject. Never delete a generation
+      // that was selected, or whose selection cannot safely be read back.
+      const selected = await getItemWithRetry(SECRET_GENERATION_KEY).catch(() => undefined);
+      committed = selected === next;
+      if (!committed) {
+        if (selected === previous) for (const id of staged) await SecureStore.deleteItemAsync(secretSlot(id, next)).catch(() => {});
+        throw error;
+      }
+    }
+    if (committed) {
+      for (const id of staged) await SecureStore.deleteItemAsync(secretSlot(id, previous)).catch(() => {});
+      await SecureStore.deleteItemAsync(BIO_MASTER_KEY).catch(() => {});
+      for (const wallet of wallets) await clearLegacyBiometric(wallet.id).catch(() => {});
+    }
+  }));
 }
 
 // ---------- 生物识别解锁 ----------

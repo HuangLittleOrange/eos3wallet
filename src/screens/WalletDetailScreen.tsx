@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { sensitiveInputProps } from '../components/sensitiveInputProps';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, ActivityIndicator, Alert, AppState } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -286,7 +287,7 @@ export default function WalletDetailScreen() {
             placeholderTextColor={colors.textFaint}
             style={styles.dialogInput}
             secureTextEntry
-            autoCapitalize="none"
+            {...sensitiveInputProps}
             editable={!busy}
           />
           {err ? <Text style={styles.dialogErr}>{err}</Text> : null}

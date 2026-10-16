@@ -115,7 +115,7 @@ git push origin v1.0.3
 | 行情服务 | 代币或交易对查询 |
 | Google / Passkey 登录服务 | 登录授权、凭据注册和认证信息 |
 | Android 扫码 SDK（Google ML Kit） | 设备与应用信息、安装标识、API 性能和使用诊断；识别输入与结果在设备上处理，见 [ML Kit 隐私说明](https://developers.google.com/ml-kit/terms) |
-| Google Analytics for Firebase（默认开启，可关闭） | 开启时采集首次打开、会话、活跃事件、统计安装标识及标准设备/应用信息；不上传钱包账户、余额、密钥、交易或 DApp URL，关闭广告相关采集。见[接入与隐私控制](docs/firebase-analytics.md)。 |
+| Google Analytics for Firebase（默认开启） | 开启时采集首次打开、会话、活跃事件、统计安装标识及标准设备/应用信息；不上传钱包账户、余额、密钥、交易或 DApp URL，关闭广告相关采集。见[采集说明](docs/firebase-analytics.md)。 |
 | 授权与代付服务 | 账户、授权设置、待签交易及签名结果 |
 | 内容、图片与更新服务 | 网络请求、更新检查所需的平台与版本信息 |
 | DApp / ESR / Anchor Link | 账户、公钥、签名结果及连接信息；持久会话消息通过转发服务传输 |

@@ -35,6 +35,7 @@ import AddTokenScreen from '../screens/AddTokenScreen';
 import TotalAssetScreen from '../screens/TotalAssetScreen';
 import ManageWalletScreen from '../screens/ManageWalletScreen';
 import SecurityScreen from '../screens/SecurityScreen';
+import ChangePasswordScreen from '../screens/ChangePasswordScreen';
 import LanguageScreen from '../screens/LanguageScreen';
 import NodeScreen from '../screens/NodeScreen';
 import ScanScreen from '../screens/ScanScreen';
@@ -74,6 +75,7 @@ export type RootStackParamList = {
   TotalAsset: undefined;
   ManageWallet: undefined;
   Security: undefined;
+  ChangePassword: undefined;
   Language: undefined;
   Node: undefined;
   Scan: { returnTo?: keyof RootStackParamList } | undefined;
@@ -224,6 +226,7 @@ export default function RootNavigator() {
         <Stack.Screen name="TotalAsset" component={TotalAssetScreen} />
         <Stack.Screen name="ManageWallet" component={ManageWalletScreen} />
         <Stack.Screen name="Security" component={SecurityScreen} />
+        <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
         <Stack.Screen name="Language" component={LanguageScreen} />
         <Stack.Screen name="Node" component={NodeScreen} />
         <Stack.Screen name="Scan" component={ScanScreen} />

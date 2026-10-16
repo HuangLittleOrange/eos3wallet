@@ -1,4 +1,5 @@
 import React, { useCallback, useRef, useState } from 'react';
+import { sensitiveInputProps } from '../components/sensitiveInputProps';
 import {
   View,
   Text,
@@ -18,7 +19,6 @@ import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { colors, spacing } from '../theme';
 import PageHeader from '../components/PageHeader';
 import CenterDialog from '../components/CenterDialog';
-import { useWalletSession } from '../chain/WalletContext';
 import {
   biometricAvailable,
   biometricEnabled,
@@ -28,22 +28,13 @@ import {
   WrongPasswordError,
 } from '../crypto/vault';
 import { useI18n } from '../i18n';
-import { useUsageAnalytics } from '../analytics/UsageAnalyticsContext';
 
 const BLUE = '#1E88FF';
 
 export default function SecurityScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<any>();
-  const w = useWalletSession();
   const { t } = useI18n();
-  const analytics = useUsageAnalytics();
-  const [analyticsBusy, setAnalyticsBusy] = useState(false);
-  const wallet = w.currentWallet;
-  // Backup information stays account-specific; unlocking is a device setting.
-  const isPasskey = wallet?.source === 'passkey';
-  const hasLocalKey = wallet?.source === 'privatekey' || wallet?.source === 'mnemonic';
-
   const [bioOn, setBioOn] = useState(false);
   const [bioAvail, setBioAvail] = useState<{ ok: boolean; reason?: string } | null>(null);
   const [masterSet, setMasterSet] = useState<boolean | null>(null);
@@ -187,38 +178,13 @@ export default function SecurityScreen() {
           </View>
         </View>
 
-        {/* 密钥与备份 */}
         <View style={styles.card}>
-          <Row
-            label={t('security.walletPassword')}
-            value={masterSet === null ? t('security.detecting') : masterSet ? t('security.passwordSet') : t('security.passwordNotSet')}
-          />
-          <View style={styles.sep} />
-          <Row
-            label={t('security.mnemonicOrKeyBackup')}
-            value={isPasskey ? t('security.noLocalKey') : hasLocalKey ? t('security.exportable') : t('security.noKey')}
-          />
-        </View>
-
-        <View style={styles.card}>
-          <View style={styles.row}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.label}>{t('analytics.title')}</Text>
-              <Text style={styles.sub}>{t('analytics.description')}</Text>
-              {!analytics.available && <Text style={styles.sub}>{t('analytics.unavailable')}</Text>}
-              {analytics.error && <Text style={styles.sub} selectable>{t('analytics.failed')}</Text>}
-            </View>
-            <Switch testID="usage-analytics-toggle" accessibilityLabel={t('analytics.title')} value={analytics.enabled}
-              disabled={!analytics.ready || !analytics.available || analyticsBusy}
-              trackColor={{ false: '#D8DBE2', true: BLUE }} thumbColor="#fff"
-              onValueChange={async enabled => {
-                if (analyticsBusy) return;
-                setAnalyticsBusy(true);
-                try { await analytics.setEnabled(enabled); }
-                catch { Alert.alert(t('analytics.title'), t('analytics.failed')); }
-                finally { setAnalyticsBusy(false); }
-              }} />
-          </View>
+          <TouchableOpacity style={styles.row} disabled={masterSet === null || busy}
+            onPress={() => nav.navigate(masterSet ? 'ChangePassword' : 'SetMasterPassword')}>
+            <Text style={styles.label}>{t('security.changePassword')}</Text>
+            {masterSet === null ? <ActivityIndicator size="small" color={colors.textFaint} /> :
+              <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />}
+          </TouchableOpacity>
         </View>
 
         <View style={{ flex: 1 }} />
@@ -241,7 +207,7 @@ export default function SecurityScreen() {
             placeholderTextColor={colors.textFaint}
             style={styles.dialogInput}
             secureTextEntry
-            autoCapitalize="none"
+            {...sensitiveInputProps}
             autoFocus
             editable={!busy}
           />
@@ -269,17 +235,6 @@ export default function SecurityScreen() {
   );
 }
 
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.row}>
-      <Text style={styles.label}>{label}</Text>
-      <Text style={styles.value} numberOfLines={1}>
-        {value}
-      </Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#F2F3F5' },
   scroll: { padding: spacing.md, gap: 12, flexGrow: 1 },
@@ -289,7 +244,6 @@ const styles = StyleSheet.create({
   rowDisabled: { opacity: 0.45 },
   label: { flex: 1, fontSize: 16, color: colors.text },
   sub: { fontSize: 12.5, color: colors.textFaint, marginTop: 4 },
-  value: { fontSize: 14.5, color: colors.textSub, maxWidth: 180 },
   sep: { height: StyleSheet.hairlineWidth, backgroundColor: '#EEF0F3' },
 
   noteRow: { flexDirection: 'row', gap: 8, paddingVertical: 14 },

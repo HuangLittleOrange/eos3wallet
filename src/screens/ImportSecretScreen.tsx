@@ -17,6 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '../theme';
 import PageHeader from '../components/PageHeader';
 import PasswordDialog from '../components/PasswordDialog';
+import { sensitiveInputProps } from '../components/sensitiveInputProps';
 import { useScreenCaptureGuard } from '../components/useScreenCaptureGuard';
 import { useWalletSession } from '../chain/WalletContext';
 import { legacyLabel } from '../chain/config';
@@ -227,12 +228,7 @@ export default function ImportSecretScreen() {
             placeholder={mode === 'mnemonic' ? t('importSecret.mnemonicPlaceholder') : t('importSecret.privateKeyPlaceholder')}
             placeholderTextColor={colors.textFaint}
             style={[styles.input, styles.multiline]}
-            autoCapitalize="none"
-            autoCorrect={false}
-            // 助记词/私钥绝不能进系统自动填充、第三方输入法的个性化词库
-            autoComplete="off"
-            importantForAutofill="no"
-            spellCheck={false}
+            {...sensitiveInputProps}
             multiline
           />
           {secret.length > 0 && !secretOk ? (

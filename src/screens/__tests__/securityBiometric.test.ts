@@ -10,12 +10,11 @@ jest.mock('react-native', () => ({
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, bottom: 0 }) }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 jest.mock('@react-navigation/native', () => ({
-  useNavigation: () => ({ navigate: jest.fn() }),
+  useNavigation: jest.fn(),
   useFocusEffect: (callback: () => void) => require('react').useEffect(callback, [callback]),
 }));
 jest.mock('../../components/PageHeader', () => 'PageHeader');
 jest.mock('../../components/CenterDialog', () => 'CenterDialog');
-jest.mock('../../analytics/UsageAnalyticsContext', () => ({ useUsageAnalytics: jest.fn() }));
 jest.mock('../../chain/WalletContext', () => ({ useWalletSession: jest.fn() }));
 jest.mock('../../crypto/vault', () => ({
   biometricAvailable: jest.fn(), biometricEnabled: jest.fn(), hasMasterPassword: jest.fn(),
@@ -28,12 +27,13 @@ jest.mock('../../i18n', () => {
 });
 
 import React from 'react';
+import { useNavigation } from '@react-navigation/native';
 import { useWalletSession } from '../../chain/WalletContext';
 import { biometricAvailable, biometricEnabled, hasMasterPassword, enableBiometric, disableBiometric } from '../../crypto/vault';
 import SecurityScreen from '../SecurityScreen';
-import {useUsageAnalytics} from '../../analytics/UsageAnalyticsContext';
 
 const { create, act } = require('react-test-renderer');
+const navigate = jest.fn();
 let renderer: any;
 const mount = async () => { await act(async () => { renderer = create(React.createElement(SecurityScreen)); }); };
 const hasText = (key: string) => renderer.root.findAllByType('Text')
@@ -44,7 +44,7 @@ const button = (key: string) => renderer.root.findAllByType('TouchableOpacity').
 beforeEach(() => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   jest.resetAllMocks();
-  jest.mocked(useUsageAnalytics).mockReturnValue({ready:true,available:false,enabled:false,error:false,setEnabled:jest.fn(async()=>{})});
+  jest.mocked(useNavigation).mockReturnValue({ navigate } as any);
   jest.mocked(biometricAvailable).mockResolvedValue({ ok: true });
   jest.mocked(biometricEnabled).mockResolvedValue(false);
   jest.mocked(hasMasterPassword).mockResolvedValue(true);
@@ -68,6 +68,9 @@ it.each(['watch', 'passkey', undefined])('can manage the shared switch from %s a
 it('enabling verifies only the master password, never an account id', async () => {
   await mount();
   await act(async () => { await renderer.root.findByProps({testID:'biometric-unlock-toggle'}).props.onValueChange(true); });
+  expect(renderer.root.findByType('TextInput').props).toEqual(expect.objectContaining({
+    textContentType: 'none', autoComplete: 'off', importantForAutofill: 'no',
+  }));
   await act(async () => { renderer.root.findByType('TextInput').props.onChangeText('shared-password'); });
   await act(async () => { await button('security.enableAction').props.onPress(); });
   expect(enableBiometric).toHaveBeenCalledWith('shared-password');
@@ -111,13 +114,13 @@ it('storage read failures are retryable and never look like a read-only-account 
   expect(renderer.root.findByProps({testID:'biometric-unlock-toggle'}).props.disabled).toBe(false);
 });
 
-
-it('keeps analytics disabled when Firebase is not configured and discloses Google data processing',async()=>{
- await mount();const toggle=renderer.root.findByProps({testID:'usage-analytics-toggle'});
- expect(toggle.props.disabled).toBe(true);expect(toggle.props.value).toBe(false);expect(hasText('analytics.description')).toBe(true);
-});
-it('changes only the boolean analytics preference without wallet arguments or biometric changes',async()=>{
- const setEnabled=jest.fn(async()=>{});jest.mocked(useUsageAnalytics).mockReturnValue({ready:true,available:true,enabled:false,error:false,setEnabled});
- await mount();await act(async()=>{await renderer.root.findByProps({testID:'usage-analytics-toggle'}).props.onValueChange(true);});
- expect(setEnabled).toHaveBeenCalledWith(true);expect(enableBiometric).not.toHaveBeenCalled();expect(disableBiometric).not.toHaveBeenCalled();
+it('offers change password and keeps removed backup and analytics entries absent', async () => {
+  await mount();
+  expect(hasText('security.changePassword')).toBe(true);
+  expect(hasText('security.walletPassword')).toBe(false);
+  expect(hasText('security.mnemonicOrKeyBackup')).toBe(false);
+  expect(hasText('analytics.title')).toBe(false);
+  expect(renderer.root.findAllByProps({ testID: 'usage-analytics-toggle' })).toHaveLength(0);
+  await act(async () => { button('security.changePassword').props.onPress(); });
+  expect(navigate).toHaveBeenCalledWith('ChangePassword');
 });

@@ -143,3 +143,20 @@ test('ChainClient RPC reads use failover and preserve WharfKit request serializa
   expect(JSON.parse(String(network.mock.calls.at(-1)![1]!.body))).toEqual({ code: 'core.vaulta', account: 'alice', symbol: 'A' });
   expect(switched).toHaveBeenCalledWith('rpc', b);
 });
+
+test.each(['vaulta', 'jungle4'] as const)('full RAM quote reads raw reserve units and includes chain fees on %s', async chainId => {
+  network.mockResolvedValue(response({ rows: [{ base: { balance: '75027854801 RAM' },
+    quote: { balance: '25419523.8353 EOS' } }] }));
+  const client = new ChainClient(chainId, a);
+  expect(await client.getRamQuote(1024)).toMatchObject({
+    chainFee: `0.0018 ${CHAINS[chainId].symbol}`, total: `0.3486 ${CHAINS[chainId].symbol}`,
+  });
+  expect(JSON.parse(String(network.mock.calls.at(-1)![1]!.body))).toMatchObject({
+    code: 'eosio', scope: 'eosio', table: 'rammarket', json: true, limit: 1,
+  });
+});
+
+test('a missing RAM market never looks like a free RAM quote', async () => {
+  network.mockResolvedValue(response({ rows: [] }));
+  await expect(new ChainClient('vaulta', a).getRamQuote(1024)).rejects.toThrow('repair.ramQuoteUnavailable');
+});

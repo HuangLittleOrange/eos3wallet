@@ -1,6 +1,6 @@
 # Firebase usage analytics
 
-The app integrates Google Analytics for Firebase through the pinned native React Native Firebase App and Analytics modules. Expo and existing wallet dependency versions are unchanged. Real Android and iOS app SDK configurations are now connected to the Firebase project below. This native integration has **not** been compiled, installed or runtime-verified; no real analytics events have been validated.
+The app integrates Google Analytics for Firebase through the pinned native React Native Firebase App and Analytics modules. Expo and existing wallet dependency versions are unchanged. Real Android and iOS app SDK configurations are now connected to the Firebase project below. The iOS 1.0.4 (25) IPA was compiled and signature-verified. Real analytics event delivery and retention have not been validated.
 
 ## Firebase project and app configuration
 
@@ -34,7 +34,7 @@ For public isolated builds, the configuration files must be included as reviewed
 
 ## What is measured
 
-In configured release builds, basic analytics is **on by default** after checking the saved preference. Users can turn it off under **Me → Security Center → Usage statistics**. There is no first-launch analytics prompt. While enabled, the native Firebase SDK supplies its automatic events:
+In configured release builds, basic analytics is **on by default** after checking the saved preference. The Security Center no longer exposes the analytics control; saved disabled choices from earlier versions are still respected. There is no first-launch analytics prompt. While enabled, the native Firebase SDK supplies its automatic events:
 
 - `first_open`: new activations after installation/reinstallation when collection starts;
 - `session_start` and `user_engagement`: active use, used by GA4 activity and retention reports;
@@ -47,28 +47,28 @@ Metrics cover installations with collection enabled that successfully reach Goog
 ## Collection preference and privacy controls
 
 - The runtime preference is **on by default** only when no saved choice exists, and stored separately from wallet storage. Explicit disabled choices remain disabled across launches. Invalid or unreadable preferences stay off. Fresh native startup defaults stay off until this choice has been checked; the native defaults are intentionally not changed to avoid overriding an earlier opt-out before JavaScript runs. Firebase runtime settings persist across launches, so previously enabled installations may resume native collection at startup. SDK errors do not block the wallet and are not forwarded to another telemetry service.
-- Disabling stops collection, denies analytics storage and resets the local Firebase Analytics identifier. This is not a request to erase historical server-side aggregates.
+- The internal controller still supports disabling collection, denying analytics storage and resetting the local Firebase Analytics identifier; no settings control currently exposes this operation. This is not a request to erase historical server-side aggregates.
 - `ad_storage`, `ad_user_data` and `ad_personalization` are denied in native defaults and on every runtime preference change.
 - Android advertising-ID, SSAID and automatic screen collection are disabled. Advertising / AdServices permissions are blocked in the manifest merge.
 - iOS IDFV collection and ad-network registration are disabled. The official Analytics plugin excludes IDFA support and on-device ad-conversion measurement.
 - No Ads linkage, Google Signals or advertising data-sharing settings are enabled by this code. The project has no Ads/AdMob linkage; Google Signals is off, all regions disallow ad personalization, and granular location/device collection is off in GA4. App code cannot enforce settings changed later in the Google console. Settings on the existing parent Analytics account were not changed.
-- Firebase still processes its standard usage/technical metadata and network requests on Google's infrastructure. The integration is not a claim of completely anonymous collection. Keep this processing and the default-on/opt-out behavior accurately described in the published privacy policy. The default-on implementation does not implement regional consent handling or establish that prior consent is unnecessary in every distribution region.
+- Firebase still processes its standard usage/technical metadata and network requests on Google's infrastructure. The integration is not a claim of completely anonymous collection. Keep this processing and the default-on behavior and available controls accurately described in the published privacy policy. The default-on implementation does not implement regional consent handling or establish that prior consent is unnecessary in every distribution region.
 
 ## Native integration and next build
 
-The official Analytics config plugin always supplies `withoutAdIdSupport: true`. The optional app plugin registers native initialization only for configured platforms and preserves mods for other platforms. RNFirebase 26 uses its official default iOS SPM mode with dynamic frameworks, configured through `expo-build-properties`. Android keeps offline compilation and independent fixed certificate signing. The additional Firebase artifacts must be prepared in the existing dependency-download stage before a future offline build; this task does not download/build native artifacts or populate new Gradle caches.
+The official Analytics config plugin always supplies `withoutAdIdSupport: true`. The optional app plugin registers native initialization only for configured platforms and preserves mods for other platforms. RNFirebase 26 uses its official default iOS SPM mode with dynamic frameworks, configured through `expo-build-properties`. Android keeps offline compilation and independent fixed certificate signing. The additional Firebase artifacts must be prepared in the existing dependency-download stage before offline compilation.
 
 Only the new SDK packages and their transitive dependencies are added. The new Firestore web transitive dependency's gRPC version is overridden to **1.14.6** to address advisories affecting its older ~1.9 dependency; Firestore/web analytics are not used by the native wallet. Dependency installation scripts remain disabled, registry signatures are verified, and the dependency inventory/checksum is reviewed. Existing dependency audit findings are not silently fixed by upgrading Expo or wallet libraries.
 
-## Verification before shipping (not executed here)
+## Runtime verification still required
 
-After authorizing a future build (the real project files are now supplied):
+Use a configured release build and a test Firebase stream:
 
 1. Inspect merged Android permissions/metadata and the iOS Podfile/framework selection, Info.plist and privacy manifests. Confirm advertising support remains excluded.
-2. Install the newly built APK/IPA. The currently installed builds do not contain these native SDK modules or this settings UI.
+2. Install a release APK/IPA containing the native SDK modules.
 3. In a release build with a test Firebase stream, verify a fresh installation automatically enables basic statistics only after its preference check; inspect native Firebase DebugView events. An installation with a saved disabled preference must never enable collection during startup.
 4. Confirm automatic first-open/session/activity events appear without duplicates, with no wallet/DApp/transaction parameters. Verify foreground/background and later launches retain the same instance while enabled.
-5. Disable, relaunch and verify collection remains disabled. Then check a failed local preference write and a network outage without disrupting wallet operations.
+5. Use the internal controller in a test harness to disable collection, then relaunch and verify it remains disabled. Then check a failed local preference write and a network outage without disrupting wallet operations.
 6. Check GA4 new-user/activity/retention reports after processing. Retention requires real users returning over subsequent days and cannot be proven by one startup or unit tests.
 
 References: [Expo Firebase integration](https://docs.expo.dev/guides/using-firebase/), [RNFirebase setup](https://rnfirebase.io/), [Analytics privacy/configuration](https://rnfirebase.io/analytics/usage), [Google event definitions](https://support.google.com/analytics/answer/9234069), [Google data collection controls](https://firebase.google.com/docs/analytics/configure-data-collection).

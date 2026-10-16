@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TextInput } from 'react-native';
 
 import { colors } from '../theme';
 import { useI18n } from '../i18n';
+import { sensitiveInputProps } from './sensitiveInputProps';
 
 /**
  * 主密码卡片 —— 纯受控展示。
@@ -37,7 +38,7 @@ export default function MasterPasswordCard({ hasPwd, pwd, onChangePwd, pwd2 = ''
           placeholderTextColor={colors.textFaint}
           style={styles.input}
           secureTextEntry
-          autoCapitalize="none"
+          {...sensitiveInputProps}
         />
         <View style={styles.sep} />
         <TextInput
@@ -47,7 +48,7 @@ export default function MasterPasswordCard({ hasPwd, pwd, onChangePwd, pwd2 = ''
           placeholderTextColor={colors.textFaint}
           style={[styles.input, { marginTop: 12 }]}
           secureTextEntry
-          autoCapitalize="none"
+          {...sensitiveInputProps}
         />
         {pwd2.length > 0 && pwd !== pwd2 ? <Text style={styles.err}>{t('masterPwdCard.mismatch')}</Text> : null}
         <Text style={styles.hint}>{t('masterPwdCard.setHint')}</Text>
@@ -65,7 +66,7 @@ export default function MasterPasswordCard({ hasPwd, pwd, onChangePwd, pwd2 = ''
         placeholderTextColor={colors.textFaint}
         style={styles.input}
         secureTextEntry
-        autoCapitalize="none"
+        {...sensitiveInputProps}
       />
       <Text style={styles.hint}>{t('masterPwdCard.verifyHint')}</Text>
     </View>

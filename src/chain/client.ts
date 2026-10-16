@@ -3,6 +3,7 @@ import { CHAINS, ChainId, NodeInfo } from './config';
 import { t } from '../i18n';
 import { fetchWithTimeout } from '../net/fetchRetry';
 import { ReadNodePool, type NodeFailoverOptions } from './nodeFailover';
+import { quoteRamBytes, type RamPurchaseQuote } from './ramPricing';
 
 // ---------- 对外的数据结构 ----------
 
@@ -308,6 +309,17 @@ export class ChainClient {
     const base = Asset.from(row.base.balance).value; // RAM 字节
     // 每字节价格 = quote/base,乘 1024 得每 KB
     return { pricePerKb: base > 0 ? (quote / base) * 1024 : 0 };
+  }
+
+  /** Full buyrambytes quote, including the chain's RAM fee and rounding. */
+  async getRamQuote(bytes: number): Promise<RamPurchaseQuote> {
+    const res: any = await this.api.v1.chain.get_table_rows({
+      code: Name.from('eosio'), scope: Name.from('eosio'), table: Name.from('rammarket'), limit: 1, json: true,
+    });
+    const row = res.rows?.[0];
+    if (!row) throw new Error(t('repair.ramQuoteUnavailable'));
+    return quoteRamBytes({ ramReserve: row.base?.balance, tokenReserve: row.quote?.balance,
+      bytes, symbol: this.config.symbol, precision: this.config.precision });
   }
 
   /**

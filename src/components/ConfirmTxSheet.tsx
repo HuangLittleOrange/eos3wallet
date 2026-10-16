@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { sensitiveInputProps } from './sensitiveInputProps';
 import {
   View,
   Text,
@@ -287,7 +288,7 @@ export default function ConfirmTxSheet({
             placeholderTextColor={colors.textFaint}
             style={styles.pwdDialogInput}
             secureTextEntry
-            autoCapitalize="none"
+            {...sensitiveInputProps}
             editable={!busy}
             autoFocus
             onSubmitEditing={() => (pwd.length >= 8 && !locked ? onConfirm(pwd) : undefined)}

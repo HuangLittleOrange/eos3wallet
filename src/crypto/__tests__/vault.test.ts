@@ -57,6 +57,7 @@ import {
   signingPermission,
   StoredWallet,
   verifyMasterPassword,
+  changeMasterPassword,
   WrongPasswordError,
   savePendingDeviceKey,
   loadPendingDeviceKey,
@@ -203,6 +204,114 @@ describe('主密码', () => {
     expect(await hasMasterPassword()).toBe(true);
     expect(await verifyMasterPassword('master-pass-1')).toBe(true);
     expect(await verifyMasterPassword('nope')).toBe(false);
+  });
+});
+
+describe('change master password', () => {
+  const write = jest.mocked(SecureStore.setItemAsync).getMockImplementation()!;
+  afterEach(() => { jest.mocked(SecureStore.setItemAsync).mockImplementation(write); });
+  const seed = async () => {
+    await setMasterPassword('old-password');
+    await saveSecret('alice-key', 'synthetic-private-key', 'old-password');
+    await addWallet(wallet({ id: 'alice-key' }));
+  };
+
+  it('rotates all local keys across networks, preserves watch/passkey records and disables old biometrics', async () => {
+    await seed();
+    await saveSecret('bob-key', 'synthetic-mnemonic-key', 'old-password');
+    await addWallet(wallet({ id: 'bob-key', account: 'bob', chainId: 'jungle4', source: 'mnemonic' }));
+    await addWallet(wallet({ id: 'watch', account: 'observer', source: 'watch' }));
+    await addWallet(wallet({ id: 'passkey', account: 'passkey', source: 'passkey' }));
+    // Existing releases have no secret-id registry. The wallet index must suffice.
+    memStore.delete('aurora.vault.secretIds');
+    await enableBiometric('old-password');
+    const index = memStore.get('aurora.wallet.index');
+    await changeMasterPassword('old-password', 'new-password');
+    expect(await verifyMasterPassword('new-password')).toBe(true);
+    expect(await verifyMasterPassword('old-password')).toBe(false);
+    await expect(loadSecret('alice-key', 'new-password')).resolves.toBe('synthetic-private-key');
+    await expect(loadSecret('bob-key', 'new-password')).resolves.toBe('synthetic-mnemonic-key');
+    await expect(loadSecret('alice-key', 'old-password')).rejects.toBeInstanceOf(WrongPasswordError);
+    expect(memStore.get('aurora.wallet.index')).toBe(index);
+    expect(await biometricEnabled()).toBe(false);
+    expect(memStore.has('aurora.bio.master')).toBe(false);
+    expect(memStore.has('aurora.wallet.alice-key')).toBe(false);
+    await enableBiometric('new-password');
+    await expect(loadSecretWithBiometric('alice-key')).resolves.toBe('synthetic-private-key');
+  });
+
+  it('retains the old vault on a staged write failure and removes incomplete staging', async () => {
+    await seed();
+    const original = memStore.get('aurora.wallet.alice-key');
+    jest.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value, options) => {
+      if (/\.g[a-f0-9]{16}\.alice-key$/.test(key)) throw new Error('storage full');
+      return write(key, value, options);
+    });
+    await expect(changeMasterPassword('old-password', 'new-password')).rejects.toThrow('storage full');
+    expect(memStore.has('aurora.vault.generation')).toBe(false);
+    expect(memStore.get('aurora.wallet.alice-key')).toBe(original);
+    expect([...memStore.keys()].some(key => /\.g[a-f0-9]{16}\./.test(key))).toBe(false);
+    await expect(loadSecret('alice-key', 'old-password')).resolves.toBe('synthetic-private-key');
+  });
+
+  it('a failed generation commit preserves old credentials, while a committed-but-rejected write preserves new ones', async () => {
+    await seed();
+    jest.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value, options) => {
+      if (key === 'aurora.vault.generation') throw new Error('commit failed');
+      return write(key, value, options);
+    });
+    await expect(changeMasterPassword('old-password', 'new-password')).rejects.toThrow('commit failed');
+    expect(await verifyMasterPassword('old-password')).toBe(true);
+    jest.mocked(SecureStore.setItemAsync).mockImplementation(async (key, value, options) => {
+      await write(key, value, options);
+      if (key === 'aurora.vault.generation') throw new Error('native response lost');
+    });
+    await expect(changeMasterPassword('old-password', 'new-password')).resolves.toBeUndefined();
+    await expect(loadSecret('alice-key', 'new-password')).resolves.toBe('synthetic-private-key');
+  });
+
+  it('rejects wrong current passwords and invalid new passwords without writing', async () => {
+    await seed(); jest.mocked(SecureStore.setItemAsync).mockClear();
+    await expect(changeMasterPassword('incorrect', 'new-password')).rejects.toBeInstanceOf(WrongPasswordError);
+    await expect(changeMasterPassword('old-password', 'short')).rejects.toThrow('changePwd.invalidNew');
+    await expect(changeMasterPassword('old-password', 'old-password')).rejects.toThrow('changePwd.invalidNew');
+    expect(SecureStore.setItemAsync).not.toHaveBeenCalled();
+  });
+
+  it('includes unindexed pending keys, supports repeated changes and rejects stale-password imports', async () => {
+    await seed();
+    await saveSecret('pending-key', 'pending-secret', 'old-password');
+    await changeMasterPassword('old-password', 'new-password');
+    await changeMasterPassword('new-password', 'third-password');
+    await expect(loadSecret('pending-key', 'third-password')).resolves.toBe('pending-secret');
+    await expect(saveSecret('stale-import', 'stale-secret', 'old-password')).rejects.toBeInstanceOf(WrongPasswordError);
+    await saveSecret('new-import', 'new-secret', 'third-password');
+    await expect(loadSecret('new-import', 'third-password')).resolves.toBe('new-secret');
+    await removeWallet('alice-key');
+    await expect(loadSecret('alice-key', 'third-password')).rejects.toThrow('vaultError.keyNotFound');
+  });
+
+  it('rotates a legacy pending device key even before it enters the wallet index', async () => {
+    await seed();
+    const pending: PendingDeviceKey = { id: 'pending-device', publicKey: 'pending-public', legacyPublicKey: 'legacy-public',
+      label: 'Phone', createdAt: 1, chainId: 'vaulta' };
+    await saveSecret(pending.id, 'pending-device-secret', 'old-password');
+    await savePendingDeviceKey(pending);
+    memStore.delete('aurora.vault.secretIds');
+    await changeMasterPassword('old-password', 'new-password');
+    await expect(loadSecret(pending.id, 'new-password')).resolves.toBe('pending-device-secret');
+    await expect(loadPendingDeviceKey()).resolves.toEqual(pending);
+    await expect(importStoredPendingDeviceKey(pending, wallet({ id: pending.id, publicKey: pending.publicKey }))).resolves.toEqual(
+      expect.objectContaining({ id: pending.id }));
+  });
+
+  it('a missing local key aborts before selecting a new password, preserving the remaining keys', async () => {
+    await seed();
+    await addWallet(wallet({ id: 'missing-key', account: 'missing' }));
+    await expect(changeMasterPassword('old-password', 'new-password')).rejects.toThrow('vaultError.keyNotFound');
+    expect(await verifyMasterPassword('old-password')).toBe(true);
+    await expect(loadSecret('alice-key', 'old-password')).resolves.toBe('synthetic-private-key');
+    expect(memStore.has('aurora.vault.generation')).toBe(false);
   });
 });
 

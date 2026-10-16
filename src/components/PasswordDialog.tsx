@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, ActivityIndicator 
 import { Ionicons } from '@expo/vector-icons';
 
 import CenterDialog from './CenterDialog';
+import { sensitiveInputProps } from './sensitiveInputProps';
 import { colors } from '../theme';
 import { useI18n } from '../i18n';
 
@@ -62,7 +63,7 @@ export default function PasswordDialog({
           placeholderTextColor={colors.textFaint}
           style={styles.input}
           secureTextEntry
-          autoCapitalize="none"
+          {...sensitiveInputProps}
           editable={!busy}
           autoFocus
           onSubmitEditing={() => ready && onSubmit(pwd)}
