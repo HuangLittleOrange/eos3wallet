@@ -73,16 +73,17 @@ export function assertPendingDeviceChain(pending: PendingDeviceKey, chainId: Cha
   if (pending.chainId !== undefined && pending.chainId !== chainId) throw new Error(t('deviceKey.chainMismatch'));
 }
 
-async function readChainJSON(node: { url: string }, endpoint: string, body: unknown): Promise<any> {
+async function readChainJSON(node: { url: string }, endpoint: string, body: unknown, signal?: AbortSignal): Promise<any> {
   const response = await fetchWithRetry(`${node.url}/v1/chain/${endpoint}`, {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    ...(signal ? { signal } : {}),
   }, { attempts: 2, timeoutMs: 8_000 });
   if (!response.ok) throw new Error(t('signupError.queryFailed', { status: response.status }));
   return response.json();
 }
 
-async function assertNodeChain(node: { url: string }, chainId: ChainId): Promise<void> {
-  const info = await readChainJSON(node, 'get_info', {});
+async function assertNodeChain(node: { url: string }, chainId: ChainId, signal?: AbortSignal): Promise<void> {
+  const info = await readChainJSON(node, 'get_info', {}, signal);
   if (!CHAINS[chainId] || typeof info.chain_id !== 'string' ||
     info.chain_id !== CHAINS[chainId].chainIdHash) throw new Error(t('deviceKey.queryChainMismatch'));
 }
@@ -121,10 +122,12 @@ export function accountsWithActive(matches: KeyAccountMatch[]): string[] {
 }
 
 /** 导入已加密的待授权密钥，并原子清除 pending 记录。 */
-export async function importPendingDeviceKey(pending: PendingDeviceKey, account: string, chainId: ChainId, node: { url: string }): Promise<StoredWallet> {
+export async function importPendingDeviceKey(pending: PendingDeviceKey, account: string, chainId: ChainId, node: { url: string }, signal?: AbortSignal): Promise<StoredWallet> {
   assertPendingDeviceChain(pending, chainId);
-  await assertNodeChain(node, chainId);
-  const onChain = await readChainJSON(node, 'get_account', { account_name: account });
+  if (signal?.aborted) throw new Error(t('anchorImport.cancelled'));
+  await assertNodeChain(node, chainId, signal);
+  if (signal?.aborted) throw new Error(t('anchorImport.cancelled'));
+  const onChain = await readChainJSON(node, 'get_account', { account_name: account }, signal);
   const active = onChain.permissions?.find((permission: any) => permission.perm_name === 'active');
   if (onChain.account_name !== account || !Array.isArray(active?.required_auth?.keys) ||
     !Number.isSafeInteger(active.required_auth.threshold) || active.required_auth.threshold < 1 ||
@@ -142,6 +145,7 @@ export async function importPendingDeviceKey(pending: PendingDeviceKey, account:
     authPermissions: ['active'],
     deviceKey: { publicKey: pending.publicKey, label: pending.label, createdAt: pending.createdAt, authorizedAt: Date.now() },
   };
+  if (signal?.aborted) throw new Error(t('anchorImport.cancelled'));
   return importStoredPendingDeviceKey(pending, wallet);
 }
 

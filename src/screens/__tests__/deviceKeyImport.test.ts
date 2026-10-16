@@ -265,6 +265,7 @@ it('does not import or switch accounts if the network changes while web authoriz
 
 import { connectAnchorWeb } from '../../chain/anchorWeb';
 import { prepareAnchorDeviceImport, submitAnchorDeviceImport } from '../../chain/anchorDeviceImport';
+import { AnchorImportNetworkError } from '../../chain/anchorImportError';
 it('Anchor import connects directly, shows an account review, then imports only after chain verification', async () => {
   const session = {account:'alice',permission:'active'} as any;
   const review = {built:{eosAccount:'alice'},hex:'reviewed'} as any;
@@ -279,7 +280,7 @@ it('Anchor import connects directly, shows an account review, then imports only 
   expect(renderer.root.findAllByType('Text').some((node:any)=>node.children.includes('alice'))).toBe(true);
   await act(async () => { await button('anchorImport.confirm').props.onPress(); });
   expect(submitAnchorDeviceImport).toHaveBeenCalledWith(session,review,expect.any(AbortSignal));
-  expect(importPendingDeviceKey).toHaveBeenCalledWith(pending,'alice','vaulta',{url:'https://node.test'});
+  expect(importPendingDeviceKey).toHaveBeenCalledWith(pending,'alice','vaulta',{url:'https://node.test'},expect.any(AbortSignal));
 });
 it('Anchor signing errors retain the phone key and never import a wallet', async () => {
   jest.mocked(connectAnchorWeb).mockResolvedValue({account:'alice'} as any);
@@ -290,4 +291,57 @@ it('Anchor signing errors retain the phone key and never import a wallet', async
   await act(async () => { await button('anchorImport.confirm').props.onPress(); });
   expect(importPendingDeviceKey).not.toHaveBeenCalled();expect(setAccount).not.toHaveBeenCalled();
   expect(button('anchorImport.openWeb')).toBeDefined();
+});
+
+it('keeps the Anchor login after an RPC failure and resumes without another browser login',async()=>{
+ const session={account:'alice'} as any;const review={hex:'review'} as any;
+ jest.mocked(connectAnchorWeb).mockResolvedValue(session);
+ jest.mocked(prepareAnchorDeviceImport).mockRejectedValueOnce(new AnchorImportNetworkError()).mockResolvedValue(review);
+ await act(async()=>{renderer=create(React.createElement(DeviceKeyImportScreen,{route:{params:{provider:'anchor'}}}));});
+ await act(async()=>{await button('anchorImport.openWeb').props.onPress();});
+ expect(hasText('anchorImport.networkFailed')).toBe(true);expect(hasText('alice')).toBe(true);
+ expect(importPendingDeviceKey).not.toHaveBeenCalled();expect(setAccount).not.toHaveBeenCalled();
+ await act(async()=>{await button('anchorImport.retry').props.onPress();});
+ expect(connectAnchorWeb).toHaveBeenCalledTimes(1);expect(prepareAnchorDeviceImport).toHaveBeenCalledTimes(2);
+ expect(button('anchorImport.confirm')).toBeDefined();
+});
+
+it('verifies the final phone key against the healthy replacement node',async()=>{
+ const healthy={url:'https://healthy.test'};
+ jest.mocked(connectAnchorWeb).mockResolvedValue({account:'alice'} as any);
+ jest.mocked(prepareAnchorDeviceImport).mockImplementation(async(_session,_pending,_node,_chain,options)=>{
+  options?.onNodeSwitch?.(healthy);return null;
+ });
+ await act(async()=>{renderer=create(React.createElement(DeviceKeyImportScreen,{route:{params:{provider:'anchor'}}}));});
+ await act(async()=>{await button('anchorImport.openWeb').props.onPress();});
+ expect(importPendingDeviceKey).toHaveBeenCalledWith(pending,'alice','vaulta',healthy,expect.any(AbortSignal));
+});
+
+it('a lost broadcast response requires a fresh review before signing again',async()=>{
+ const review={hex:'review'} as any;
+ jest.mocked(connectAnchorWeb).mockResolvedValue({account:'alice'} as any);
+ jest.mocked(prepareAnchorDeviceImport).mockResolvedValue(review);
+ jest.mocked(submitAnchorDeviceImport).mockRejectedValueOnce(new AnchorImportNetworkError());
+ await act(async()=>{renderer=create(React.createElement(DeviceKeyImportScreen,{route:{params:{provider:'anchor'}}}));});
+ await act(async()=>{await button('anchorImport.openWeb').props.onPress();});
+ await act(async()=>{await button('anchorImport.confirm').props.onPress();});
+ expect(submitAnchorDeviceImport).toHaveBeenCalledTimes(1);expect(importPendingDeviceKey).not.toHaveBeenCalled();
+ await act(async()=>{await button('anchorImport.retry').props.onPress();});
+ expect(prepareAnchorDeviceImport).toHaveBeenCalledTimes(2);expect(connectAnchorWeb).toHaveBeenCalledTimes(1);
+ expect(submitAnchorDeviceImport).toHaveBeenCalledTimes(1);
+});
+
+it('closing the Anchor import screen aborts preparation and cannot import its late result',async()=>{
+ let resolve!:(value:null)=>void;let signal:AbortSignal|undefined;
+ jest.mocked(connectAnchorWeb).mockResolvedValue({account:'alice'} as any);
+ jest.mocked(prepareAnchorDeviceImport).mockImplementation((_session,_pending,_node,_chain,options)=>{
+  signal=options?.signal;return new Promise(done=>{resolve=done;});
+ });
+ await act(async()=>{renderer=create(React.createElement(DeviceKeyImportScreen,{route:{params:{provider:'anchor'}}}));});
+ let completion!:Promise<void>;
+ await act(async()=>{completion=button('anchorImport.openWeb').props.onPress();});
+ await act(async()=>{renderer.unmount();});renderer=null;
+ expect(signal?.aborted).toBe(true);
+ await act(async()=>{resolve(null);await completion;});
+ expect(importPendingDeviceKey).not.toHaveBeenCalled();expect(setAccount).not.toHaveBeenCalled();
 });

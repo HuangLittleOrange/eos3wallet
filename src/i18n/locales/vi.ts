@@ -1025,6 +1025,8 @@ const vi: Record<keyof typeof zh, string> = {
   "anchorImport.heroDesc": "Đã có tài khoản Anchor Passkey? Mở trang web Anchor để kết nối và ủy quyền cho điện thoại này. Không cần cài ứng dụng Anchor.",
   "anchorImport.accountHint": "Anchor Passkey gốc vẫn được giữ lại. Sau khi ủy quyền, bạn có thể ký bằng mật khẩu ví hoặc sinh trắc học.",
   "anchorImport.stepAuthorize": "2. Kết nối và ủy quyền trên web Anchor",
+  "anchorImport.retry": "Thử lại và tiếp tục nhập",
+  "anchorImport.networkFailed": "Kết nối mạng bị gián đoạn. Kiểm tra kết nối rồi thử lại. Khóa điện thoại đã được lưu. Nếu đã xác nhận ủy quyền, hãy kiểm tra ủy quyền trước.",
   "anchorImport.openWeb": "Mở web Anchor",
   "anchorImport.confirm": "Xác nhận và ủy quyền qua Anchor",
   "anchorImport.account": "Tài khoản ủy quyền",

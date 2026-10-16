@@ -1,4 +1,4 @@
-import { Linking, Platform } from 'react-native';
+import { AppState, Linking, Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { ABI, PrivateKey, PublicKey, Serializer, Signature, Transaction } from '@wharfkit/antelope';
 import { SigningRequest, type CallbackPayload } from '@wharfkit/signing-request';
@@ -22,6 +22,25 @@ const linkAbi = ABI.from({ structs: [
 // This is an ephemeral request-channel key, never an account or device private key.
 export type AnchorWebSession = { account: string; permission: 'active' | 'owner'; requestKey: PrivateKey; messageKey: PublicKey };
 export class AnchorWebCancelled extends Error {}
+
+async function waitForWalletForeground(signal?: AbortSignal): Promise<void> {
+  if (signal?.aborted) throw new AnchorWebCancelled();
+  const active = () => !['background', 'inactive'].includes(AppState.currentState);
+  if (active()) return;
+  await new Promise<void>((resolve, reject) => {
+    const finish = (error?: Error) => {
+      clearTimeout(timer);
+      subscription.remove();
+      signal?.removeEventListener('abort', abort);
+      if (error) reject(error); else resolve();
+    };
+    const abort = () => finish(new AnchorWebCancelled());
+    const subscription = AppState.addEventListener('change', state => { if (state === 'active') finish(); });
+    const timer = setTimeout(() => finish(new Error(t('anchorImport.timeout'))), 30000);
+    signal?.addEventListener('abort', abort, { once: true });
+    if (signal?.aborted) abort(); else if (active()) finish();
+  });
+}
 function channelUrl(): string {
   const bytes = new Uint8Array(16);
   crypto.getRandomValues(bytes);
@@ -43,12 +62,13 @@ export async function openAnchorWebRequest(url: string, callback: string, signal
     let done = false;
     let listener: ReturnType<typeof listenLinkChannel> | undefined;
     let browserStarted = false;
-    const closeBrowser = (resume: boolean) => {
+    const closeBrowser = async (resume: boolean) => {
       if (!browserStarted) return;
       if (Platform.OS === 'ios') {
         try { WebBrowser.dismissAuthSession(); } catch {}
       }
-      else if (resume && Platform.OS === 'android') void Linking.openURL(RETURN_URL).catch(() => undefined);
+      else if (resume && Platform.OS === 'android') await Linking.openURL(RETURN_URL).catch(() => undefined);
+      if (resume) await waitForWalletForeground(signal);
     };
     const finish = (error?: unknown, payload?: CallbackPayload) => {
       if (done) return;
@@ -56,8 +76,8 @@ export async function openAnchorWebRequest(url: string, callback: string, signal
       clearTimeout(timer);
       signal?.removeEventListener('abort', abort);
       listener?.stop();
-      closeBrowser(Boolean(payload));
-      if (error) reject(error); else resolve(payload!);
+      if (error) { void closeBrowser(false); reject(error); }
+      else void closeBrowser(true).then(() => resolve(payload!), reject);
     };
     const abort = () => finish(new AnchorWebCancelled());
     const timer = setTimeout(() => finish(new Error(t('anchorImport.timeout'))), 300_000);

@@ -2,7 +2,7 @@ jest.mock('expo-web-browser', () => ({ openAuthSessionAsync: jest.fn(), dismissA
 jest.mock('../../crypto/keys', () => ({ generateKey: jest.fn() }));
 jest.mock('../../dapp/linkSocket', () => ({ listenLinkChannel: jest.fn() }));
 jest.mock('../../i18n', () => ({ t: (key: string) => key }));
-import { Linking, Platform } from 'react-native';
+import { AppState, Linking, Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { PrivateKey, Serializer, Transaction, UInt64 } from '@wharfkit/antelope';
 import { SigningRequest } from '@wharfkit/signing-request';
@@ -29,13 +29,14 @@ function respond(request: SigningRequest, transaction?: Transaction) {
 }
 beforeEach(() => {
   jest.clearAllMocks();
+  AppState.currentState='active';
   jest.mocked(generateKey).mockReturnValue({ privateKey: String(key), publicKey: String(key.toPublic()), legacyPublicKey: key.toPublic().toLegacyString(), path: '' });
   Object.defineProperty(Platform,'OS',{value:'android',configurable:true});
   jest.spyOn(Linking,'openURL').mockResolvedValue(true);
   stop=jest.fn();tamper=()=>{};
   jest.mocked(listenLinkChannel).mockImplementation((_url,run)=> {receive=run;return{stop};});
 });
-afterEach(()=>jest.restoreAllMocks());
+afterEach(()=>{jest.restoreAllMocks();jest.useRealTimers();AppState.currentState='active';});
 it('opens Anchor web directly and sends interoperable link_create metadata without a device secret',async()=>{
   jest.mocked(WebBrowser.openAuthSessionAsync).mockImplementation(async url=>{
     expect(url.startsWith('https://vaulta.anchorwallet.io/sign?')).toBe(true);
@@ -81,4 +82,29 @@ it('cancellation and unmount stop the relay and do not navigate back into an aba
   const controller=new AbortController();const promise=openAnchorWebRequest(anchorWebUrl({chain}), 'https://cb.anchor.link/channel',controller.signal);controller.abort();
   await expect(promise).rejects.toBeInstanceOf(AnchorWebCancelled);
   expect(Linking.openURL).not.toHaveBeenCalled();
+});
+
+it('waits for Android to return to the foreground before completing a login',async()=>{
+ jest.useFakeTimers();let change!:(state:string)=>void;const remove=jest.fn();
+ jest.spyOn(AppState,'addEventListener').mockImplementation((_event,callback)=>{change=callback as any;return{remove};});
+ jest.mocked(WebBrowser.openAuthSessionAsync).mockImplementation(async url=>{
+  AppState.currentState='background';respond(SigningRequest.from(new URL(url).searchParams.get('esr')!,opts));return{type:'opened'} as any;
+ });
+ let completed=false;const result=connectAnchorWeb().then(value=>{completed=true;return value;});
+ await jest.advanceTimersByTimeAsync(0);
+ expect(completed).toBe(false);expect(Linking.openURL).toHaveBeenCalled();
+ AppState.currentState='active';change('active');
+ expect((await result).account).toBe('aliceacct111');expect(remove).toHaveBeenCalled();expect(jest.getTimerCount()).toBe(0);
+});
+
+it('cancels foreground waiting on unmount and removes its listener and timeout',async()=>{
+ jest.useFakeTimers();const remove=jest.fn();
+ jest.spyOn(AppState,'addEventListener').mockReturnValue({remove});
+ jest.mocked(WebBrowser.openAuthSessionAsync).mockImplementation(async url=>{
+  AppState.currentState='background';respond(SigningRequest.from(new URL(url).searchParams.get('esr')!,opts));return{type:'opened'} as any;
+ });
+ const controller=new AbortController();const result=connectAnchorWeb(controller.signal);
+ const assertion=expect(result).rejects.toBeInstanceOf(AnchorWebCancelled);
+ await jest.advanceTimersByTimeAsync(0);controller.abort();await assertion;
+ expect(remove).toHaveBeenCalled();expect(jest.getTimerCount()).toBe(0);
 });

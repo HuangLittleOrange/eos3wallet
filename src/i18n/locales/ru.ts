@@ -1025,6 +1025,8 @@ const ru: Record<keyof typeof zh, string> = {
   "anchorImport.heroDesc": "Уже есть аккаунт Anchor Passkey? Откройте веб-версию Anchor, подключите аккаунт и разрешите доступ этому телефону. Устанавливать приложение Anchor не требуется.",
   "anchorImport.accountHint": "Исходный Anchor Passkey сохранится. После авторизации подписывайте операции паролем кошелька или биометрией.",
   "anchorImport.stepAuthorize": "2. Подключение и разрешение в веб-версии Anchor",
+  "anchorImport.retry": "Повторить и продолжить импорт",
+  "anchorImport.networkFailed": "Сетевое соединение прервано. Проверьте подключение и повторите попытку. Ключ телефона сохранён. Если вы уже подтвердили авторизацию, сначала проверьте её.",
   "anchorImport.openWeb": "Открыть Anchor в браузере",
   "anchorImport.confirm": "Подтвердить через Anchor",
   "anchorImport.account": "Аккаунт для авторизации",

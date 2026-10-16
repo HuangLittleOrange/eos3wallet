@@ -1025,6 +1025,8 @@ const ko: Record<keyof typeof zh, string> = {
   "anchorImport.heroDesc": "Anchor Passkey 계정이 있나요? Anchor 웹에서 계정을 연결하고 이 휴대폰을 승인하세요. Anchor 앱을 설치할 필요가 없습니다.",
   "anchorImport.accountHint": "기존 Anchor Passkey는 유지됩니다. 승인 후 지갑 비밀번호나 생체 인증으로 서명할 수 있습니다.",
   "anchorImport.stepAuthorize": "2. Anchor 웹에서 연결 및 승인",
+  "anchorImport.retry": "다시 시도하고 가져오기 계속",
+  "anchorImport.networkFailed": "네트워크 연결이 중단되었습니다. 연결을 확인하고 다시 시도하세요. 휴대폰 키는 저장되어 있습니다. 이미 승인했다면 먼저 승인을 확인하세요.",
   "anchorImport.openWeb": "Anchor 웹 열기",
   "anchorImport.confirm": "확인 후 Anchor로 승인",
   "anchorImport.account": "승인할 계정",

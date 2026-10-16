@@ -1025,6 +1025,8 @@ const en: Record<keyof typeof zh, string> = {
   "anchorImport.heroDesc": "Already have an Anchor Passkey account? Open Anchor in your browser to connect and authorize this phone. No Anchor app installation is required.",
   "anchorImport.accountHint": "Your original Anchor Passkey stays available. After authorization, sign on this phone with your wallet password or biometrics.",
   "anchorImport.stepAuthorize": "2. Connect and authorize on Anchor web",
+  "anchorImport.retry": "Retry and continue import",
+  "anchorImport.networkFailed": "The network connection was interrupted. Check your connection and retry. Your phone key is saved. If you already confirmed authorization, check authorization first.",
   "anchorImport.openWeb": "Open Anchor web",
   "anchorImport.confirm": "Confirm and authorize with Anchor",
   "anchorImport.account": "Account to authorize",

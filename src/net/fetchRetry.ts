@@ -26,11 +26,19 @@ export async function fetchWithRetry(
   const backoffMs = opts?.backoffMs ?? 300;
   let lastErr: unknown;
   for (let i = 0; i < attempts; i++) {
+    if (init?.signal?.aborted) throw cancellationError();
     try {
       return await (opts?.timeoutMs ? fetchWithTimeout(input, init, opts.timeoutMs) : fetch(input, init));
     } catch (e) {
+      if (init?.signal?.aborted) throw cancellationError();
       lastErr = e;
-      if (i < attempts - 1) await new Promise((resolve) => setTimeout(resolve, backoffMs * (i + 1)));
+      if (i < attempts - 1) await new Promise<void>((resolve, reject) => {
+        const signal = init?.signal;
+        const abort = () => { clearTimeout(timer); signal?.removeEventListener('abort', abort); reject(cancellationError()); };
+        const timer = setTimeout(() => { signal?.removeEventListener('abort', abort); resolve(); }, backoffMs * (i + 1));
+        signal?.addEventListener('abort', abort, { once: true });
+        if (signal?.aborted) abort();
+      });
     }
   }
   throw lastErr;
@@ -38,11 +46,21 @@ export async function fetchWithRetry(
 
 /** 带超时的 fetch——单次请求挂起太久就主动放弃,不等底层网络栈自己放弃。 */
 export async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit, timeoutMs = 8000): Promise<Response> {
+  if (init?.signal?.aborted) throw cancellationError();
   const controller = new AbortController();
+  const abort = () => controller.abort();
+  init?.signal?.addEventListener('abort', abort, { once: true });
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await fetch(input, { ...init, signal: controller.signal });
   } finally {
     clearTimeout(timer);
+    init?.signal?.removeEventListener('abort', abort);
   }
+}
+
+function cancellationError(): Error {
+  const error = new Error('Request cancelled');
+  error.name = 'AbortError';
+  return error;
 }

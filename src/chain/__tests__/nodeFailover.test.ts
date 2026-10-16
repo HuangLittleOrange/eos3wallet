@@ -23,6 +23,17 @@ beforeEach(() => {
 });
 afterEach(() => jest.useRealTimers());
 
+test('caller cancellation stops a read without selecting another endpoint',async()=>{
+  const controller=new AbortController();
+  network.mockImplementation(async (_url,init)=>new Promise((_resolve,reject)=>{
+    init!.signal!.addEventListener('abort',()=>reject(new Error('aborted')));
+  }));
+  const pending=pool().read('/v1/chain/get_info',{signal:controller.signal});
+  const assertion=expect(pending).rejects.toThrow('aborted');
+  controller.abort();await assertion;
+  expect(network).toHaveBeenCalledTimes(1);expect(candidates).not.toHaveBeenCalled();expect(switched).not.toHaveBeenCalled();
+});
+
 test('RPC connection failures retry the read on a verified same-chain node', async () => {
   network.mockImplementation(async (url: any) => {
     if (url.startsWith(a.url)) throw new Error('offline');

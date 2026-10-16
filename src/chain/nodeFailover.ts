@@ -90,9 +90,11 @@ export class ReadNodePool {
     let node = this.current;
     let last: unknown = new Error('No available node');
     for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      if (init?.signal?.aborted) throw new Error('Request cancelled');
       tried.add(base(node.url));
       try {
         const reply = await this.fetch(node, path, init);
+        if (init?.signal?.aborted) throw new Error('Request cancelled');
         // A structured nodeos exception is a definitive business result, e.g. unknown account.
         // Rate limits and server/proxy failures still warrant another endpoint.
         if (this.kind === 'rpc' && reply.status >= 400 && reply.json?.error?.name
@@ -105,6 +107,7 @@ export class ReadNodePool {
         }
         return reply;
       } catch (error) {
+        if (init?.signal?.aborted) throw error;
         last = error;
         this.failed.set(base(node.url), Date.now());
       }

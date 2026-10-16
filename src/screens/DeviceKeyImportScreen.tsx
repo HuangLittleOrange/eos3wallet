@@ -22,6 +22,7 @@ import { hasMasterPassword, loadPendingDeviceKey, updatePendingDeviceKeyLabel, W
 import { useI18n } from '../i18n';
 import { AnchorWebCancelled, connectAnchorWeb, type AnchorWebSession } from '../chain/anchorWeb';
 import { prepareAnchorDeviceImport, submitAnchorDeviceImport, type DeviceKeyReview } from '../chain/anchorDeviceImport';
+import { AnchorImportNetworkError, isConnectionError } from '../chain/anchorImportError';
 
 const BLUE = '#1E88FF';
 
@@ -50,6 +51,7 @@ export default function DeviceKeyImportScreen({ route }: { route?: { params?: { 
   const [anchorAccount, setAnchorAccount] = useState('');
   const anchorSessionRef = useRef<AnchorWebSession | null>(null);
   const anchorAbortRef = useRef<AbortController | null>(null);
+  const anchorNodeRef = useRef<{ url: string } | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -124,6 +126,7 @@ export default function DeviceKeyImportScreen({ route }: { route?: { params?: { 
     setAnchorReview(null);
     setAnchorAccount('');
     anchorSessionRef.current = null;
+    anchorNodeRef.current = null;
     return () => { anchorAbortRef.current?.abort(); };
   }, [checkContext]);
 
@@ -137,7 +140,12 @@ export default function DeviceKeyImportScreen({ route }: { route?: { params?: { 
     const isCurrent = () => mountedRef.current && checkContextRef.current === checkContext && !controller.signal.aborted;
     const finishImport = async (account: string) => {
       // Callback account names and relay responses alone never import a wallet.
-      await importPendingDeviceKey(pending, account, w.chainId, w.node);
+      try {
+        await importPendingDeviceKey(pending, account, w.chainId, anchorNodeRef.current ?? w.node, controller.signal);
+      } catch (error) {
+        if (isConnectionError(error)) throw new AnchorImportNetworkError();
+        throw error;
+      }
       if (!isCurrent()) return;
       await w.reloadWallets();
       if (!isCurrent()) return;
@@ -155,22 +163,29 @@ export default function DeviceKeyImportScreen({ route }: { route?: { params?: { 
         setAnchorReview(null);
         await finishImport(session.account);
       } else {
-        setAnchorAccount('');
-        const session = await connectAnchorWeb(controller.signal);
+        const session = anchorSessionRef.current ?? await connectAnchorWeb(controller.signal);
         if (!isCurrent()) return;
-        const review = await prepareAnchorDeviceImport(session, pending, w.node, w.chainId);
-        if (!isCurrent()) return;
+        // Preserve the login before any RPC request, so a connection failure can resume it.
         anchorSessionRef.current = session;
         setAnchorAccount(session.account);
+        const review = await prepareAnchorDeviceImport(session, pending, anchorNodeRef.current ?? w.node, w.chainId, {
+          signal: controller.signal,
+          onNodeSwitch: node => { if (isCurrent()) anchorNodeRef.current = node; },
+        });
+        if (!isCurrent()) return;
         if (!review) await finishImport(session.account);
         else setAnchorReview(review);
       }
     } catch (error: any) {
       if (!isCurrent()) return;
       setAnchorReview(null);
-      setAnchorAccount('');
-      anchorSessionRef.current = null;
-      setHint(error instanceof AnchorWebCancelled ? t('anchorImport.cancelled') : error?.message ?? t('deviceKey.failed'));
+      if (!isConnectionError(error)) {
+        setAnchorAccount('');
+        anchorSessionRef.current = null;
+        anchorNodeRef.current = null;
+      }
+      setHint(error instanceof AnchorWebCancelled ? t('anchorImport.cancelled') : isConnectionError(error)
+        ? t('anchorImport.networkFailed') : error?.message ?? t('deviceKey.failed'));
     } finally {
       if (anchorAbortRef.current === controller) anchorAbortRef.current = null;
       busyRef.current = false;
@@ -218,7 +233,7 @@ export default function DeviceKeyImportScreen({ route }: { route?: { params?: { 
       nav.reset({ index: 0, routes: [{ name: 'Tabs' }] });
       Alert.alert(t('deviceKeyImport.successTitle'), t('deviceKeyImport.successBody', { account }));
     } catch (e: any) {
-      setHint(e?.message ?? t('deviceKey.failed'));
+      setHint(isConnectionError(e) ? t('walletCtxError.networkError') : e?.message ?? t('deviceKey.failed'));
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -396,7 +411,7 @@ export default function DeviceKeyImportScreen({ route }: { route?: { params?: { 
         ) : (
           <>
             <TouchableOpacity style={[styles.submit, (busy || editingName || w.chainId !== 'vaulta') && styles.submitOff]} disabled={busy || editingName || w.chainId !== 'vaulta'} activeOpacity={0.85} onPress={viaAnchor ? openAnchor : openWeb}>
-              <Text style={styles.submitTxt}>{t(viaAnchor ? (anchorReview ? 'anchorImport.confirm' : 'anchorImport.openWeb') : 'deviceKey.openWeb')}</Text>
+              <Text style={styles.submitTxt}>{t(viaAnchor ? (anchorReview ? 'anchorImport.confirm' : anchorAccount ? 'anchorImport.retry' : 'anchorImport.openWeb') : 'deviceKey.openWeb')}</Text>
             </TouchableOpacity>
             <Text style={styles.openHint}>{t(w.chainId === 'vaulta' ? (viaAnchor ? 'anchorImport.openWebHint' : 'deviceKeyImport.openWebHint') : (viaAnchor ? 'anchorImport.mainnetOnly' : 'deviceKey.webMainnetOnly'))}</Text>
             <TouchableOpacity style={[styles.secondary, (busy || editingName) && styles.submitOff]} disabled={busy || editingName} activeOpacity={0.85} onPress={() => void check()}>

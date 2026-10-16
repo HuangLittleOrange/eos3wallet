@@ -1026,6 +1026,8 @@ const zh = {
   "anchorImport.heroDesc": "已有 Anchor Passkey 账户？直接打开 Anchor 网页，使用通行密钥连接账户并授权这台手机，无需安装 Anchor App。",
   "anchorImport.accountHint": "原有 Anchor Passkey 会保留。授权后，这台手机可使用钱包密码或生物识别签名。",
   "anchorImport.stepAuthorize": "2. 在 Anchor 网页连接并授权",
+  "anchorImport.retry": "重试并继续导入",
+  "anchorImport.networkFailed": "网络连接中断，请检查网络后重试。本机密钥已保留；若已确认授权，可先点击“检查授权”。",
   "anchorImport.openWeb": "打开 Anchor 网页",
   "anchorImport.confirm": "确认并通过 Anchor 授权",
   "anchorImport.account": "授权账户",

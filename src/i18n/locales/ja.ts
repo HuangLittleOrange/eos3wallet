@@ -1025,6 +1025,8 @@ const ja: Record<keyof typeof zh, string> = {
   "anchorImport.heroDesc": "Anchor Passkey アカウントをお持ちですか？Anchor のウェブページで接続し、この端末を承認できます。Anchor アプリのインストールは不要です。",
   "anchorImport.accountHint": "元の Anchor Passkey は保持されます。承認後はウォレットのパスワードや生体認証で署名できます。",
   "anchorImport.stepAuthorize": "2. Anchor ウェブで接続・承認",
+  "anchorImport.retry": "再試行してインポートを続ける",
+  "anchorImport.networkFailed": "ネットワーク接続が中断されました。接続を確認して再試行してください。端末の鍵は保存されています。承認済みの場合は先に承認を確認してください。",
   "anchorImport.openWeb": "Anchor ウェブを開く",
   "anchorImport.confirm": "確認して Anchor で承認",
   "anchorImport.account": "承認するアカウント",

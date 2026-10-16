@@ -97,6 +97,19 @@ it('verifies chain identity and equivalent legacy active keys before import', as
   }));
 });
 
+it('cancellation while authority verification is pending cannot write a wallet',async()=>{
+ const controller=new AbortController();let resolve!:(response:Response)=>void;let start!:()=>void;
+ const started=new Promise<void>(done=>{start=done;});
+ jest.mocked(fetchWithRetry).mockResolvedValueOnce(response({chain_id:CHAINS.vaulta.chainIdHash}))
+  .mockImplementationOnce(()=>{start();return new Promise(done=>{resolve=done;});});
+ const result=importPendingDeviceKey(pending,'alice','vaulta',node,controller.signal);
+ const assertion=expect(result).rejects.toThrow('anchorImport.cancelled');
+ await started;
+ controller.abort();
+ resolve(response({account_name:'alice',permissions:[{perm_name:'active',required_auth:{threshold:1,keys:[{key:PUB,weight:1}]}}]}));
+ await assertion;expect(importStoredPendingDeviceKey).not.toHaveBeenCalled();
+});
+
 it.each([
   { account_name: 'bob', permissions: [] },
   { account_name: 'alice', permissions: [{ perm_name: 'owner', required_auth: { threshold: 1, keys: [{ key: PUB, weight: 1 }] } }] },

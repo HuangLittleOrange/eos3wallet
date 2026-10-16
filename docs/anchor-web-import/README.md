@@ -17,3 +17,15 @@ Anchor 路径：导入钱包 → 通过 Anchor 授权 → 生成或恢复本机�
 未代用户执行真实 Passkey 登录、签名或账户权限修改。iOS/Android 系统浏览器中的完整授权与回跳仍需真机验证。本次是手机端代码更新，未生成或分发新版 APK/IPA；已安装的旧版本不会仅因网页部署而获得这个入口。
 
 参考：[Anchor 官方开发指南](https://anchorwallet.io/developers)、[WharfKit Anchor 插件](https://github.com/wharfkit/wallet-plugin-anchor)、[Expo 57 WebBrowser](https://docs.expo.dev/versions/v57.0.0/sdk/webbrowser/)。
+
+## Android 返回钱包后的网络恢复
+
+修复验证后返回钱包时直接出现 `java.net.SocketException: Software caused connection abort` 的恢复流程：
+
+- 收到 relay 响应后，先完成系统回跳并等待钱包恢复前台，再读取 RPC 或提交签名。
+- 读取账户权限使用同链 RPC 故障切换；最终导入校验沿用已验证的可用节点。
+- 连接成功后立即在内存中保留 Anchor 会话。RPC/API 网络失败会保留账户和待授权密钥，显示“重试并继续导入”，重试只重新读取和生成待核对交易。
+- 未签名的 build 请求可以有界重试；签名后的 push 始终只尝试一次。若 push 响应丢失，需检查链上授权或重新获取并确认待签名交易，不能自动重复广播。
+- 离开页面时取消前台等待、网络请求和重试计时器。切换网络或待授权密钥后不复用旧会话。
+
+回归测试模拟 Android 前后台切换、SocketException、不可用和错误链节点、保留会话后重试、丢失广播响应及中途退出。尚未在用户的 Android 设备复测；此修复需要新的完整安装包，不会通过热更新进入已安装的 1.0.5。
