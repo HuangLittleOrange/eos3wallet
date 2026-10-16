@@ -62,6 +62,7 @@ export async function openAnchorWebRequest(url: string, callback: string, signal
     let done = false;
     let listener: ReturnType<typeof listenLinkChannel> | undefined;
     let browserStarted = false;
+    let dismissTimer: ReturnType<typeof setTimeout> | undefined;
     const closeBrowser = async (resume: boolean) => {
       if (!browserStarted) return;
       if (Platform.OS === 'ios') {
@@ -74,6 +75,8 @@ export async function openAnchorWebRequest(url: string, callback: string, signal
       if (done) return;
       done = true;
       clearTimeout(timer);
+      clearTimeout(dismissTimer);
+      foreground.remove();
       signal?.removeEventListener('abort', abort);
       listener?.stop();
       if (error) { void closeBrowser(false); reject(error); }
@@ -82,18 +85,35 @@ export async function openAnchorWebRequest(url: string, callback: string, signal
     const abort = () => finish(new AnchorWebCancelled());
     const timer = setTimeout(() => finish(new Error(t('anchorImport.timeout'))), 300_000);
     signal?.addEventListener('abort', abort, { once: true });
-    listener = listenLinkChannel(callback, raw => {
+    const receive = (raw: Uint8Array) => {
       try {
         if (raw.length > 131072) throw new Error();
         const payload = JSON.parse(new TextDecoder().decode(raw));
         if (payload.rejected) finish(new AnchorWebCancelled());
         else finish(undefined, payload);
       } catch { finish(new Error(t('anchorImport.invalidResponse'))); }
+    };
+    const resumeReceiver = () => {
+      if (done) return;
+      // Android can abort the socket while Chrome/Passkey verification is in
+      // front. Buoy buffers the callback, so reconnect before deciding cancel.
+      listener?.stop();
+      listener = listenLinkChannel(callback, receive);
+    };
+    const foreground = AppState.addEventListener('change', state => {
+      if (state === 'active') resumeReceiver();
     });
+    resumeReceiver();
     browserStarted = true;
     void WebBrowser.openAuthSessionAsync(url, RETURN_URL).then(result => {
       // The native session handles user cancellation; only the relay carries signatures.
-      if (result.type === 'cancel' || result.type === 'dismiss') finish(new AnchorWebCancelled());
+      if (done) return;
+      if (result.type === 'cancel' || result.type === 'dismiss' || result.type === 'success') {
+        resumeReceiver();
+        // Closing a custom tab also reports "dismiss" after a successful
+        // Passkey response. Give the buffered callback a bounded recovery window.
+        dismissTimer = setTimeout(() => finish(new AnchorWebCancelled()), 8000);
+      }
     }, error => finish(error));
   });
 }
@@ -103,6 +123,8 @@ export async function connectAnchorWeb(signal?: AbortSignal): Promise<AnchorWebS
   const callback = channelUrl();
   const request = SigningRequest.identity({ chainId: CHAIN, scope: APP_NAME, callback: { url: callback, background: true } }, esrOptions);
   request.setRawInfoKey('link', Serializer.encode({ object: { session_name: APP_NAME, request_key: requestKey.toPublic(), user_agent: 'EOS3 Wallet mobile' }, type: 'link_create', abi: linkAbi }));
+  request.setInfoKey('same_device', true);
+  request.setInfoKey('return_path', RETURN_URL);
   const encoded = request.encode();
   const payload = await openAnchorWebRequest(anchorWebUrl({ esr: encoded, chain: CHAIN, requestKey: String(requestKey.toPublic()) }), callback, signal);
   if (payload.cid !== CHAIN || !/^[a-z1-5.]{1,12}$/.test(payload.sa) || !['active', 'owner'].includes(payload.sp) ||
@@ -116,6 +138,8 @@ export async function signWithAnchorWeb(session: AnchorWebSession, hex: string, 
   if (transaction.expiration.toMilliseconds() <= Date.now() + 5000) throw new Error(t('anchorImport.expired'));
   const request = await SigningRequest.create({ chainId: CHAIN, transaction, broadcast: false }, esrOptions);
   request.setRawInfoKey('link', Serializer.encode({ object: { expiration: transaction.expiration }, type: 'link_info', abi: linkAbi }));
+  request.setInfoKey('same_device', true);
+  request.setInfoKey('return_path', RETURN_URL);
   const callback = channelUrl();
   request.setCallback(callback, true);
   const sealed = sealMessage(request.encode(), session.requestKey, session.messageKey);

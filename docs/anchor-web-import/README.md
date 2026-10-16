@@ -14,7 +14,7 @@ Anchor 路径：导入钱包 → 通过 Anchor 授权 → 生成或恢复本机�
 
 验证：53 项相关 Jest 测试（Anchor web 传输、交易字节校验、API 选择、原有设备密钥导入和页面流程），项目强制执行的 45 项依赖/原生构建策略测试、TypeScript 类型检查。使用生成的公开 identity 请求在浏览器访问 Anchor 官方站点，确认请求被识别并可进入已有账户连接页面；另用一次性频道实测 cb.anchor.link 的二进制回调收发，内容与发送值一致。截图见 `anchor-web-direct.jpg`。
 
-未代用户执行真实 Passkey 登录、签名或账户权限修改。iOS/Android 系统浏览器中的完整授权与回跳仍需真机验证。本次是手机端代码更新，未生成或分发新版 APK/IPA；已安装的旧版本不会仅因网页部署而获得这个入口。
+初次接入时仅验证公开 identity 请求和回调收发；后续 Android Google Play 虚拟机的真实 Passkey 验证见下文。已安装的旧版本不会仅因网页部署而获得客户端修复。
 
 参考：[Anchor 官方开发指南](https://anchorwallet.io/developers)、[WharfKit Anchor 插件](https://github.com/wharfkit/wallet-plugin-anchor)、[Expo 57 WebBrowser](https://docs.expo.dev/versions/v57.0.0/sdk/webbrowser/)。
 
@@ -28,4 +28,12 @@ Anchor 路径：导入钱包 → 通过 Anchor 授权 → 生成或恢复本机�
 - 未签名的 build 请求可以有界重试；签名后的 push 始终只尝试一次。若 push 响应丢失，需检查链上授权或重新获取并确认待签名交易，不能自动重复广播。
 - 离开页面时取消前台等待、网络请求和重试计时器。切换网络或待授权密钥后不复用旧会话。
 
-回归测试模拟 Android 前后台切换、SocketException、不可用和错误链节点、保留会话后重试、丢失广播响应及中途退出。尚未在用户的 Android 设备复测；此修复需要新的完整安装包，不会通过热更新进入已安装的 1.0.5。
+回归测试模拟 Android 前后台切换、SocketException、不可用和错误链节点、保留会话后重试、丢失广播响应及中途退出。此修复需要新的完整安装包，不会通过热更新进入已安装的 1.0.5。
+
+## 同设备返回与真实 Passkey 验证
+
+参照 [WharfKit 同设备 ESR 元数据](https://github.com/wharfkit/js/blob/dev/packages/protocol-esr/src/esr.ts)，连接与签名请求加入 `same_device=true` 和固定的 `return_path=eos3wallet://device-key-authorized?provider=anchor`。这两个值编码在 ESR info 中，不是 `/sign` 顶层查询参数。签名页面会读取返回路径；截至本次验证，Anchor 网页的 identity 登录分支只发送回调并返回账户首页，可能仍需关闭网页一次。
+
+Android 在 Chrome/Google Passkey 验证期间可能以 `Software caused connection abort` 中断钱包的 WebSocket。Anchor 的回调 POST 已成功（HTTP 200），Buoy 会缓冲消息。钱包恢复前台时重新订阅该频道；浏览器的 `dismiss`、`cancel` 或 `success` 结果均先给予 8 秒恢复窗口，避免把已经完成的登录误判为取消。真正的拒绝、离开导入页面和超时仍会停止监听并清理计时器。
+
+2026-10-16 在既有 `EOS3_Passkey_API35`（Android 15、Google Play、已有 Google 账户和屏幕锁）上完成验证：真实 Anchor Passkey 登录，关闭登录网页后恢复已缓冲的 identity 回调，生成并核对授权交易；经用户确认后签名，自动返回钱包，广播、链上权限校验和导入全部成功。独立主网查询确认新增设备公钥生效、原 Passkey 保留、active 阈值仍为 1。测试使用现有开发客户端加载本地源码，诊断日志和直达测试页面的导航只存在于临时副本，正式源码无这些调试修改；尚未以新的正式 APK 复测。
