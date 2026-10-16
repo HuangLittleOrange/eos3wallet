@@ -1,5 +1,7 @@
 // 全局弹层栈的数据部分(纯 TS,不碰 React/RN,方便单测)。渲染在 ModalHost.tsx。
 //
+// 普通弹层保持打开顺序;强制更新门禁使用更高 priority。
+//
 // 为什么不用原生 Modal:iOS 上 RN 的 Modal 是从"离它最近的 ViewController"
 // 去 present 的。页面里并排摆的两个 Modal 找到的都是根 VC,而根 VC 同一时间
 // 只能 present 一个——第二个会被 UIKit 静默拒掉(只打一行 "Attempt to present
@@ -16,6 +18,8 @@
 
 export type ModalLayer = {
   id: number;
+  /** Mandatory update gates stay above ordinary prompts, including later incoming requests. */
+  priority?: number;
   node: unknown;
   /** 安卓返回键:交给最上面那一层处理 */
   onRequestClose?: () => void;
@@ -37,12 +41,13 @@ export function allocLayerId(): number {
 
 /**
  * 登记或更新一层。第一次登记的层追加到栈顶;已登记的层原地更新内容,
- * 不改变层级——层级只由"什么时候打开"决定,不能因为底下那层重渲染了一次
+ * 同优先级内不改变层级——不能因为底下那层重渲染了一次
  * 就跑到上面去把新弹的层盖住。
  */
 export function upsertLayer(layer: ModalLayer) {
   const i = layers.findIndex((l) => l.id === layer.id);
   layers = i === -1 ? [...layers, layer] : layers.map((l, j) => (j === i ? layer : l));
+  layers.sort((a, b) => (a.priority ?? 0) - (b.priority ?? 0));
   emit();
 }
 

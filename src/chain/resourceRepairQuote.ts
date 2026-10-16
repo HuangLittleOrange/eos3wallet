@@ -6,17 +6,22 @@ import type { PowerupMarket } from './powerupPricing';
 import { getCachedSponsorFee, isSponsorFeeFresh, rememberSponsorFee, type SponsorFeeSnapshot } from './sponsorFeeCache';
 import { t } from '../i18n';
 
-const markets = new WeakMap<ChainClient, { promise: Promise<PowerupMarket>; validUntil: number }>();
+const markets = new WeakMap<ChainClient, { promise: Promise<PowerupMarket>; validUntil: number; value?: PowerupMarket }>();
+export const peekResourceRepairMarket = (client: ChainClient): PowerupMarket | null => {
+  const entry = markets.get(client);
+  return entry && entry.validUntil > Date.now() ? entry.value ?? null : null;
+};
 const refreshes = new Map<ChainId, Promise<SponsorFeeSnapshot>>();
 
 /** PowerUp 市场会变化,只合并请求并缓存 30 秒,与每日代付费分开。 */
 export function getResourceRepairMarket(client: ChainClient): Promise<PowerupMarket> {
   const cached = markets.get(client);
   if (cached && cached.validUntil > Date.now()) return cached.promise;
-  const entry = { promise: null as unknown as Promise<PowerupMarket>, validUntil: Infinity };
+  const entry = { promise: null as unknown as Promise<PowerupMarket>, validUntil: Infinity, value: undefined as PowerupMarket | undefined };
   entry.promise = client.getPowerupState().then((market) => {
     if (!market) throw new Error(t('resource.powerupMarketUnavailable'));
     entry.validUntil = Date.now() + 30_000;
+    entry.value = market;
     return market;
   }).catch((error) => {
     if (markets.get(client) === entry) markets.delete(client);

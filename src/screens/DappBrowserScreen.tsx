@@ -459,7 +459,7 @@ export default function DappBrowserScreen() {
       clearPending();
       Alert.alert(t('dappBrowser.broadcastedTitle'), t('dappBrowser.broadcastedBody', { txId: res.txId }), [
         { text: t('dappBrowser.viewExplorer'), onPress: () => Linking.openURL(res.explorerUrl) },
-        { text: t('dappBrowser.done'), onPress: () => w.refresh() },
+        { text: t('dappBrowser.done') },
       ]);
     } catch (e: any) {
       // 资源不够(CPU/NET、RAM):弹一键修复,复用刚拿到手的 signer,不再让用户认证一遍

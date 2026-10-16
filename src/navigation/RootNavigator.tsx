@@ -63,7 +63,7 @@ export type RootStackParamList = {
   Import: undefined;
   ImportSecret: { mode: 'mnemonic' | 'privatekey' };
   ImportWatch: undefined;
-  DeviceKeyImport: undefined;
+  DeviceKeyImport: { provider?: 'anchor' } | undefined;
   SetMasterPassword: undefined;
   CreateWalletMethod: undefined;
   CreateAccountPay: undefined;

@@ -153,7 +153,6 @@ export function useEsrFlow(opts: {
       const wasIdentity = esr.req.isIdentity;
       activeRequestRef.current = null;
       setEsr(null);
-      w.refresh();
       if (r.kind === 'redirect') {
         // 非后台回调——这个 URL 是给浏览器"导航"过去的(签名已经编进 query
         // string),不是后台接口,必须真的打开它,见 esr.ts 里的详细说明。

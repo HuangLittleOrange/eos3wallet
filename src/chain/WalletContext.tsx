@@ -1,22 +1,30 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
 import { AppState } from 'react-native';
 import { CHAINS, ChainId, DEFAULT_CHAIN, NodeInfo } from './config';
 import { useNodeCatalog } from './NodeCatalogContext';
 import { BUILTIN_NODE_CATALOG, NodeCatalog } from './nodeCatalog';
-import { AccountResources, ChainAction, ChainClient, probeNode, TokenBalance } from './client';
+import { AccountResources, ChainAction, ChainClient, TokenBalance } from './client';
 import { listCustomNodes, NodeKind } from './customNodes';
 import { listWallets, signingPermission, StoredWallet, WalletReadError } from '../crypto/vault';
-import { DEFAULT_PRICE_SOURCE, fetchPrices, PriceSnapshot, PriceSourceId } from './prices';
+import { DEFAULT_PRICE_SOURCE, fetchPrices, loadPriceSnapshot, peekPrices, PriceSnapshot, PriceSourceId } from './prices';
 import { ChainAccount, loadSession, saveSession } from './session';
 import { pickChainAccount } from './chainAccount';
-import { loadTokenSnapshot, saveTokenSnapshot } from './walletCache';
+import { loadTokenSnapshot, peekTokenSnapshot, saveTokenSnapshot, type TokenSnapshot } from './walletCache';
+import { invalidateLiveAccountRequest, requestLiveAccount } from './liveAccountRequest';
+import { invalidatePermissionDisplay, rememberPermissionDisplay } from './permissionDisplayCache';
 import { t } from '../i18n';
 import { refreshResourceRepairFee } from './resourceRepairQuote';
+import { historyCache, historyKey, readHistoryPage } from './historyCache';
+import { tokenDirectoryCache, tokenDirectoryKey, rememberTokenDirectory, type TokenMetadata } from './tokenDirectory';
+import { readTokenBalances } from './tokenBalances';
+import { notifyWalletDataChanged, subscribeWalletDataChanges } from './walletDataEvents';
+import { authorizedAppsCache, authorizedAppsKey, invalidateAuthorizedApps, loadAuthorizedApps } from './authorizedAppsCache';
 
 type Status = 'idle' | 'loading' | 'ready' | 'error';
 
-/** 节点连不上时最多自动切换几轮——切过这么多轮还是不行,大概率是本机网络本身有问题,不用再试 */
-const MAX_FAILOVER_ROUNDS = 2;
+const EMPTY_ACTIONS: ChainAction[] = [];
+const EMPTY_DIRECTORY: TokenMetadata[] = [];
+const BALANCE_REFRESH_MS = 60000;
 
 /** 按 id 找一个节点,默认节点列表里没有就去自定义节点里找——恢复上次会话/自动切换都要用 */
 async function resolveNode(chainId: ChainId, kind: NodeKind, id: string | undefined, catalog: NodeCatalog = BUILTIN_NODE_CATALOG): Promise<NodeInfo | null> {
@@ -100,16 +108,18 @@ type WalletLiveState = {
    * actions.length 是分不出来的,界面上却必须说成两句不同的话。
    */
   actionsFailed: boolean;
+  actionsLoading: boolean;
   ramPricePerKb: number;
   prices: PriceSnapshot | null;
 
   /**
-   * 上一次成功刷新时留下的代币快照,只给"看一眼"的展示页(如 WalletScreen)
-   * 在 status === 'loading' 且 tokens 还是空的这段空档里先垫一下,不是权威数据。
+   * 上一次成功刷新时留下的代币快照,可用于展示和选择代币,不是交易余额依据。
    * 任何要签名/广播的流程必须继续用上面的 tokens/resources,不能读这个。
    */
   cachedTokens: TokenBalance[] | null;
   cachedAt: number | null;
+  tokenDirectory: TokenMetadata[];
+  tokenDirectoryAt: number | null;
 };
 
 type WalletState = WalletSessionState & WalletLiveState;
@@ -130,52 +140,99 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [walletId, setWalletIdState] = useState<string | undefined>(undefined);
 
   const [status, setStatus] = useState<Status>('idle');
+  const [statusScope, setStatusScope] = useState('');
+  const [infoScope, setInfoScope] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [headBlock, setHeadBlock] = useState(0);
   const [latencyMs, setLatencyMs] = useState(0);
   const [resources, setResources] = useState<AccountResources | null>(null);
   const [tokens, setTokens] = useState<TokenBalance[]>([]);
-  const [actions, setActions] = useState<ChainAction[]>([]);
-  const [actionsFailed, setActionsFailed] = useState(false);
+  const [resourcesScope, setResourcesScope] = useState('');
+  const [tokensScope, setTokensScope] = useState('');
   const [ramPricePerKb, setRamPrice] = useState(0);
+  const [ramScope, setRamScope] = useState('');
   const [wallets, setWallets] = useState<StoredWallet[]>([]);
   const [walletsLoaded, setWalletsLoaded] = useState(false);
   const [walletsReadError, setWalletsReadError] = useState(false);
   const hasSession = !!account;
   const [prices, setPrices] = useState<PriceSnapshot | null>(null);
+  const [pricesScope, setPricesScope] = useState<PriceSourceId | null>(null);
   const [priceSource, setPriceSource] = useState<PriceSourceId>(DEFAULT_PRICE_SOURCE);
-  const [cachedTokens, setCachedTokens] = useState<TokenBalance[] | null>(null);
-  const [cachedAt, setCachedAt] = useState<number | null>(null);
+  const [tokenSnapshot, setTokenSnapshot] = useState<{ scope: string; value: TokenSnapshot | null } | null>(null);
+  const snapshotScope = JSON.stringify([chainId, account]);
+  const dataScope = JSON.stringify([chainId, account, node.url, historyNode.url]);
+  const activeDataScope = useRef(dataScope); activeDataScope.current = dataScope;
+  const selectedPriceSource = useRef(priceSource); selectedPriceSource.current = priceSource;
+  const cachedSnapshot = account
+    ? (peekTokenSnapshot(chainId, account) ?? (tokenSnapshot?.scope === snapshotScope ? tokenSnapshot.value : null))
+    : null;
+  const cachedTokens = cachedSnapshot?.tokens ?? null;
+  const cachedAt = cachedSnapshot?.updatedAt ?? null;
   const loadedWalletsRef = useRef<StoredWallet[]>([]);
   const activeSessionRef = useRef({ chainId, account, walletId, nodeId: node.id, historyNodeId: historyNode.id });
   activeSessionRef.current = { chainId, account, walletId, nodeId: node.id, historyNodeId: historyNode.id };
 
-  const client = useMemo(
-    () => new ChainClient(chainId, node, historyNode),
-    [chainId, node, historyNode]
-  );
+  const switchedNode = useRef<(kind: NodeKind, next: NodeInfo) => void>(() => {});
+  const currentClient = useRef<ChainClient | null>(null);
+  const client = useMemo(() => {
+    const created = new ChainClient(chainId, node, historyNode, {
+      candidates: async kind => [...catalogRef.current[chainId][kind], ...await listCustomNodes(chainId, kind).catch(() => [])],
+      onSwitch: (kind, next) => {
+        const active = activeSessionRef.current;
+        // A manual node/chain switch retires this client immediately.
+        if (currentClient.current !== created || active.chainId !== chainId
+          || active.nodeId !== node.id || active.historyNodeId !== historyNode.id) return;
+        switchedNode.current(kind, next);
+      },
+    });
+    return created;
+  }, [chainId, node, historyNode]);
+  currentClient.current = client;
+  const actionKey = historyKey(client, account);
+  const subscribeHistory = useCallback((listener: () => void) => historyCache.subscribe(actionKey, listener), [actionKey]);
+  const readHistory = useCallback(() => historyCache.get(actionKey), [actionKey]);
+  const history = useSyncExternalStore(subscribeHistory, readHistory, readHistory);
+  const directoryKey = tokenDirectoryKey(chainId, account);
+  const subscribeDirectory = useCallback((listener: () => void) => tokenDirectoryCache.subscribe(directoryKey, listener), [directoryKey]);
+  const readDirectory = useCallback(() => tokenDirectoryCache.get(directoryKey), [directoryKey]);
+  const directory = useSyncExternalStore(subscribeDirectory, readDirectory, readDirectory);
+  const actions = history.data?.actions ?? EMPTY_ACTIONS;
+  const actionsFailed = !!history.error;
+  const actionsLoading = !!account && !history.data && (history.refreshing || statusScope !== dataScope || status === 'loading');
 
   // 上次会话(账户/链/节点)是否已经恢复完成。恢复完成之前不发任何链上请求——
   // 不然启动瞬间会先给 useState 初始值里的占位账户+默认节点白跑一整轮刷新
   // (六个请求),几百毫秒后 session 恢复回真实账户又全部重来一遍,既浪费
   // 流量又挤占真实数据的带宽,让首屏可用数据更晚到。
   const [bootReady, setBootReady] = useState(false);
+  useEffect(() => { if (bootReady && account) void historyCache.hydrate(actionKey); }, [bootReady, account, actionKey]);
+  useEffect(() => { if (bootReady && account) void tokenDirectoryCache.hydrate(directoryKey); }, [bootReady, account, directoryKey]);
+  useEffect(() => {
+    if (!bootReady || !account) return;
+    let alive = true;
+    const show = (snapshot: PriceSnapshot | null) => {
+      if (alive && snapshot) { setPrices(snapshot); setPricesScope(priceSource); }
+    };
+    const update = () => {
+      if (alive && (AppState.currentState === 'active' || AppState.currentState == null)) void fetchPrices(priceSource).then(show);
+    };
+    void loadPriceSnapshot(priceSource).then(snapshot => { show(snapshot); update(); });
+    const timer = setInterval(update, 60000);
+    const sub = AppState.addEventListener('change', state => { if (state === 'active') update(); });
+    return () => { alive = false; clearInterval(timer); sub.remove(); };
+  }, [bootReady, account, priceSource]);
 
   // 每次账户/链切换,先把上次留下的快照垫上,给 WalletScreen 一个立等可见的数字,
   // 不用整个空转到这次 refresh() 跑完;没有快照就是 null,该转还是转
   useEffect(() => {
     if (!bootReady || !account) {
-      setCachedTokens(null);
-      setCachedAt(null);
       return;
     }
     let cancelled = false;
-    setCachedTokens(null);
-    setCachedAt(null);
     loadTokenSnapshot(chainId, account).then((snap) => {
       if (cancelled || !snap) return;
-      setCachedTokens(snap.tokens);
-      setCachedAt(snap.updatedAt);
+      setTokenSnapshot({ scope: JSON.stringify([chainId, account]), value: snap });
+      void rememberTokenDirectory(chainId, account, snap.tokens, false, snap.updatedAt);
     });
     return () => {
       cancelled = true;
@@ -188,8 +245,9 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   // 每次 refresh() 递增,用来判断"这次刷新是不是还是最新的一次"——
   // 见下面 REFRESH_TIMEOUT_MS 那段注释
   const refreshSeqRef = useRef(0);
-  // 连续自动切节点失败了几轮,见 MAX_FAILOVER_ROUNDS
-  const failoverCountRef = useRef(0);
+  const lastRefreshAttemptRef = useRef(0);
+  const lastBalanceAttempt = useRef(0);
+  const balanceGeneration = useRef(0);
   /**
    * 每条链各自最后一次在用的账户(见 Session.perChain)。切链时按目标链取回,
    * 不把当前这条链的账户带过去。放 ref 不放 state:它只在切链那一刻被读一次,
@@ -215,6 +273,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   /** 记住这次切换,下次启动直接用这个节点,而不是退回默认第一个 */
   const setNode = useCallback(
     (n: NodeInfo) => {
+      currentClient.current = null;
+      activeSessionRef.current = { ...activeSessionRef.current, nodeId: n.id };
       setNodeState(n);
       persistSession({ chainId, account, walletId, nodeId: n.id, historyNodeId: historyNode.id });
     },
@@ -223,11 +283,21 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   const setHistoryNode = useCallback(
     (n: NodeInfo) => {
+      currentClient.current = null;
+      activeSessionRef.current = { ...activeSessionRef.current, historyNodeId: n.id };
       setHistoryNodeState(n);
       persistSession({ chainId, account, walletId, nodeId: node.id, historyNodeId: n.id });
     },
     [chainId, account, walletId, node, persistSession]
   );
+
+  switchedNode.current = (kind, next) => {
+    const active = activeSessionRef.current;
+    const selected = kind === 'rpc' ? { ...active, nodeId: next.id } : { ...active, historyNodeId: next.id };
+    activeSessionRef.current = selected;
+    if (kind === 'rpc') setNodeState(next); else setHistoryNodeState(next);
+    persistSession(selected);
+  };
 
   useEffect(()=>{
     if(!bootReady)return;
@@ -241,6 +311,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   },[catalog,bootReady,chainId,node,historyNode,account,walletId,persistSession]);
 
   const reloadWallets = useCallback(async () => {
+    const previousWallets = loadedWalletsRef.current;
+    const wasRestored = sessionRestoredRef.current;
     let loaded: StoredWallet[] = [];
     let readFailed = false;
     try {
@@ -329,6 +401,10 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       // 到这里链/账户/节点已经是最终值(要么恢复了上次会话,要么确认无可恢复),
       // 依赖它们的 refresh / 快照加载现在才可以放行
       setBootReady(true);
+      if (wasRestored && !readFailed) {
+        for (const added of loaded.filter(wallet => !previousWallets.some(old => old.id === wallet.id)))
+          notifyWalletDataChanged({ chainId: added.chainId ?? DEFAULT_CHAIN, accounts: [added.account], permissions: true });
+      }
     }
   }, [persistSession]);
 
@@ -336,56 +412,51 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     reloadWallets();
   }, [reloadWallets]);
 
+  const refreshBalances = useCallback(async (force = false, changedContracts: string[] = []) => {
+    if (!account) return;
+    const generation = ++balanceGeneration.current;
+    lastBalanceAttempt.current = Date.now();
+    const list = await readTokenBalances(client, account, force, changedContracts);
+    if (generation !== balanceGeneration.current || activeDataScope.current !== dataScope) return;
+    setTokens(list); setTokensScope(dataScope);
+    void saveTokenSnapshot(chainId, account, list);
+    setTokenSnapshot({ scope: JSON.stringify([chainId, account]), value: { tokens: list, updatedAt: Date.now() } });
+    void rememberTokenDirectory(chainId, account, list, force).catch(() => {});
+  }, [client, account, chainId, dataScope]);
+
+  useEffect(() => {
+    if (!bootReady || !account) return;
+    const update = () => {
+      if ((AppState.currentState === 'active' || AppState.currentState == null)
+        && Date.now() - lastBalanceAttempt.current >= BALANCE_REFRESH_MS)
+        void refreshBalances().catch(() => {}); // Keep previous display rows during a failed background update.
+    };
+    const timer = setInterval(update, BALANCE_REFRESH_MS);
+    const sub = AppState.addEventListener('change', state => { if (state === 'active') update(); });
+    return () => { clearInterval(timer); sub.remove(); };
+  }, [bootReady, account, refreshBalances]);
+
   const refresh = useCallback(
-    async (opts?: { force?: boolean }) => {
+    async (opts?: { force?: boolean; resourcesOnly?: boolean; balanceContracts?: string[] }) => {
       const mySeq = ++refreshSeqRef.current;
       if (!account) {
         setStatus('idle');
         setError(null);
         setResources(null);
         setTokens([]);
-        setActions([]);
-        setActionsFailed(false);
         setHeadBlock(0);
         setLatencyMs(0);
         setRamPrice(0);
         setPrices(null);
         return;
       }
+      lastRefreshAttemptRef.current = Date.now();
+      setStatusScope(dataScope);
       setStatus('loading');
       setError(null);
-
-      // 链信息 / 账户资源 / 代币余额:原来是排成一串顺序 await,一次刷新要
-      // 挨个等完六次节点往返;这几个请求彼此独立,并发发起,总耗时约等于
-      // 其中最慢的一个,而不是全部加起来 —— 这是很多页面打开都要转好一阵的主因。
-      // 代币这一项保留原来"优先 Hyperion 全量,失败则退回只查系统代币"的兜底,
-      // 两次都失败时和 getInfo/getAccount 一样算作致命错误。
-      const fetchTokens = async () => {
-        let list: TokenBalance[];
-        try {
-          const t = await client.getTokens(account);
-          list = t.length ? t : await client.getBalance(client.config.systemToken, account);
-        } catch {
-          list = await client.getBalance(client.config.systemToken, account);
-        }
-        // 系统代币(EOS)哪怕余额是 0 也固定摆在第一位——参考 TP 的做法。
-        // EOSIO 链上零余额账户表压根没有那一行,get_currency_balance/Hyperion
-        // 都会直接把它漏掉,不补的话零余额新账户的资产列表会显得"这条链的原生币都没有",
-        // 容易被当成账户有问题;不在别处(如 client.ts)补是因为那边是通用查询,
-        // "该不该给零余额也占一行"是展示层的产品决定,不该混进查询语义里。
-        const sys = list.find(
-          (t) => t.contract === client.config.systemToken && t.symbol === client.config.symbol
-        );
-        const rest = list.filter((t) => t !== sys);
-        const systemEntry: TokenBalance = sys ?? {
-          symbol: client.config.symbol,
-          contract: client.config.systemToken,
-          amount: 0,
-          precision: client.config.precision,
-          raw: `${(0).toFixed(client.config.precision)} ${client.config.symbol}`,
-        };
-        return [systemEntry, ...rest];
-      };
+      const stale = () => refreshSeqRef.current !== mySeq
+        || activeDataScope.current !== dataScope
+        || activeSessionRef.current.chainId !== chainId || activeSessionRef.current.account !== account;
 
       // 交易记录 / RAM 价格 / 行情:各自已经做过兜底,失败不影响主流程,
       // 提前发起、最后再取结果,不用等它们决定要不要往下走。
@@ -393,25 +464,21 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       // 强制绕过了,导致每次切账户/广播完交易都硬打一次 CoinGecko),只有
       // 下拉刷新这种用户主动要"现在就要"的场景才传 force 跳过缓存。
       // 失败不再直接吞成空数组 —— 记下来,好让界面区分"没有记录"和"没查到"
-      const actionsPromise = client.getActions(account).then(
-        (page) => ({ ok: true, list: page.actions }),
-        () => ({ ok: false, list: [] as ChainAction[] })
-      );
-      const ramPromise = client.getRamPrice().then(
-        (r) => r.pricePerKb,
-        () => 0
-      );
-      const pricesPromise = fetchPrices(priceSource, !!opts?.force);
+      // History is display-only and publishes independently, even if core RPCs are slow/offline.
+      void readHistoryPage(client, account, { force: true }).catch(() => {});
+      void client.getRamPrice().then(r => {
+        if (!stale()) { setRamPrice(r.pricePerKb); setRamScope(dataScope); }
+      }).catch(() => {});
+      const source = selectedPriceSource.current;
+      if (!opts?.resourcesOnly) void fetchPrices(source, !!opts?.force).then(snapshot => {
+        if (!stale() && source === selectedPriceSource.current) { setPrices(snapshot); setPricesScope(source); }
+      });
 
-      // 首页转圈不能没有上限。actions/ram/prices 各自内部都已经有超时兜底
-      // (client.ts / prices.ts 的 fetchWithTimeout),真正没有超时保护的是
-      // get_info / get_account 用的 @wharfkit/antelope 的 APIClient——它走的
-      // 是自己的 fetch,不经过我们这层封装。这里再加一层"总闸"超时:
-      // 15 秒还没拿到核心数据,就不再干等,直接判定失败、给出可以点的重试,
-      // 而不是让转圈没有尽头、也看不出到底卡在哪一步。
+      // Keep an overall deadline as well as the per-node transport deadlines.
       const REFRESH_TIMEOUT_MS = 15000;
+      let timeoutId: ReturnType<typeof setTimeout>;
       const timeout = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error(t('walletCtxError.requestTimeout'))), REFRESH_TIMEOUT_MS);
+        timeoutId = setTimeout(() => reject(new Error(t('walletCtxError.requestTimeout'))), REFRESH_TIMEOUT_MS);
       });
       // 主流程正常跑完的话这个 timeout promise 最终会在没人等它的情况下 reject——
       // 补一个空 catch,避免那时候被当成 unhandled rejection 打进控制台。
@@ -420,92 +487,87 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       // 用户切账户/下拉刷新可能在上一次 refresh() 还没跑完时又触发了新的一次——
       // 旧的那次哪怕最终跑完了(甚至跑得比新的还慢),结果也不该覆盖新的状态,
       // 靠这个序号判断"我还是不是最新的那次"。
-      const stale = () => refreshSeqRef.current !== mySeq;
+      let accepting = true;
 
       try {
-        const [info, res, tokens] = await Promise.race([
-          Promise.all([client.getInfo(), client.getAccount(account), fetchTokens()]),
+        const scope = dataScope;
+        const accountRead = requestLiveAccount(client, account).then(res => {
+          if (accepting && !stale()) {
+            setResources(res);
+            setResourcesScope(scope);
+            rememberPermissionDisplay(client, res);
+          }
+          return res;
+        });
+        const tokenRead = opts?.resourcesOnly ? Promise.resolve() : refreshBalances(!!opts?.force, opts?.balanceContracts);
+        const [info] = await Promise.race([
+          Promise.all([client.getInfo(), accountRead, tokenRead]),
           timeout,
-        ]);
+        ]).finally(() => clearTimeout(timeoutId));
         if (stale()) return;
 
+        setInfoScope(dataScope);
         setHeadBlock(info.headBlock);
         setLatencyMs(info.latencyMs);
-        setResources(res);
-        setTokens(tokens);
-        // 给下次冷启动/切回这个账户时垫场用,不影响这次已经在用真实数据的页面
-        saveTokenSnapshot(chainId, account, tokens);
 
         // 核心数据(余额/资源)一到手就算刷新完成——交易记录/RAM 价/行情各自
         // 内部带重试,最坏能拖上几十秒,不该让下拉刷新的转圈陪它们一起挂着;
         // 它们到货后再逐项落位。
-        failoverCountRef.current = 0;
         setStatus('ready');
 
-        // 每落一项都要重新确认"我还是不是最新一次刷新"——用户可能已经切走
-        // 账户,旧账户的交易记录绝不能挂到新账户名下(消息中心也吃这份数据)。
-        const actionsRes = await actionsPromise;
-        if (stale()) return;
-        setActions(actionsRes.list);
-        setActionsFailed(!actionsRes.ok);
-
-        const ram = await ramPromise;
-        if (stale()) return;
-        setRamPrice(ram);
-
-        const priceSnap = await pricesPromise;
-        if (stale()) return;
-        setPrices(priceSnap);
       } catch (e: any) {
         if (stale()) return;
+        accepting = false;
 
-        // 先探测一下当前节点是不是真的连不上——如果它其实好好的,说明刚才
-        // 的失败是别的原因(比如账户名不对),不该盲目切节点,原样把错误
-        // 显示出来,切了反而掩盖真实原因、还白白多等一轮探测。
-        const currentAlive = await probeNode(client.node);
-        if (stale()) return;
-
-        if (currentAlive) {
-          setError(e?.message ? String(e.message) : t('walletCtxError.loadFailed'));
-          setStatus('error');
-          return;
-        }
-
-        if (failoverCountRef.current >= MAX_FAILOVER_ROUNDS) {
-          setError(t('walletCtxError.networkError'));
-          setStatus('error');
-          return;
-        }
-
-        // 当前节点真的连不上——并发探测同一条链上的其他节点(默认 + 自定义),
-        // 一次性测完全部候选、挑最快能用的自动切过去,比一个个顺序重试快得多。
-        // 切节点会换出一个新 client,下面那个依赖 refresh 的 useEffect 会
-        // 自动用新节点重新刷新一遍,这里不用手动重试。
-        const customs = await listCustomNodes(chainId, 'rpc').catch(() => []);
-        const candidates = [...catalogRef.current[chainId].rpc, ...customs].filter((n) => n.id !== client.node.id);
-        const probed = await Promise.all(candidates.map(async (n) => ({ n, r: await probeNode(n) })));
-        if (stale()) return;
-
-        const alive = probed
-          .filter((p): p is { n: NodeInfo; r: { ms: number; block: number } } => p.r !== null)
-          .sort((a, b) => a.r.ms - b.r.ms);
-
-        if (alive.length > 0) {
-          failoverCountRef.current += 1;
-          setNode(alive[0].n);
-        } else {
-          setError(t('walletCtxError.networkError'));
-          setStatus('error');
-        }
+        // Read transports already attempted verified alternatives independently for RPC and history.
+        setError(e?.message ? String(e.message) : t('walletCtxError.loadFailed'));
+        setStatus('error');
       }
     },
-    [client, account, chainId, priceSource, setNode]
+    [client, account, chainId, setNode, dataScope, refreshBalances]
   );
 
   useEffect(() => {
     if (!bootReady) return;
     refresh();
   }, [bootReady, refresh]);
+
+  // Reuse the current rows while active; refresh quietly after five minutes,
+  // including when returning from the background. Opening a picker never fetches.
+  useEffect(() => {
+    if (!bootReady || !account) return;
+    const refreshIfStale = () => {
+      if ((AppState.currentState === 'active' || AppState.currentState == null)
+        && Date.now() - lastRefreshAttemptRef.current >= 5 * 60 * 1000) void refresh({ resourcesOnly: true });
+    };
+    const timer = setInterval(refreshIfStale, 60000);
+    const subscription = AppState.addEventListener('change', state => {
+      if (state === 'active') refreshIfStale();
+    });
+    return () => { clearInterval(timer); subscription.remove(); };
+  }, [bootReady, account, refresh]);
+
+  useEffect(() => subscribeWalletDataChanges(change => {
+    for (const changedAccount of new Set(change.accounts)) {
+      // Preserve the persisted directory if the post-operation network update fails.
+      // A successful forced balance read will replace its metadata immediately.
+      if (change.permissions) {
+        if (change.chainId === chainId) invalidateLiveAccountRequest(client, changedAccount);
+        invalidatePermissionDisplay(change.chainId, changedAccount);
+        const key = authorizedAppsKey(change.chainId, changedAccount);
+        const wasLoaded = authorizedAppsCache.get(key).data !== undefined;
+        invalidateAuthorizedApps(change.chainId, changedAccount);
+        if (wasLoaded) void authorizedAppsCache.fetch(key, () => loadAuthorizedApps(changedAccount), true).catch(() => {});
+      }
+    }
+    if (!bootReady || change.chainId !== chainId || !change.accounts.includes(account)) return;
+    // Keep the display snapshot, but retire pre-mutation balances as a transfer validation source.
+    balanceGeneration.current++;
+    setTokensScope('');
+    invalidateLiveAccountRequest(client, account);
+    historyCache.invalidate(historyKey(client, account));
+    void refresh({ force: true, balanceContracts: change.balanceContracts });
+  }), [bootReady, chainId, account, client, refresh]);
 
   const setChain = useCallback(
     (id: ChainId) => {
@@ -529,6 +591,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         wallets
       );
 
+      currentClient.current = null;
       setChainId(id);
       const nextNode = catalogRef.current[id].rpc[0];
       const nextHistoryNode = catalogRef.current[id].history[0];
@@ -558,6 +621,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       );
       const selectedWallet = matchingWallets.find((x) => (x.authPermissions ?? ['active']).includes('active'))
         ?? matchingWallets[0];
+      activeSessionRef.current = { ...activeSessionRef.current, account: a };
       setAccountState(a);
       setWalletIdState(selectedWallet?.id);
       persistSession({ chainId, account: a, walletId: selectedWallet?.id, nodeId: node.id, historyNodeId: historyNode.id });
@@ -570,6 +634,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
     (id: string) => {
       const target = wallets.find((x) => x.id === id);
       if (!target) return;
+      activeSessionRef.current = { ...activeSessionRef.current, account: target.account };
       setAccountState(target.account);
       setWalletIdState(id);
       persistSession({ chainId, account: target.account, walletId: id, nodeId: node.id, historyNodeId: historyNode.id });
@@ -663,18 +728,21 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   const liveValue: WalletLiveState = useMemo(
     () => ({
-      status,
-      error,
-      headBlock,
-      latencyMs,
-      resources,
-      tokens,
+      status: !account ? 'idle' : statusScope === dataScope ? status : 'loading',
+      error: statusScope === dataScope ? error : null,
+      headBlock: infoScope === dataScope ? headBlock : 0,
+      latencyMs: infoScope === dataScope ? latencyMs : 0,
+      resources: resourcesScope === dataScope ? resources : null,
+      tokens: tokensScope === dataScope ? tokens : [],
       actions,
       actionsFailed,
-      ramPricePerKb,
-      prices,
+      actionsLoading,
+      ramPricePerKb: ramScope === dataScope ? ramPricePerKb : 0,
+      prices: pricesScope === priceSource ? prices : peekPrices(priceSource),
       cachedTokens,
       cachedAt,
+      tokenDirectory: account ? directory.data ?? EMPTY_DIRECTORY : EMPTY_DIRECTORY,
+      tokenDirectoryAt: account && directory.data ? directory.updatedAt : null,
     }),
     [
       status,
@@ -683,12 +751,23 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       latencyMs,
       resources,
       tokens,
+      resourcesScope,
+      statusScope,
+      infoScope,
+      tokensScope,
+      dataScope,
       actions,
       actionsFailed,
+      actionsLoading,
       ramPricePerKb,
+      ramScope,
       prices,
+      pricesScope,
+      priceSource,
       cachedTokens,
       cachedAt,
+      directory,
+      account,
     ]
   );
 

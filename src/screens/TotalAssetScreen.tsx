@@ -18,12 +18,13 @@ export default function TotalAssetScreen() {
   const [hidden, setHidden] = useState(false);
   const [q, setQ] = useState('');
 
-  const total = w.tokens.reduce((s, tk) => s + tk.amount * priceIn(w.prices, tk.contract, tk.symbol), 0);
+  const tokens = w.tokens.length ? w.tokens : (w.cachedTokens ?? []);
+  const total = tokens.reduce((s, tk) => s + tk.amount * priceIn(w.prices, tk.contract, tk.symbol), 0);
   const list = useMemo(() => {
-    if (!q.trim()) return w.tokens;
+    if (!q.trim()) return tokens;
     const s = q.trim().toLowerCase();
-    return w.tokens.filter((tk) => tk.symbol.toLowerCase().includes(s) || tk.contract.includes(s));
-  }, [w.tokens, q]);
+    return tokens.filter((tk) => tk.symbol.toLowerCase().includes(s) || tk.contract.includes(s));
+  }, [tokens, q]);
 
   const mask = (s: string) => (hidden ? '******' : s);
 
@@ -32,6 +33,7 @@ export default function TotalAssetScreen() {
       <PageHeader title={t('totalAsset.title')} />
 
       <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: insets.bottom + 30 }}>
+        {!w.tokens.length && tokens.length ? <Text style={{ color: colors.textSub, fontSize: 12, padding: spacing.lg }}>{t('content.cached')}</Text> : null}
         {/* 蓝色总览卡 */}
         <View style={styles.blueCard}>
           <View style={styles.blueTop}>

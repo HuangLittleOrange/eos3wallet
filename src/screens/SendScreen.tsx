@@ -20,6 +20,7 @@ import { signingPermission } from '../crypto/vault';
 import { biometricSigner, passkeySigner, passwordSigner } from '../chain/signers';
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { useI18n } from '../i18n';
+import { tokensForSelection } from '../chain/tokenDirectory';
 
 const BLUE = '#1E88FF';
 const isAccount = isValidAccountName;
@@ -31,8 +32,9 @@ export default function SendScreen() {
 
   const w = useWallet();
   const { t } = useI18n();
+  const displayTokens = tokensForSelection(w.tokenDirectory ?? [], w.tokens.length ? w.tokens : (w.cachedTokens ?? []));
   const [token, setToken] = useState<TokenBalance>(
-    route.params?.token ?? w.tokens[0] ?? { symbol: w.client.config.symbol, contract: w.client.config.systemToken, amount: 0, precision: 4, raw: '' }
+    route.params?.token ?? displayTokens[0] ?? { symbol: w.client.config.symbol, contract: w.client.config.systemToken, amount: 0, precision: w.client.config.precision, raw: '' }
   );
   const scanned = route.params?.scanned;
   const [to, setTo] = useState(scanned?.account ?? '');
@@ -50,7 +52,7 @@ export default function SendScreen() {
     // 上一次选的那个上,金额栏跟代币对不上。找不到(比如收款方要的代币本机
     // 没有余额)就不动,金额/收款方依然回填,只是代币选择留给用户自己弄清楚。
     if (scanned.symbol && scanned.contract) {
-      const match = w.tokens.find((t) => t.symbol === scanned.symbol && t.contract === scanned.contract);
+      const match = displayTokens.find((t) => t.symbol === scanned.symbol && t.contract === scanned.contract);
       if (match) setToken(match);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -68,8 +70,10 @@ export default function SendScreen() {
   // 或者转完一笔再点「全部」还是旧余额。找不到实时行(余额已清零)按 0 算。
   const liveToken = w.tokens.find((tk) => tk.contract === token.contract && tk.symbol === token.symbol) ?? {
     ...token,
-    amount: w.status === 'ready' ? 0 : token.amount,
+    amount: 0,
   };
+  const displayToken = displayTokens.find(tk => tk.contract === token.contract && tk.symbol === token.symbol)
+    ?? { ...token, amount: 0 };
   const amt = parseFloat(amount) || 0;
   const ok = amt > 0 && amt <= liveToken.amount && isAccount(to);
   const wallet = w.currentWallet;
@@ -92,7 +96,7 @@ export default function SendScreen() {
         to,
         amount: amt,
         symbol: token.symbol,
-        precision: token.precision,
+        precision: liveToken.precision,
         memo,
       });
       setConfirm([action]);
@@ -125,7 +129,7 @@ export default function SendScreen() {
       setMemo('');
       Alert.alert(t('send.txBroadcastTitle'), `TxID\n${res.txId}`, [
         { text: t('send.viewExplorer'), onPress: () => Linking.openURL(res.explorerUrl) },
-        { text: t('send.done'), onPress: () => w.refresh() },
+        { text: t('send.done') },
       ]);
     } catch (e: any) {
       // 资源不够(CPU/NET、RAM):弹一键修复,复用刚拿到手的 signer,不再让用户认证一遍
@@ -201,15 +205,15 @@ export default function SendScreen() {
               keyboardType="decimal-pad"
               style={styles.input}
             />
-            <TouchableOpacity style={styles.allBtn} onPress={() => setAmount(String(liveToken.amount))}>
+            <TouchableOpacity style={styles.allBtn} disabled={!w.tokens.length} onPress={() => setAmount(String(liveToken.amount))}>
               <Text style={styles.allTxt}>{t('send.all')}</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.divider} />
           <View style={styles.balRow}>
-            <Text style={styles.balK}>{t('send.balance')}</Text>
+            <Text style={styles.balK}>{t('send.balance')}{!w.tokens.length && w.cachedTokens?.length ? ` · ${t('content.cached')}` : ''}</Text>
             <Text style={styles.balV}>
-              {fmtAmount(liveToken.amount, liveToken.precision)} {liveToken.symbol}
+              {fmtAmount(displayToken.amount, displayToken.precision)} {displayToken.symbol}
             </Text>
           </View>
         </View>

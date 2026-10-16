@@ -33,6 +33,7 @@ import {
 import { signingPermission } from '../crypto/vault';
 import { biometricSigner, passkeySigner, passwordSigner } from '../chain/signers';
 import { useI18n, TranslationKey } from '../i18n';
+import { getResourceRepairMarket, peekResourceRepairMarket } from '../chain/resourceRepairQuote';
 
 const TABS = ['CPU/NET', 'RAM', 'REX'];
 const BLUE = '#1E88FF';
@@ -68,17 +69,17 @@ export default function ResourceScreen() {
 
   // PowerUp 定价曲线用来按预算分配购买权重。max_payment 限制实际支付金额;
   // 没有市场数据时无法构建按预算购买的请求。
-  const [powerup, setPowerup] = useState<PowerupMarket | null>(null);
+  const [powerupState, setPowerup] = useState<{ client: typeof w.client; market: PowerupMarket | null } | null>(null);
+  const powerup = powerupState?.client === w.client ? powerupState.market : peekResourceRepairMarket(w.client);
   useEffect(() => {
     let cancelled = false;
-    w.client
-      .getPowerupState()
-      .then((s) => { if (!cancelled) setPowerup(s); })
-      .catch(() => { if (!cancelled) setPowerup(null); });
+    getResourceRepairMarket(w.client)
+      .then((market) => { if (!cancelled) setPowerup({ client: w.client, market }); })
+      .catch(() => { if (!cancelled) setPowerup({ client: w.client, market: null }); });
     return () => {
       cancelled = true;
     };
-  }, [w.client]);
+  }, [w.client, w.headBlock]);
 
   const r = w.resources;
   const sym = w.client.config.symbol;
@@ -195,7 +196,7 @@ export default function ResourceScreen() {
       setConfirm(null);
       Alert.alert(t('send.txBroadcastTitle'), `TxID\n${res.txId}`, [
         { text: t('send.viewExplorer'), onPress: () => Linking.openURL(res.explorerUrl) },
-        { text: t('send.done'), onPress: () => w.refresh() },
+        { text: t('send.done') },
       ]);
     } catch (e: any) {
       if (attempt.isCurrent() && !repair.offer(e, signer, permission)) setTxErr(e?.message ?? t('send.signOrBroadcastFailed'));

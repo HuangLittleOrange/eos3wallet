@@ -1,5 +1,5 @@
 import { useSigningGuard } from '../chain/useSigningGuard';
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
@@ -25,7 +25,6 @@ import {
   buildRevokeActions,
   buildSaveAssetActions,
   editableAsset,
-  fetchAuthorizedApps,
   formatCreatedAt,
   initialDraft,
   permissionDisplayAppType,
@@ -40,6 +39,7 @@ import { biometricSigner, passkeySigner, passwordSigner } from '../chain/signers
 import { signingPermission } from '../crypto/vault';
 import { useI18n } from '../i18n';
 import { RootStackParamList } from '../navigation/RootNavigator';
+import { useAuthorizedApps } from '../chain/useAuthorizedApps';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -56,8 +56,7 @@ type PendingAction =
  * 能改额度/加代币/删代币的地方,PermissionScreen 那边现在只负责展示列表。
  *
  * 数据不通过导航参数传整个对象(route params 应该保持可序列化),而是拿到
- * permissionKey 后自己重新拉一遍账号概览——反正每次进详情页都想要最新链上状态,
- * 用户在列表页看到的额度可能已经不是最新的了。
+ * permissionKey 后复用概览缓存,过期时后台更新;管理操作前仍强制重新查询。
  */
 export default function PermissionDetailScreen() {
   const nav = useNavigation<Nav>();
@@ -71,10 +70,12 @@ export default function PermissionDetailScreen() {
   const isPasskey = wallet?.source === 'passkey';
   const canSign = !!wallet;
 
-  const [authorized, setAuthorized] = useState<AuthorizedApp[] | null>(null);
-  const [assetCatalog, setAssetCatalog] = useState<PayLimitAssetConfig[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [loadErr, setLoadErr] = useState<string | null>(null);
+  const overview = useAuthorizedApps(w.chainId, w.account);
+  const authorized = overview.data?.permissions.filter(app => app.managedByPayLimit);
+  const assetCatalog = overview.data?.assetCatalog ?? [];
+  const loading = !!w.account && overview.data === undefined && !overview.error;
+  const loadErr = overview.error?.message;
+  const load = () => { void overview.refresh().catch(() => {}); };
 
   const [editing, setEditing] = useState<EditingState | null>(null);
   const [pending, setPending] = useState<PendingAction | null>(null);
@@ -88,25 +89,6 @@ export default function PermissionDetailScreen() {
   const permission = signingPermission(wallet);
   const signingGuard = useSigningGuard(JSON.stringify([wallet?.id, wallet?.publicKey, w.chainId,
     w.node.url, w.account, permission]), confirm, () => setConfirm(null));
-
-  const load = useCallback(() => {
-    let alive = true;
-    setLoading(true);
-    setLoadErr(null);
-    fetchAuthorizedApps(w.account)
-      .then((overview) => {
-        if (!alive) return;
-        setAuthorized(overview.permissions.filter((p) => p.managedByPayLimit));
-        setAssetCatalog(overview.assetCatalog ?? []);
-      })
-      .catch((e: any) => alive && setLoadErr(e?.message ?? t('permission.queryFailed')))
-      .finally(() => alive && setLoading(false));
-    return () => {
-      alive = false;
-    };
-  }, [w.account, t]);
-
-  useEffect(() => load(), [load]);
 
   const app = authorized?.find((candidate) => permissionKey(candidate) === route.params.permissionKey) ?? null;
 
@@ -131,7 +113,12 @@ export default function PermissionDetailScreen() {
     setConfirm(null);
     (async () => {
       try {
-        const actions = await buildPendingActions(pending, app);
+        // Cached rows are for browsing only. Resolve the exact permission again before building management actions.
+        const fresh = await overview.refresh();
+        if (!alive) return;
+        const current = fresh?.permissions.find(candidate => permissionKey(candidate) === route.params.permissionKey && candidate.managedByPayLimit);
+        if (!current) throw new Error(t('permission.noAuthorized'));
+        const actions = await buildPendingActions(pending, current);
         if (alive) setConfirm(actions);
       } catch (e: any) {
         if (!alive) return;
@@ -143,7 +130,7 @@ export default function PermissionDetailScreen() {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pending]);
+  }, [pending, w.account, w.chainId, w.node.url, wallet?.id]);
 
   const buildPendingActions = async (action: PendingAction, current: AuthorizedApp): Promise<ActionSpec[]> => {
     const account = w.account;
@@ -248,11 +235,11 @@ export default function PermissionDetailScreen() {
     );
   }
 
-  if (loadErr || !app) {
+  if (!app) {
     return (
       <View style={styles.root}>
         <PageHeader title={t('permission.authorizationOverview')} />
-        <Text style={styles.emptyTxt}>{loadErr ?? t('permission.noAuthorized')}</Text>
+        <TouchableOpacity onPress={load}><Text style={styles.emptyTxt}>{loadErr ?? t('permission.noAuthorized')} · {t('content.retry')}</Text></TouchableOpacity>
       </View>
     );
   }
@@ -276,6 +263,7 @@ export default function PermissionDetailScreen() {
         contentContainerStyle={[styles.content, { paddingBottom: insets.bottom + 40 }]}
         showsVerticalScrollIndicator={false}
       >
+        {loadErr ? <TouchableOpacity onPress={load}><Text style={styles.emptyTxt}>{loadErr} · {t('content.retry')}</Text></TouchableOpacity> : null}
         <View style={[styles.card, shadow.soft]}>
           <View style={styles.appHead}>
             <View style={styles.appHeadCopy}>

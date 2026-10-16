@@ -20,14 +20,17 @@ import {
 } from '../chain/deviceKey';
 import { hasMasterPassword, loadPendingDeviceKey, updatePendingDeviceKeyLabel, WrongPasswordError, type PendingDeviceKey } from '../crypto/vault';
 import { useI18n } from '../i18n';
+import { AnchorWebCancelled, connectAnchorWeb, type AnchorWebSession } from '../chain/anchorWeb';
+import { prepareAnchorDeviceImport, submitAnchorDeviceImport, type DeviceKeyReview } from '../chain/anchorDeviceImport';
 
 const BLUE = '#1E88FF';
 
 /**
- * 「通过 eos3.app 授权」导入——给本机没有 passkey 的手机用(见 chain/deviceKey.ts)。
+ * 已有 Passkey 账户导入：选择 eos3.app 或直接通过 Anchor 网页授权这台手机。
  * 本机密钥先加密保存为待授权记录,网页授权后按公钥查链并导入。
  */
-export default function DeviceKeyImportScreen() {
+export default function DeviceKeyImportScreen({ route }: { route?: { params?: { provider?: 'anchor' } } }) {
+  const viaAnchor = route?.params?.provider === 'anchor';
   const nav = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const w = useWalletSession();
@@ -43,6 +46,10 @@ export default function DeviceKeyImportScreen() {
   const [hint, setHint] = useState<string | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
+  const [anchorReview, setAnchorReview] = useState<DeviceKeyReview | null>(null);
+  const [anchorAccount, setAnchorAccount] = useState('');
+  const anchorSessionRef = useRef<AnchorWebSession | null>(null);
+  const anchorAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     let alive = true;
@@ -109,9 +116,68 @@ export default function DeviceKeyImportScreen() {
     }
   };
 
-  const checkContext = `${w.chainId}/${w.node?.url}/${pending?.id}`;
+  const checkContext = `${w.chainId}/${w.node?.url}/${pending?.id}/${viaAnchor}`;
   const checkContextRef = useRef(checkContext);
   checkContextRef.current = checkContext;
+
+  useEffect(() => {
+    setAnchorReview(null);
+    setAnchorAccount('');
+    anchorSessionRef.current = null;
+    return () => { anchorAbortRef.current?.abort(); };
+  }, [checkContext]);
+
+  const openAnchor = async () => {
+    if (!pending || busyRef.current || editingName) return;
+    busyRef.current = true;
+    setBusy(true);
+    setHint(null);
+    const controller = new AbortController();
+    anchorAbortRef.current = controller;
+    const isCurrent = () => mountedRef.current && checkContextRef.current === checkContext && !controller.signal.aborted;
+    const finishImport = async (account: string) => {
+      // Callback account names and relay responses alone never import a wallet.
+      await importPendingDeviceKey(pending, account, w.chainId, w.node);
+      if (!isCurrent()) return;
+      await w.reloadWallets();
+      if (!isCurrent()) return;
+      w.setAccount(account);
+      nav.reset({ index: 0, routes: [{ name: 'Tabs' }] });
+      Alert.alert(t('deviceKeyImport.successTitle'), t('deviceKeyImport.successBody', { account }));
+    };
+    try {
+      assertPendingDeviceChain(pending, w.chainId);
+      if (w.chainId !== 'vaulta') throw new Error(t('anchorImport.mainnetOnly'));
+      if (anchorReview && anchorSessionRef.current) {
+        const session = anchorSessionRef.current;
+        await submitAnchorDeviceImport(session, anchorReview, controller.signal);
+        if (!isCurrent()) return;
+        setAnchorReview(null);
+        await finishImport(session.account);
+      } else {
+        setAnchorAccount('');
+        const session = await connectAnchorWeb(controller.signal);
+        if (!isCurrent()) return;
+        const review = await prepareAnchorDeviceImport(session, pending, w.node, w.chainId);
+        if (!isCurrent()) return;
+        anchorSessionRef.current = session;
+        setAnchorAccount(session.account);
+        if (!review) await finishImport(session.account);
+        else setAnchorReview(review);
+      }
+    } catch (error: any) {
+      if (!isCurrent()) return;
+      setAnchorReview(null);
+      setAnchorAccount('');
+      anchorSessionRef.current = null;
+      setHint(error instanceof AnchorWebCancelled ? t('anchorImport.cancelled') : error?.message ?? t('deviceKey.failed'));
+    } finally {
+      if (anchorAbortRef.current === controller) anchorAbortRef.current = null;
+      busyRef.current = false;
+      if (mountedRef.current) setBusy(false);
+    }
+  };
+
 
   const check = async (silent = false, attempts = 1) => {
     if (!pending || busyRef.current || editingName || checkContextRef.current !== checkContext) return;
@@ -194,6 +260,9 @@ export default function DeviceKeyImportScreen() {
 
   const editName = () => {
     if (!pending || busyRef.current) return;
+    setAnchorReview(null);
+    setAnchorAccount('');
+    anchorSessionRef.current = null;
     setNameDraft(pending.label);
     setHint(null);
     setEditingName(true);
@@ -226,7 +295,7 @@ export default function DeviceKeyImportScreen() {
 
   return (
     <View style={styles.root}>
-      <PageHeader title={t('import.viaEos3')} onBack={() => {
+      <PageHeader title={t(viaAnchor ? 'import.viaAnchor' : 'import.viaEos3')} onBack={() => {
         if (nav.canGoBack()) nav.goBack();
         else nav.reset({ index: 0, routes: [{ name: 'Tabs' }] });
       }} />
@@ -235,11 +304,12 @@ export default function DeviceKeyImportScreen() {
           <Ionicons name="phone-portrait-outline" size={48} color={BLUE} />
         </View>
         <Text style={styles.title}>{t('deviceKeyImport.heroTitle')}</Text>
-        <Text style={styles.desc}>{t('deviceKeyImport.heroDesc')}</Text>
+        <Text style={styles.desc}>{t(viaAnchor ? 'anchorImport.heroDesc' : 'deviceKeyImport.heroDesc')}</Text>
+        <Text style={styles.accountHint}>{t(viaAnchor ? 'anchorImport.accountHint' : 'deviceKeyImport.accountHint')}</Text>
 
         <View style={styles.steps}>
           <Text style={[styles.step, !pending && styles.stepActive]}>{t('deviceKey.stepGenerate')}</Text>
-          <Text style={[styles.step, pending && styles.stepActive]}>{t('deviceKey.stepAuthorize')}</Text>
+          <Text style={[styles.step, pending && styles.stepActive]}>{t(viaAnchor ? 'anchorImport.stepAuthorize' : 'deviceKey.stepAuthorize')}</Text>
           <Text style={styles.step}>{t('deviceKey.stepCheck')}</Text>
         </View>
 
@@ -292,6 +362,14 @@ export default function DeviceKeyImportScreen() {
           </View>
         ) : null}
 
+        {viaAnchor && anchorAccount ? (
+          <View style={styles.keyCard}>
+            <Text style={styles.keyLabel}>{t('anchorImport.account')}</Text>
+            <Text style={styles.keyMono}>{anchorAccount}</Text>
+            {anchorReview ? <Text style={styles.openHint}>{t('anchorImport.reviewHint')}</Text> : null}
+          </View>
+        ) : null}
+
         {hint ? (
           <View style={styles.errBox}>
             <Ionicons name="alert-circle-outline" size={17} color="#F0644E" />
@@ -317,10 +395,10 @@ export default function DeviceKeyImportScreen() {
           </TouchableOpacity>
         ) : (
           <>
-            <TouchableOpacity style={[styles.submit, (busy || editingName || w.chainId !== 'vaulta') && styles.submitOff]} disabled={busy || editingName || w.chainId !== 'vaulta'} activeOpacity={0.85} onPress={openWeb}>
-              <Text style={styles.submitTxt}>{t('deviceKey.openWeb')}</Text>
+            <TouchableOpacity style={[styles.submit, (busy || editingName || w.chainId !== 'vaulta') && styles.submitOff]} disabled={busy || editingName || w.chainId !== 'vaulta'} activeOpacity={0.85} onPress={viaAnchor ? openAnchor : openWeb}>
+              <Text style={styles.submitTxt}>{t(viaAnchor ? (anchorReview ? 'anchorImport.confirm' : 'anchorImport.openWeb') : 'deviceKey.openWeb')}</Text>
             </TouchableOpacity>
-            <Text style={styles.openHint}>{t(w.chainId === 'vaulta' ? 'deviceKeyImport.openWebHint' : 'deviceKey.webMainnetOnly')}</Text>
+            <Text style={styles.openHint}>{t(w.chainId === 'vaulta' ? (viaAnchor ? 'anchorImport.openWebHint' : 'deviceKeyImport.openWebHint') : (viaAnchor ? 'anchorImport.mainnetOnly' : 'deviceKey.webMainnetOnly'))}</Text>
             <TouchableOpacity style={[styles.secondary, (busy || editingName) && styles.submitOff]} disabled={busy || editingName} activeOpacity={0.85} onPress={() => void check()}>
               {busy ? <ActivityIndicator color={BLUE} /> : <Text style={styles.secondaryTxt}>{t('deviceKey.check')}</Text>}
             </TouchableOpacity>
@@ -351,6 +429,7 @@ const styles = StyleSheet.create({
   iconWrap: { alignItems: 'center', marginTop: 12, marginBottom: 14 },
   title: { fontSize: 20, fontWeight: '700', color: colors.text, textAlign: 'center', marginBottom: 10 },
   desc: { fontSize: 14, color: colors.textSub, lineHeight: 21, textAlign: 'center', marginBottom: 18 },
+  accountHint: { fontSize: 12.5, color: colors.textSub, lineHeight: 19, marginBottom: 18 },
   steps: { backgroundColor: colors.card, borderRadius: 8, padding: 14, marginBottom: 14, gap: 8 },
   step: { fontSize: 13.5, color: colors.textSub },
   stepActive: { color: colors.text, fontWeight: '600' },

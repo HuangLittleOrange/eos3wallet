@@ -2,6 +2,7 @@ import { APIClient, Asset, Name } from '@wharfkit/antelope';
 import { CHAINS, ChainId, NodeInfo } from './config';
 import { t } from '../i18n';
 import { fetchWithTimeout } from '../net/fetchRetry';
+import { ReadNodePool, type NodeFailoverOptions } from './nodeFailover';
 
 // ---------- 对外的数据结构 ----------
 
@@ -92,27 +93,6 @@ export type PowerupMarket = {
   netBytesPerWeight: number;
 };
 
-/**
- * 带重试的 JSON 请求。fetchWithTimeout 见 net/fetchRetry.ts——国内网络到境外
- * 节点有时不是快速失败,而是请求发出去后石沉大海,不加超时会一直转圈转到
- * 底层网络栈自己放弃为止。
- * 国内网络到境外节点常有偶发 TLS 握手失败,单次请求不足以判定端点不可用。
- */
-async function fetchJson(url: string, tries = 3): Promise<any> {
-  let last: any;
-  for (let i = 0; i < tries; i++) {
-    try {
-      const r = await fetchWithTimeout(url);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      return await r.json();
-    } catch (e) {
-      last = e;
-      if (i < tries - 1) await new Promise((res) => setTimeout(res, 400 * (i + 1)));
-    }
-  }
-  throw last instanceof Error ? last : new Error(String(last));
-}
-
 // ---------- 客户端 ----------
 
 export class ChainClient {
@@ -121,12 +101,24 @@ export class ChainClient {
   /** 历史节点(Hyperion),和 node 各自独立选择——没配就是这条链目前没有可用的历史节点 */
   readonly historyNode: NodeInfo | undefined;
   private api: APIClient;
+  private historyPool?: ReadNodePool;
 
-  constructor(chainId: ChainId, node: NodeInfo, historyNode?: NodeInfo) {
+  constructor(chainId: ChainId, node: NodeInfo, historyNode?: NodeInfo, failover?: NodeFailoverOptions) {
     this.chainId = chainId;
     this.node = node;
     this.historyNode = historyNode;
-    this.api = new APIClient({ url: node.url });
+    const rpc = new ReadNodePool(chainId, 'rpc', node, failover);
+    this.historyPool = historyNode ? new ReadNodePool(chainId, 'history', historyNode, failover) : undefined;
+    this.api = new APIClient({ provider: { call: ({ path, params, method }) => rpc.read(path, {
+      method: method || 'POST', headers: { 'Content-Type': 'application/json' },
+      body: params === undefined ? undefined : JSON.stringify(params),
+    }, json => {
+      if (path.endsWith('/get_info')) return json?.chain_id === CHAINS[chainId].chainIdHash && Number(json.head_block_num) > 0;
+      if (path.endsWith('/get_account')) return json?.account_name === String((params as any)?.account_name);
+      if (path.endsWith('/get_currency_balance')) return Array.isArray(json);
+      if (path.endsWith('/get_table_rows')) return Array.isArray(json?.rows);
+      return json != null && typeof json === 'object';
+    }) } });
   }
 
   get config() {
@@ -230,11 +222,22 @@ export class ChainClient {
     });
   }
 
+  /** Metadata for a manually added token, independent from its current balance. */
+  async getTokenMetadata(contract: string, symbol: string): Promise<Pick<TokenBalance, 'contract' | 'symbol' | 'precision'>> {
+    if (!/^[A-Z]{1,7}$/.test(symbol)) throw new Error('Invalid token symbol');
+    const stats = await this.api.v1.chain.get_currency_stats(Name.from(contract), symbol);
+    const row = stats[symbol];
+    if (!row) throw new Error('Token metadata unavailable');
+    const asset = Asset.from(row.max_supply);
+    if (String(asset.symbol.code) !== symbol) throw new Error('Token metadata mismatch');
+    return { contract, symbol: String(asset.symbol.code), precision: asset.symbol.precision };
+  }
+
   /** 账户持有的全部代币 —— 走 Hyperion,标准节点没有此接口 */
   async getTokens(account: string): Promise<TokenBalance[]> {
     if (!this.historyNode) throw new Error(t('clientError.noHistoryNode'));
-    const url = `${this.historyNode.url}/v2/state/get_tokens?account=${encodeURIComponent(account)}`;
-    const j = await fetchJson(url);
+    const path = `/v2/state/get_tokens?account=${encodeURIComponent(account)}`;
+    const { json: j } = await this.historyPool!.read(path, undefined, json => Array.isArray(json?.tokens));
     return (j.tokens ?? [])
       .filter((t: any) => Number(t.amount) > 0)
       .map((t: any) => ({
@@ -255,10 +258,10 @@ export class ChainClient {
     if (!this.historyNode) throw new Error(t('clientError.noHistoryNode'));
     const limit = opts?.limit ?? 30;
     const skip = opts?.skip ?? 0;
-    const url =
-      `${this.historyNode.url}/v2/history/get_actions?account=${encodeURIComponent(account)}` +
+    const path =
+      `/v2/history/get_actions?account=${encodeURIComponent(account)}` +
       `&limit=${limit}&skip=${skip}&sort=desc&filter=*:transfer`;
-    const j = await fetchJson(url);
+    const { json: j } = await this.historyPool!.read(path, undefined, json => Array.isArray(json?.actions));
     const actions: ChainAction[] = (j.actions ?? []).map((x: any) => {
       const act = x.act ?? {};
       const d = act.data ?? {};
@@ -316,7 +319,7 @@ export class ChainClient {
    */
   async getPowerupState(): Promise<PowerupMarket | null> {
     // 修复报价和后台预取不能被无超时的 RPC 永久挂住。
-    const api = new APIClient({ url: this.node.url, fetch: fetchWithTimeout });
+    const api = this.api;
     // 除了定价曲线,还要采样 eosio.reserv(系统持有全部未租出 powerup 权重的
     // 保留账户)算出「1 单位权重折合多少 µs/字节」——powup.state 里的 weight、
     // utilization 全都是和抵押同单位的资源权重,不是微秒/字节,不拿这个比例

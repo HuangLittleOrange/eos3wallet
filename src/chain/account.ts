@@ -51,7 +51,7 @@ export function accountNameError(s: string): string | null {
   return null;
 }
 
-/** Permission badges describe fresh chain membership, never import-time metadata. */
+/** Permission badges describe last verified chain membership, never import-time metadata. */
 export function resolveAuthPermissions(
   wallet: { account: string; publicKey?: string; authPermissions?: string[] } | null | undefined,
   currentAccount: string,

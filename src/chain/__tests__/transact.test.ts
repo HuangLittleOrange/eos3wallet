@@ -29,6 +29,7 @@ jest.mock('../sponsor', () => ({
 import { PrivateKey } from '@wharfkit/antelope';
 import { getCachedSponsorFee } from '../sponsorFeeCache';
 import { sponsoredTransact, transact, type ActionSpec, type Signer } from '../transact';
+import { subscribeWalletDataChanges } from '../walletDataEvents';
 import {
   CpuNetExhaustedError,
   RamExhaustedError,
@@ -55,6 +56,28 @@ const baseOpts = {
   permission: 'active',
   actions: [transfer],
 };
+
+it('successful transfers publish balance changes before returning, even if a refresh consumer fails', async () => {
+  const receive = jest.fn();
+  const removeFailed = subscribeWalletDataChanges(() => { throw new Error('refresh failed'); });
+  const remove = subscribeWalletDataChanges(receive);
+  try {
+    mockSessionTransact.mockResolvedValue({ resolved: { transaction: { id: 'a'.repeat(64) } }, response: {} });
+    await transact(baseOpts);
+    expect(receive).toHaveBeenCalledWith({ chainId: 'vaulta', accounts: ['alice', 'bob'], permissions: false, balanceContracts: ['core.vaulta'] });
+  } finally { remove(); removeFailed(); }
+});
+it('permission changes are announced only after a successful broadcast', async () => {
+  const receive = jest.fn(); const remove = subscribeWalletDataChanges(receive);
+  const options = { ...baseOpts, actions: [{ account: 'eosio', name: 'updateauth', data: { account: 'alice' } }] };
+  try {
+    mockSessionTransact.mockRejectedValueOnce(new Error('offline'));
+    await expect(transact(options)).rejects.toThrow(); expect(receive).not.toHaveBeenCalled();
+    mockSessionTransact.mockResolvedValue({ resolved: { transaction: { id: 'a'.repeat(64) } }, response: {} });
+    await transact(options);
+    expect(receive).toHaveBeenCalledWith(expect.objectContaining({ accounts: ['alice'], permissions: true }));
+  } finally { remove(); }
+});
 const build = (extra: Partial<SponsoredBuildResult> = {}): SponsoredBuildResult => ({
   sponsorRequestId: 'req-1',
   projectId: 'p',

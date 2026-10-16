@@ -11,7 +11,7 @@
 - RAM、抵押、REX、PowerUp 和资源代付。
 - 主密码加密、生物识别解锁、私钥导出和授权管理。
 - 内置 DApp 浏览器、Scatter / TokenPocket 兼容接口、ESR / Anchor 签名和会话管理。
-- 地址簿、二维码、多语言、发现页和 Android 更新检查。
+- 地址簿、二维码、多语言、发现页和 iOS / Android 启动更新检查（完整安装包，不使用热更新）。
 
 ## 本地开发
 
@@ -148,7 +148,7 @@ src/
 ├── dapp/         DApp 协议与会话管理
 ├── content/      内容加载
 ├── net/          网络请求
-├── update/       Android 更新
+├── update/       iOS / Android 完整安装包更新
 ├── components/   公共组件
 ├── screens/      页面
 ├── navigation/   路由与深链
@@ -159,3 +159,5 @@ src/
 ## 许可证
 
 项目采用 [MIT 许可证](LICENSE)。第三方依赖与素材遵循各自的许可证和版权声明，见[第三方声明](THIRD_PARTY_NOTICES.md)。分发安装包时也需附带这些声明。
+
+完整安装包更新的后台配置、强制更新与发布步骤见 [更新说明](docs/app-updates.md)。

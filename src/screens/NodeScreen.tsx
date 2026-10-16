@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -19,9 +19,9 @@ import { colors, spacing } from '../theme';
 import { useWalletSession } from '../chain/WalletContext';
 import { CHAINS, NodeInfo, legacyLabel } from '../chain/config';
 import { useNodeCatalogRefresh } from '../chain/NodeCatalogContext';
-import { probeHistoryNode, probeNode } from '../chain/client';
 import { addCustomNode, listCustomNodes, NodeKind, removeCustomNode } from '../chain/customNodes';
-import { PRICE_SOURCES, PriceSourceId, probePriceSource } from '../chain/prices';
+import { PRICE_SOURCES, PriceSourceId } from '../chain/prices';
+import { peekNodeProbe, peekPriceProbe, readNodeProbe, readPriceProbe } from '../chain/nodeProbeCache';
 import { useI18n, TranslationKey } from '../i18n';
 
 const BLUE = '#1E88FF';
@@ -47,9 +47,17 @@ export default function NodeScreen() {
   const w = useWalletSession();
   const { t } = useI18n();
 
-  const [rpcProbes, setRpcProbes] = useState<Record<string, Probe>>({});
-  const [historyProbes, setHistoryProbes] = useState<Record<string, Probe>>({});
-  const [priceProbes, setPriceProbes] = useState<Record<PriceSourceId, PriceProbe>>({} as any);
+  const initialProbes = (kind: NodeKind, list: NodeInfo[]): Record<string, Probe> => Object.fromEntries(list.map(node => {
+    const cached = peekNodeProbe(w.chainId, kind, node); return [node.id, cached === undefined ? 'loading' : cached];
+  }));
+  const [rpcProbes, setRpcProbes] = useState<Record<string, Probe>>(() => initialProbes('rpc', w.rpcNodes ?? CHAINS[w.chainId].nodes));
+  const [historyProbes, setHistoryProbes] = useState<Record<string, Probe>>(() => initialProbes('history', w.defaultHistoryNodes ?? CHAINS[w.chainId].historyNodes));
+  const [priceProbes, setPriceProbes] = useState<Record<string, PriceProbe>>(() => Object.fromEntries(PRICE_SOURCES.map(source => {
+    const cached = peekPriceProbe(source.id); return [source.id, cached === undefined ? 'loading' : cached];
+  })));
+  const probeGeneration = useRef(0);
+  const forceNextProbes = useRef(false);
+  const [probesChain, setProbesChain] = useState(w.chainId);
   const [customRpcNodes, setCustomRpcNodes] = useState<NodeInfo[]>([]);
   const [customHistoryNodes, setCustomHistoryNodes] = useState<NodeInfo[]>([]);
 
@@ -67,33 +75,31 @@ export default function NodeScreen() {
   // 探测列表用参数传进来而不是闭包读 state——不然 runProbes 的身份要跟着
   // customXxxNodes 变,添加/删除一个自定义节点就会把整页已经测好的结果
   // 全部推翻重测一遍(添加处明明只想单独测新节点那一个)。
-  const runProbes = useCallback(async (rpcList: NodeInfo[], historyList: NodeInfo[]) => {
-    const rInit: Record<string, Probe> = {};
-    rpcList.forEach((n) => (rInit[n.id] = 'loading'));
-    setRpcProbes(rInit);
-    const hInit: Record<string, Probe> = {};
-    historyList.forEach((n) => (hInit[n.id] = 'loading'));
-    setHistoryProbes(hInit);
+  const runProbes = useCallback(async (rpcList: NodeInfo[], historyList: NodeInfo[], force = false) => {
+    const generation = ++probeGeneration.current;
+    setProbesChain(w.chainId);
+    setRpcProbes(initialProbes('rpc', rpcList));
+    setHistoryProbes(initialProbes('history', historyList));
     const pInit: Record<string, PriceProbe> = {};
-    PRICE_SOURCES.forEach((s) => (pInit[s.id] = 'loading'));
+    PRICE_SOURCES.forEach((s) => { const cached = peekPriceProbe(s.id); pInit[s.id] = cached === undefined ? 'loading' : cached; });
     setPriceProbes(pInit as any);
 
     // RPC / 历史节点 / 行情源是三套完全独立的服务,并发探测,互不等待
     await Promise.all([
       ...rpcList.map(async (n) => {
-        const r = await probeNode(n);
-        setRpcProbes((p) => ({ ...p, [n.id]: r }));
+        const r = await readNodeProbe(w.chainId, 'rpc', n, force);
+        if (generation === probeGeneration.current) setRpcProbes((p) => ({ ...p, [n.id]: r }));
       }),
       ...historyList.map(async (n) => {
-        const r = await probeHistoryNode(n);
-        setHistoryProbes((p) => ({ ...p, [n.id]: r }));
+        const r = await readNodeProbe(w.chainId, 'history', n, force);
+        if (generation === probeGeneration.current) setHistoryProbes((p) => ({ ...p, [n.id]: r }));
       }),
       ...PRICE_SOURCES.map(async (s) => {
-        const r = await probePriceSource(s.id);
-        setPriceProbes((p) => ({ ...p, [s.id]: r }));
+        const r = await readPriceProbe(s.id, force);
+        if (generation === probeGeneration.current) setPriceProbes((p) => ({ ...p, [s.id]: r }));
       }),
     ]);
-  }, []);
+  }, [w.chainId]);
 
   // 只在进页面/切链时整页探测一次;自定义节点读完后和默认节点一起测
   useEffect(() => {
@@ -106,10 +112,12 @@ export default function NodeScreen() {
       if (!alive) return;
       setCustomRpcNodes(rpc);
       setCustomHistoryNodes(hist);
-      runProbes([...defaultRpcNodes, ...rpc], [...defaultHistoryNodes, ...hist]);
+      const force = forceNextProbes.current; forceNextProbes.current = false;
+      void runProbes([...defaultRpcNodes, ...rpc], [...defaultHistoryNodes, ...hist], force);
     })();
     return () => {
       alive = false;
+      probeGeneration.current++;
     };
   }, [w.chainId, defaultRpcNodes, defaultHistoryNodes, runProbes]);
 
@@ -147,7 +155,7 @@ export default function NodeScreen() {
       }
       setAddKind(null);
       // 新节点单独探测一下,不用把整页已经测好的结果都推翻重来
-      const probe = addKind === 'rpc' ? await probeNode(node) : await probeHistoryNode(node);
+      const probe = await readNodeProbe(w.chainId, addKind, node, true);
       if (addKind === 'rpc') setRpcProbes((p) => ({ ...p, [node.id]: probe }));
       else setHistoryProbes((p) => ({ ...p, [node.id]: probe }));
     } finally {
@@ -190,7 +198,7 @@ export default function NodeScreen() {
     const blockLabel = kind === 'rpc' ? t('node.blockHeight') : t('node.indexedTo');
 
     const renderRow = (n: NodeInfo, i: number, custom: boolean) => {
-      const p = probes[n.id];
+      const p = probesChain === w.chainId ? probes[n.id] : peekNodeProbe(w.chainId, kind, n) ?? 'loading';
       const selected = selectedId === n.id;
       return (
         <View key={n.id}>
@@ -319,7 +327,14 @@ export default function NodeScreen() {
         <TouchableOpacity
           hitSlop={10}
           style={[styles.side, { alignItems: 'flex-end' }]}
-          onPress={() => void refreshCatalog().then(next=>{if(next[w.chainId].rpc===defaultRpcNodes&&next[w.chainId].history===defaultHistoryNodes)void runProbes(rpcNodes,historyNodes);})}
+          onPress={() => {
+            forceNextProbes.current = true;
+            void refreshCatalog().then(next => {
+              if (next[w.chainId].rpc === defaultRpcNodes && next[w.chainId].history === defaultHistoryNodes) {
+                forceNextProbes.current = false; void runProbes(rpcNodes, historyNodes, true);
+              }
+            });
+          }}
         >
           <Text style={styles.moreTxt}>{t('node.refresh')}</Text>
         </TouchableOpacity>

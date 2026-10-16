@@ -159,3 +159,5 @@ src/
 ## License
 
 The project is licensed under the [MIT License](LICENSE). Third-party dependencies and assets retain their respective licenses and copyright notices; see [third-party notices](THIRD_PARTY_NOTICES.md). Include the required notices when distributing app packages.
+
+Full-package update checks run at startup on iOS and Android. No OTA JavaScript updates are enabled. See [release configuration and update behavior](docs/app-updates.md).

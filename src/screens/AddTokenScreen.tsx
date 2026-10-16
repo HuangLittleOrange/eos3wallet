@@ -10,6 +10,7 @@ import { impersonates, tokenColor } from '../chain/format';
 import { loadTokenPrefs, setTokenAdded, setTokenHidden, TokenPrefs } from '../chain/tokenPrefs';
 import TokenBadge from '../components/TokenBadge';
 import { useI18n } from '../i18n';
+import { rememberTokenDirectory } from '../chain/tokenDirectory';
 
 const BLUE = '#1E88FF';
 
@@ -52,7 +53,8 @@ export default function AddTokenScreen() {
   const systemId = `${w.client.config.systemToken}:${w.client.config.symbol}`;
 
   // 账户实际持有的代币 + 生态常见代币(未持有的可手动加)
-  const held = w.tokens.map((tk) => ({
+  const displayTokens = w.tokens.length ? w.tokens : (w.cachedTokens ?? []);
+  const held = displayTokens.map((tk) => ({
     id: `${tk.contract}:${tk.symbol}`,
     symbol: tk.symbol,
     contract: tk.contract,
@@ -92,13 +94,21 @@ export default function AddTokenScreen() {
       const next = await setTokenHidden(w.chainId, w.account, c.id, isOnHome(c));
       setPrefs(next);
     } else {
-      const next = await setTokenAdded(w.chainId, w.account, c.id, !isOnHome(c));
+      const add = !isOnHome(c);
+      const next = await setTokenAdded(w.chainId, w.account, c.id, add);
       setPrefs(next);
+      if (add) {
+        const [contract, symbol] = c.id.split(':');
+        void w.client.getTokenMetadata(contract, symbol)
+          .then(metadata => rememberTokenDirectory(w.chainId, w.account, [metadata]))
+          .catch(() => {}); // Adding a local preference remains possible offline.
+      }
     }
   };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
+      {!w.tokens.length && displayTokens.length ? <Text style={{ color: colors.textSub, fontSize: 12, paddingHorizontal: spacing.lg }}>{t('content.cached')}</Text> : null}
       {/* 搜索条 */}
       <View style={styles.searchRow}>
         <View style={styles.searchBox}>

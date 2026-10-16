@@ -43,7 +43,7 @@ let hostMounted = 0;
  * 卸载即关闭,层级按打开的先后顺序叠——所以动画/延迟卸载这些逻辑仍然由
  * 调用方(BottomSheet/CenterDialog)自己管,这里只负责"放到哪儿显示"。
  */
-export function ModalPortal({ children, onRequestClose }: { children: React.ReactNode; onRequestClose?: () => void }) {
+export function ModalPortal({ children, onRequestClose, priority = 0 }: { children: React.ReactNode; onRequestClose?: () => void; priority?: number }) {
   const idRef = useRef<number | null>(null);
   if (idRef.current === null) idRef.current = allocLayerId();
   const id = idRef.current;
@@ -72,7 +72,7 @@ export function ModalPortal({ children, onRequestClose }: { children: React.Reac
   // 捕获着页面的最新 state/回调,漏推一次弹层里显示的就是旧数据。
   // 用 layout effect 而不是 effect:和原地渲染一样在同一帧上屏,不慢一拍。
   useLayoutEffect(() => {
-    upsertLayer({ id, node: children, onRequestClose });
+    upsertLayer({ id, node: children, onRequestClose, priority });
   });
 
   return null;

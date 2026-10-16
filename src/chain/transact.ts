@@ -18,6 +18,7 @@ import {
 } from './sponsor';
 import { t } from '../i18n';
 import { rememberSponsorFee } from './sponsorFeeCache';
+import { notifyTransactionApplied } from './walletDataEvents';
 import { assertResolvedActionsMatch } from './transactionSafety';
 import { AuthorizationFailureError, explainAuthorizationFailure, isAuthorizationFailure } from './authorizationError';
 
@@ -193,6 +194,7 @@ export async function transact(opts: TransactOpts): Promise<TransactResult> {
       { broadcast: true, allowModify: false }
     );
     const txId = String(result.resolved?.transaction.id ?? result.response?.transaction_id ?? '');
+    notifyTransactionApplied(opts.chainId, opts.actor, actions);
     return {
       txId,
       blockNum: result.response?.processed?.block_num,
@@ -251,6 +253,7 @@ export async function sponsoredTransact(opts: TransactOpts & { approvedFee?: str
       build = await requestBuild();
       ({ txId } = await signAndPush());
     }
+    notifyTransactionApplied(opts.chainId, opts.actor, opts.actions);
     return { txId, explorerUrl: explorerTx(opts.chainId, txId) };
   } catch (err) {
     throw await transactionFailure(err, opts);

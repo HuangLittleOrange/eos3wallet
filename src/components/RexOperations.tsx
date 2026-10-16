@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ActivityIndicator, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import type { ChainClient } from '../chain/client';
 import type { ActionSpec } from '../chain/transact';
@@ -6,6 +6,7 @@ import { buildRexCancel, buildRexDeposit, buildRexSell, buildRexUnlock, buildRex
 import { readRexBalances, rexAssetUnits, rexOperationError, type RexBalances, type RexOperation } from '../chain/rex';
 import { useI18n } from '../i18n';
 import { colors } from '../theme';
+import { rexDisplayCache, rexDisplayKey } from '../chain/rexDisplayCache';
 
 const modes = ['buy', 'unlock', 'sell', 'withdraw'] as const;
 export default function RexOperations({ client, account, refreshKey, canSign, busy, onReview }: {
@@ -13,20 +14,33 @@ export default function RexOperations({ client, account, refreshKey, canSign, bu
   onReview: (actions: ActionSpec[], notice: string) => void;
 }) {
   const { t, locale } = useI18n();
-  const [state, setState] = useState<RexBalances | null>(null);
+  const cacheKey = rexDisplayKey(client, account);
+  const subscribe = useCallback((listener: () => void) => rexDisplayCache.subscribe(cacheKey, listener), [cacheKey]);
+  const snapshot = useCallback(() => rexDisplayCache.get(cacheKey), [cacheKey]);
+  const state = useSyncExternalStore(subscribe, snapshot, snapshot).data ?? null;
   const [loading, setLoading] = useState(true), [preparing, setPreparing] = useState(false);
   const [failed, setFailed] = useState(false), [error, setError] = useState('');
   const [mode, setMode] = useState<RexOperation>('buy'), [amount, setAmount] = useState('');
   const generation = useRef(0), inFlight = useRef(false);
   const identity = useRef({ client, account }); identity.current = { client, account };
   const current = (id: number) => generation.current === id && identity.current.client === client && identity.current.account === account;
-  const load = useCallback(async () => {
+  const load = useCallback(async (force = true) => {
     const id = ++generation.current; setLoading(true); setFailed(false); setError('');
-    try { const result = await readRexBalances(client, account); if (generation.current === id) setState(result); }
+    try { await rexDisplayCache.fetch(cacheKey, () => readRexBalances(client, account), force); }
     catch { if (generation.current === id) setFailed(true); }
     finally { if (generation.current === id) setLoading(false); }
-  }, [client, account]);
-  useEffect(() => { setState(null); setAmount(''); setPreparing(false); void load(); return () => { generation.current++; }; }, [load, refreshKey]);
+  }, [client, account, cacheKey]);
+  const lastRefresh = useRef({ client, account, key: refreshKey });
+  useEffect(() => {
+    lastRefresh.current = { client, account, key: refreshKey };
+    setAmount(''); setPreparing(false); void load(false);
+    return () => { generation.current++; };
+  }, [load]);
+  useEffect(() => {
+    if (lastRefresh.current.key === refreshKey) return;
+    lastRefresh.current = { client, account, key: refreshKey };
+    void load(); // Preserve rows and the user's draft during block/transaction refreshes.
+  }, [refreshKey, load]);
   const value = mode === 'sell' ? state?.available.split(' ')[0] ?? '' : amount;
   const invalid = state ? rexOperationError(mode, value, state) : t('rex.loadFailed');
   const locked = busy || preparing || loading || failed;
@@ -38,7 +52,7 @@ export default function RexOperations({ client, account, refreshKey, canSign, bu
       // substitute a changed sell-all quantity for the one shown on the page.
       const fresh = await readRexBalances(client, account);
       if (!current(id)) return;
-      setState(fresh);
+      rexDisplayCache.remember(cacheKey, fresh);
       const problem = rexOperationError(operation, value, fresh);
       if (problem) throw new Error(problem);
       const opts = { contract: client.config.resourceContract, owner: account };
@@ -56,7 +70,7 @@ export default function RexOperations({ client, account, refreshKey, canSign, bu
   return <View style={styles.wrap}>
     <View style={styles.card}>
       <View style={styles.row}><Text style={styles.title}>REX</Text><TouchableOpacity accessibilityRole="button" accessibilityLabel={t('rex.refresh')} disabled={busy || preparing || loading} onPress={() => void load()} style={styles.refresh}><Text style={styles.link}>{t('rex.refresh')}</Text></TouchableOpacity></View>
-      {loading ? <ActivityIndicator /> : null}
+      {loading && !state ? <ActivityIndicator /> : null}
       {failed ? <Text accessibilityRole="alert" style={styles.error}>{t('rex.loadFailed')}</Text> : null}
       {(['total', 'savings', 'available', 'fund'] as const).map((key) => <View key={key} style={styles.row}><Text style={styles.muted}>{t(`rex.${key}`)}</Text><Text selectable style={styles.metric}>{state?.[key] ?? '—'}</Text></View>)}
       {state ? <Text style={styles.hint}>{t('rex.policy', { days: state.maturityDays })}</Text> : null}

@@ -47,6 +47,7 @@ export default function BottomSheet({
   children,
   backdropColor = 'rgba(0,0,0,0.45)',
   closeOnBackdrop = true,
+  priority = 0,
 }: {
   visible: boolean;
   onClose: () => void;
@@ -54,6 +55,7 @@ export default function BottomSheet({
   backdropColor?: string;
   /** 忙碌中不许点遮罩关掉时传 false(比如签名/提交进行中) */
   closeOnBackdrop?: boolean;
+  priority?: number;
 }) {
   // 动画期间(且仅动画期间)把面板这一整棵子树栅格化成一张位图去做变换,
   // 而不是每一帧都重新合成里面所有的 ScrollView/图标/文字——面板内容本来就
@@ -128,7 +130,7 @@ export default function BottomSheet({
   if (!mounted) return null;
 
   return (
-    <ModalPortal onRequestClose={onClose}>
+    <ModalPortal onRequestClose={onClose} priority={priority}>
       <Animated.View style={[StyleSheet.absoluteFill, { backgroundColor: backdropColor }, backdropStyle]}>
         <Pressable style={StyleSheet.absoluteFill} onPress={closeOnBackdrop ? onClose : undefined} />
       </Animated.View>

@@ -86,3 +86,25 @@ describe('checkForUpdate', () => {
     expect(mod.currentVersionCode()).toBe(3);
   });
 });
+
+it.each([
+  null, { updateAvailable: 'true', release: release() }, { updateAvailable: true, release: null },
+  { updateAvailable: true, release: release({ versionCode: 5.5 }) },
+  { updateAvailable: true, release: release({ forceUpdate: 'false' }) },
+  { updateAvailable: true, release: release({ releaseNotes: {} }) },
+])('拒绝格式错误的更新策略，避免错误提示或误判为强制更新 %#', async body => {
+  mockFetch(() => ok(body)); await expect(loadAndroid().checkForUpdate()).rejects.toMatchObject({ code: 'server' });
+});
+it('不显示已停用的版本，也不使用 HTTP 缓存里的旧强制更新策略', async () => {
+  const fetch = mockFetch(() => ok({ updateAvailable: true, release: release({ enabled: false }) }));
+  await expect(loadAndroid().checkForUpdate()).resolves.toBeNull();
+  expect(fetch.mock.calls[0][1]).toMatchObject({ cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } });
+});
+it('拒绝错误平台和不完整或带登录凭据的下载 URL', async () => {
+  mockFetch(() => ok({ updateAvailable: true, release: release({ platform: 'ios' }) }));
+  await expect(loadAndroid().checkForUpdate()).rejects.toMatchObject({ code: 'server' });
+  for (const apkUrl of ['https://', 'https://user:secret@example.com/file.apk']) {
+    mockFetch(() => ok({ updateAvailable: true, release: release({ apkUrl }) }));
+    await expect(loadAndroid().checkForUpdate()).rejects.toMatchObject({ code: 'insecure-url' });
+  }
+});

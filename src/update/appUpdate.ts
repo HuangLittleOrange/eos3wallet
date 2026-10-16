@@ -58,22 +58,33 @@ export async function checkForUpdate(): Promise<AppRelease | null> {
 
   let res: Response;
   try {
-    res = await fetchWithTimeout(url, { headers: { Accept: 'application/json' } });
+    res = await fetchWithTimeout(url, { cache: 'no-store', headers: { Accept: 'application/json', 'Cache-Control': 'no-cache' } });
   } catch {
     throw new AppUpdateError('network');
   }
   if (!res.ok) throw new AppUpdateError('server');
 
   const body: any = await res.json().catch(() => null);
-  const release: AppRelease | null = body?.updateAvailable ? body.release ?? null : null;
+  if (!body || typeof body.updateAvailable !== 'boolean') throw new AppUpdateError('server');
+  if (!body.updateAvailable) return null;
+  const release = body.release as AppRelease | null;
+  if (!release || typeof release.id !== 'string' || !release.id.trim()
+    || typeof release.versionName !== 'string' || !release.versionName.trim()
+    || !Number.isSafeInteger(release.versionCode) || release.versionCode <= 0
+    || typeof release.title !== 'string' || typeof release.releaseNotes !== 'string'
+    || typeof release.forceUpdate !== 'boolean') throw new AppUpdateError('server');
+  if ((release as any).enabled === false) return null;
   // 服务端已经按 versionCode 比过一次,这里再比一次:接口万一回了一个不比当前新的
   // 版本,不能让用户"更新"到同一个甚至更旧的包
-  if (!release || !(Number(release.versionCode) > currentVersionCode())) return null;
+  if (release.versionCode <= currentVersionCode()) return null;
 
   // 安装包只从 https 下载。安卓装更新时会校验签名和已装的是否一致,被篡改的包装不上,
   // 但明文下载仍然可能被中途换成别的东西、白白让用户下一个装不了的包
   if (release.platform && release.platform !== Platform.OS) throw new AppUpdateError('server');
-  if (!/^https:\/\//i.test(release.apkUrl ?? '')) throw new AppUpdateError('insecure-url');
+  try {
+    const url = new URL(release.apkUrl);
+    if (url.protocol !== 'https:' || !url.hostname || url.username || url.password) throw new Error('Invalid update URL');
+  } catch { throw new AppUpdateError('insecure-url'); }
   return release;
 }
 

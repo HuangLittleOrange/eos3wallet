@@ -5,6 +5,7 @@
 // 按链 + 账户分开存(代币持仓是账户维度的),不含密钥材料,AsyncStorage 即可。
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { ChainId } from './config';
+import { notifyWalletDataChanged } from './walletDataEvents';
 
 const KEY = 'aurora.chain.tokenPrefs.v1';
 
@@ -71,5 +72,6 @@ export async function setTokenAdded(
   const next = { ...cur, added };
   store[k] = next;
   await writeStore(store);
+  notifyWalletDataChanged({ chainId, accounts: [account] });
   return next;
 }

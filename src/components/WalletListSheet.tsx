@@ -230,7 +230,7 @@ export default function WalletListSheet({ visible, onClose }: { visible: boolean
     walletList.unshift({ id: '__adhoc__', account: w.account, source: 'adhoc' });
   }
 
-  const livePermissions = useWalletPermissionBadges(walletList, w.client, visible, w.resources);
+  const livePermissions = useWalletPermissionBadges(walletList, w.client, visible);
   const permsFor = (x: (typeof walletList)[number]): string[] => livePermissions[x.id] ?? [];
 
   /**

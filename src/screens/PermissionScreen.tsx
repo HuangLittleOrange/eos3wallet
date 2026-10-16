@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
@@ -11,7 +11,6 @@ import { useWallet } from '../chain/WalletContext';
 import {
   AuthorizedApp,
   AuthorizedAppAsset,
-  fetchAuthorizedApps,
   permissionDisplayAppType,
   permissionDisplayDevice,
   permissionKey,
@@ -20,6 +19,7 @@ import {
 } from '../chain/permissions';
 import { useI18n } from '../i18n';
 import { RootStackParamList } from '../navigation/RootNavigator';
+import { useAuthorizedApps } from '../chain/useAuthorizedApps';
 
 type Nav = NativeStackNavigationProp<RootStackParamList>;
 
@@ -40,22 +40,10 @@ export default function PermissionScreen() {
   const { t } = useI18n();
   const perms = w.resources?.permissions ?? [];
 
-  const [authorized, setAuthorized] = useState<AuthorizedApp[] | null>(null);
-  const [authorizedErr, setAuthorizedErr] = useState<string | null>(null);
-  const [loadingAuthorized, setLoadingAuthorized] = useState(true);
-
-  useEffect(() => {
-    let alive = true;
-    setLoadingAuthorized(true);
-    setAuthorizedErr(null);
-    fetchAuthorizedApps(w.account)
-      .then((overview) => alive && setAuthorized(overview.permissions.filter((p) => p.managedByPayLimit)))
-      .catch((e: any) => alive && setAuthorizedErr(e?.message ?? t('permission.queryFailed')))
-      .finally(() => alive && setLoadingAuthorized(false));
-    return () => {
-      alive = false;
-    };
-  }, [w.account, t]);
+  const overview = useAuthorizedApps(w.chainId, w.account);
+  const authorized = overview.data?.permissions.filter(app => app.managedByPayLimit);
+  const authorizedErr = overview.error?.message;
+  const loadingAuthorized = !!w.account && overview.data === undefined && !overview.error;
 
   // 普通权限列表里,已经在"已授权应用"里展示过的权限名就不重复列了
   const managedNames = new Set((authorized ?? []).map((a) => a.permission));
@@ -75,12 +63,13 @@ export default function PermissionScreen() {
           <Text style={styles.noteTxt}>{t('permission.authorizedNote')}</Text>
         </View>
 
+        {authorizedErr ? <TouchableOpacity onPress={() => { void overview.refresh().catch(() => {}); }}>
+          <Text style={styles.empty}>{authorizedErr} · {t('content.retry')}</Text>
+        </TouchableOpacity> : null}
         {loadingAuthorized ? (
           <View style={styles.center}>
             <ActivityIndicator color="#1E88FF" />
           </View>
-        ) : authorizedErr ? (
-          <Text style={styles.empty}>{authorizedErr}</Text>
         ) : !authorized || authorized.length === 0 ? (
           <Text style={styles.empty}>{t('permission.noAuthorized')}</Text>
         ) : (

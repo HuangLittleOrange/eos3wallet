@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -28,6 +28,7 @@ import { explorerAccount } from '../chain/transact';
 import TokenBadge from '../components/TokenBadge';
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { useI18n } from '../i18n';
+import { useHistoryPagination } from '../chain/useHistoryPagination';
 
 const BLUE = '#0085FF';
 const GREEN = '#00C289';
@@ -51,11 +52,12 @@ export default function TokenDetailScreen() {
   const w = useWallet();
   // 路由参数里的 token 是进入这页那一刻的快照——下拉刷新/转账完成后余额已经
   // 变了,页面却还显示旧数字。改成每次 render 都从实时的 w.tokens 里按
-  // 合约+符号找当前值,找不到(比如余额清零后节点不再返回该行)才退回快照。
+  // 合约+符号找当前值。完整列表已返回但没有该币时按零算,不能复活旧余额。
   const routeToken = route.params.token;
   const token =
     w.tokens.find((tk) => tk.contract === routeToken.contract && tk.symbol === routeToken.symbol) ??
-    routeToken;
+    (w.tokens.length ? { ...routeToken, amount: 0 }
+      : w.cachedTokens?.find(tk => tk.contract === routeToken.contract && tk.symbol === routeToken.symbol) ?? { ...routeToken, amount: 0 });
   const { t } = useI18n();
   const { refreshing, onRefresh } = useManualRefresh(w.status, w.refresh);
 
@@ -90,37 +92,7 @@ export default function TokenDetailScreen() {
   const price = priceIn(w.prices, token.contract, token.symbol);
   const value = token.amount * price;
 
-  // w.actions 只是全账户混合记录的第一页(30 条)——某个代币自己的记录可能没挤进
-  // 这一页里,划到底再翻页往下补,累加到这里。w.actions 每次 refresh() 换新数组
-  // 引用时(账户/链切换、下拉刷新)都要清空重来,不然会把上一个账户的翻页残留。
-  const PAGE_SIZE = 30;
-  const [extra, setExtra] = useState<ChainAction[]>([]);
-  const [hasMore, setHasMore] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const skipRef = useRef(0);
-
-  useEffect(() => {
-    setExtra([]);
-    setHasMore(true);
-    skipRef.current = w.actions.length;
-  }, [w.actions]);
-
-  const allActions = useMemo(() => [...w.actions, ...extra], [w.actions, extra]);
-
-  const loadMore = async () => {
-    if (loadingMore || !hasMore || w.status === 'loading' || !w.historyNode) return;
-    setLoadingMore(true);
-    try {
-      const page = await w.client.getActions(w.account, { limit: PAGE_SIZE, skip: skipRef.current });
-      skipRef.current += page.actions.length;
-      setHasMore(page.hasMore);
-      if (page.actions.length) setExtra((prev) => [...prev, ...page.actions]);
-    } catch {
-      // 静默放弃这一页,滑到底会自然重试
-    } finally {
-      setLoadingMore(false);
-    }
-  };
+  const { all: allActions, loadingMore, loadMore } = useHistoryPagination(w.client, w.account, w.actions, w.actionsLoading);
 
   // 只显示该代币的转账记录
   const list = useMemo(() => {
@@ -232,6 +204,7 @@ export default function TokenDetailScreen() {
         onEndReachedThreshold={0.3}
         ListHeaderComponent={
           <>
+            {w.actionsFailed ? <Text style={styles.emptyTxt}>{t('content.refreshFailed')}</Text> : null}
             {/* 余额行 */}
             <View style={styles.balRow}>
               <TokenBadge symbol={token.symbol} color={tokenColor(token.symbol)} size={52} contract={token.contract} />
@@ -275,10 +248,12 @@ export default function TokenDetailScreen() {
         }
         ListEmptyComponent={
           <View style={styles.empty}>
+            {w.actionsLoading ? <ActivityIndicator color={BLUE} /> : <>
             <MaterialCommunityIcons name="file-document-outline" size={48} color="#D6D9E0" />
             <Text style={styles.emptyTxt}>
               {!w.historyNode || w.actionsFailed ? t('tokenDetail.noHistoryApi') : t('tokenDetail.noRecords')}
             </Text>
+            </>}
           </View>
         }
         ListFooterComponent={

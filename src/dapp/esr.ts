@@ -6,6 +6,7 @@
 //
 // 我们在内置浏览器里拦截 anchor:// 与 esr:// 导航,直接用本钱包完成,
 // 用户不需要再跳去 Anchor —— 他人已经在手机上了。
+import { notifyTransactionApplied } from '../chain/walletDataEvents';
 import { deflateRaw, inflateRaw } from 'pako';
 import { fetch as callbackFetch } from 'expo/fetch';
 import { SigningRequest, ResolvedSigningRequest } from '@wharfkit/signing-request';
@@ -256,6 +257,7 @@ export async function signAndCallback(opts: {
         SignedTransaction.from({ ...opts.resolved.transaction, signatures: [sig] })
       );
       txId = String(res.transaction_id);
+      notifyTransactionApplied(opts.chainSlug, opts.actor, opts.resolved.transaction.actions);
       blockNum = res.processed?.block_num ? Number(res.processed.block_num) : undefined;
     } catch (e) {
       // 资源不够(CPU/NET、RAM)带专门的 Error 子类抛出去,宿主据此弹一键修复;

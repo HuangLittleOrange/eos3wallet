@@ -82,3 +82,11 @@ describe('modalLayers', () => {
     expect(listener).toHaveBeenCalledTimes(1);
   });
 });
+
+it('mandatory update gates stay above later wallet prompts and own the back action', () => {
+  const m = freshModule(); const close = jest.fn();
+  const gate = m.allocLayerId(); m.upsertLayer({ id: gate, node: 'Mandatory update', priority: 100 });
+  const later = m.allocLayerId(); m.upsertLayer({ id: later, node: 'Incoming request', onRequestClose: close });
+  expect(ids(m)).toEqual([later, gate]); m.requestCloseTop(); expect(close).not.toHaveBeenCalled();
+  m.removeLayer(gate); m.requestCloseTop(); expect(close).toHaveBeenCalledTimes(1);
+});

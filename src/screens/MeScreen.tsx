@@ -8,8 +8,8 @@ import { colors, spacing, BRAND_NAME } from '../theme';
 import { useI18n } from '../i18n';
 import { useFocusedAppContent } from '../content/useFocusedAppContent';
 import { localizedText, visibleItems } from '../content/types';
-import AppUpdateSheet from '../components/AppUpdateSheet';
-import { AppRelease, AppUpdateError, canCheckUpdates, checkForUpdate, currentAppVersion } from '../update/appUpdate';
+import { useAppUpdates } from '../update/AppUpdateProvider';
+import { AppUpdateError, canCheckUpdates, currentAppVersion } from '../update/appUpdate';
 
 type Item = {
   icon: string;
@@ -51,15 +51,14 @@ export default function MeScreen() {
   }));
   const groups = links.length ? [...GROUPS, links] : GROUPS;
   const [checking, setChecking] = useState(false);
-  const [release, setRelease] = useState<AppRelease | null>(null);
+  const { checkUpdates } = useAppUpdates();
 
   const checkUpdate = async () => {
     if (checking) return;
     setChecking(true);
     try {
-      const found = await checkForUpdate();
-      if (found) setRelease(found);
-      else Alert.alert(t('update.upToDateTitle'), t('update.upToDateBody', { version: currentAppVersion() }));
+      const found = await checkUpdates();
+      if (!found) Alert.alert(t('update.upToDateTitle'), t('update.upToDateBody', { version: currentAppVersion() }));
     } catch (e) {
       Alert.alert(
         t('update.checkFailedTitle'),
@@ -116,8 +115,6 @@ export default function MeScreen() {
           {BRAND_NAME} v{currentAppVersion()}
         </Text>
       </ScrollView>
-
-      <AppUpdateSheet release={release} onClose={() => setRelease(null)} />
     </View>
   );
 }

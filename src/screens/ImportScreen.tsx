@@ -76,6 +76,13 @@ export default function ImportScreen() {
             desc={t('import.viaEos3Desc')}
             onPress={() => nav.navigate('DeviceKeyImport')}
           />
+          <View style={styles.sep} />
+          <Row
+            icon={<MaterialCommunityIcons name="anchor" size={22} color={BLUE} />}
+            title={t('import.viaAnchor')}
+            desc={t('import.viaAnchorDesc')}
+            onPress={() => nav.navigate('DeviceKeyImport', { provider: 'anchor' })}
+          />
         </View>
 
         <View style={styles.group}>

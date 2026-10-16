@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
   View,
   Text,
@@ -22,9 +22,9 @@ import { fmtTime } from '../chain/format';
 import { explorerTx } from '../chain/transact';
 import { ChainAction } from '../chain/client';
 import { useI18n } from '../i18n';
+import { useHistoryPagination } from '../chain/useHistoryPagination';
 
 const BLUE = '#1E88FF';
-const PAGE_SIZE = 30;
 
 export default function TxRecordScreen() {
   const insets = useSafeAreaInsets();
@@ -34,37 +34,7 @@ export default function TxRecordScreen() {
   const FILTERS = [t('txRecord.filterAll'), t('txRecord.filterIn'), t('txRecord.filterOut')];
   const [filter, setFilter] = useState(0);
 
-  // WalletContext 的 w.actions 只是第一页(30 条),翻页拿到的更早记录接着往这
-  // 累加。w.actions 每次 refresh() 都会换成一个新数组引用——账户/链切换或
-  // 下拉刷新时都要跟着清空重来,不然会把上一个账户翻的旧页残留在这。
-  const [extra, setExtra] = useState<ChainAction[]>([]);
-  const [hasMore, setHasMore] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const skipRef = useRef(0);
-
-  useEffect(() => {
-    setExtra([]);
-    setHasMore(true);
-    skipRef.current = w.actions.length;
-  }, [w.actions]);
-
-  const all = useMemo(() => [...w.actions, ...extra], [w.actions, extra]);
-
-  const loadMore = async () => {
-    if (loadingMore || !hasMore || w.status === 'loading' || !w.historyNode) return;
-    setLoadingMore(true);
-    try {
-      const page = await w.client.getActions(w.account, { limit: PAGE_SIZE, skip: skipRef.current });
-      skipRef.current += page.actions.length;
-      setHasMore(page.hasMore);
-      if (page.actions.length) setExtra((prev) => [...prev, ...page.actions]);
-    } catch {
-      // 翻页失败不打断已经在看的列表,静默放弃这一页——用户没往下滑到底不会注意到,
-      // 再滑一次会自然重试
-    } finally {
-      setLoadingMore(false);
-    }
-  };
+  const { all, loadingMore, loadMore } = useHistoryPagination(w.client, w.account, w.actions, w.actionsLoading);
 
   const list = useMemo(
     () =>
@@ -112,15 +82,18 @@ export default function TxRecordScreen() {
         windowSize={9}
         onEndReached={loadMore}
         onEndReachedThreshold={0.5}
+        ListHeaderComponent={w.actionsFailed && list.length ? <Text style={styles.emptyTxt}>{t('content.refreshFailed')}</Text> : null}
         ListEmptyComponent={
           <View style={styles.center}>
+            {w.actionsLoading ? <ActivityIndicator color={BLUE} /> : <>
             <MaterialCommunityIcons name="file-document-outline" size={52} color="#D6D9E0" />
             <Text style={styles.emptyTxt}>
-              {noHistory ? t('txRecord.noHistoryApi') : t('txRecord.noRecords')}
+              {w.actionsFailed ? t('walletCtxError.loadFailed') : noHistory ? t('txRecord.noHistoryApi') : t('txRecord.noRecords')}
             </Text>
             {noHistory ? (
               <Text style={styles.emptySub}>{t('txRecord.noHistoryApiSub')}</Text>
             ) : null}
+            </>}
           </View>
         }
         renderItem={({ item }) => {

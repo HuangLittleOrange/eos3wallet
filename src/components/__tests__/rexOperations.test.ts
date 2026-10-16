@@ -7,6 +7,7 @@ jest.mock('../../chain/rex', () => ({...jest.requireActual('../../chain/rex'),re
 import React from 'react';
 import RexOperations from '../RexOperations';
 import { readRexBalances, type RexBalances } from '../../chain/rex';
+import { rexDisplayCache, rexDisplayKey } from '../../chain/rexDisplayCache';
 const {create,act}=require('react-test-renderer');
 const client:any={config:{resourceContract:'core.vaulta'}};
 let renderer:any;
@@ -20,7 +21,7 @@ const press=async(text:string)=>{
 };
 const input=async(value:string)=>{await act(async()=>renderer.root.findByType('TextInput').props.onChangeText(value));};
 const reviewButton=()=>renderer.root.findAllByType('TouchableOpacity').find((n:any)=>n.props.accessibilityLabel==='rex.review');
-beforeEach(()=>{(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;jest.clearAllMocks();jest.mocked(readRexBalances).mockImplementation(async()=>state());});
+beforeEach(()=>{(globalThis as any).IS_REACT_ACT_ENVIRONMENT=true;jest.clearAllMocks();rexDisplayCache.invalidate(rexDisplayKey(client,'alice'));rexDisplayCache.invalidate(rexDisplayKey(client,'bob'));jest.mocked(readRexBalances).mockImplementation(async()=>state());});
 afterEach(async()=>{if(renderer)await act(async()=>renderer.unmount());renderer=null;});
 test('sell-all confirmation carries REX only, then withdrawal uses an independent A amount',async()=>{
   await render();await press('rex.sell');expect(renderer.root.findAllByType('TextInput')).toHaveLength(0);
@@ -61,4 +62,17 @@ test('unmount and read-only wallets cannot launch a transaction',async()=>{
 test('open sell orders are cancelled with only the owner action',async()=>{
   jest.mocked(readRexBalances).mockResolvedValue({...state(),order:{open:true,requested:'50.0000 REX'}});
   await render();await press('rex.cancel');expect(reviewed.mock.calls[0][0]).toEqual([{account:'eosio',name:'cnclrexorder',data:{owner:'alice'}}]);
+});
+test('block refresh retains the draft and visible balances instead of clearing the form',async()=>{
+  await render();await input('1.5');
+  let finish!:(s:RexBalances)=>void;jest.mocked(readRexBalances).mockImplementationOnce(()=>new Promise(resolve=>{finish=resolve;}));
+  await act(async()=>renderer.update(React.createElement(RexOperations,{...props,refreshKey:2})));
+  expect(renderer.root.findByType('TextInput').props.value).toBe('1.5');
+  expect(renderer.root.findAllByType('ActivityIndicator')).toHaveLength(0);
+  await act(async()=>finish(state()));expect(renderer.root.findByType('TextInput').props.value).toBe('1.5');
+});
+test('reopening reuses a recent display snapshot but reviewing still reads live balances',async()=>{
+  await render();await act(async()=>renderer.unmount());renderer=null;
+  await render();expect(readRexBalances).toHaveBeenCalledTimes(1);
+  await input('1');await press('rex.review');expect(readRexBalances).toHaveBeenCalledTimes(2);
 });

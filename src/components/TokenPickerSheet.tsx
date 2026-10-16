@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, TextInput, ActivityIndicator } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -11,6 +11,7 @@ import { fmtUSD, fmtAmount, tokenColor } from '../chain/format';
 import { priceIn } from '../chain/prices';
 import TokenBadge from '../components/TokenBadge';
 import { useI18n } from '../i18n';
+import { tokensForSelection } from '../chain/tokenDirectory';
 
 export default function TokenPickerSheet({
   visible,
@@ -24,7 +25,8 @@ export default function TokenPickerSheet({
   const insets = useSafeAreaInsets();
   const w = useWallet();
   const { t } = useI18n();
-  const tokens = w.tokens;
+  const tokens = useMemo(() => tokensForSelection(w.tokenDirectory ?? [], w.tokens.length ? w.tokens : (w.cachedTokens ?? [])),
+    [w.tokenDirectory, w.tokens, w.cachedTokens]);
   const [q, setQ] = useState('');
 
   const list = useMemo(() => {
@@ -80,7 +82,14 @@ export default function TokenPickerSheet({
               <View style={styles.sep} />
             </View>
           ))}
-          {list.length === 0 ? <Text style={styles.empty}>{t('tokenPicker.noMatch')}</Text> : null}
+          {list.length === 0 && !q.trim() && !tokens.length && w.status === 'loading'
+            ? <ActivityIndicator style={{ marginTop: 40 }} color={colors.brand} />
+            : list.length === 0 && !q.trim() && w.status === 'error'
+              ? <TouchableOpacity onPress={() => { void w.refresh({ force: true }); }}>
+                  <Text style={styles.empty}>{w.error}\n{t('content.retry')}</Text>
+                </TouchableOpacity>
+            : list.length === 0 ? <Text style={styles.empty}>{t('tokenPicker.noMatch')}</Text> : null}
+          {!w.tokens.length && tokens.length > 0 ? <Text style={styles.cached}>{t('content.cached')}</Text> : null}
         </ScrollView>
       </View>
     </BottomSheet>
@@ -118,4 +127,5 @@ const styles = StyleSheet.create({
   fiat: { fontSize: 13, color: colors.textSub, marginTop: 4 },
 
   empty: { textAlign: 'center', color: colors.textFaint, paddingVertical: 50, fontSize: 14 },
+  cached: { textAlign: 'center', color: colors.textSub, paddingVertical: 12, fontSize: 12 },
 });

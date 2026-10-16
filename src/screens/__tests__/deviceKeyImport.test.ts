@@ -1,3 +1,5 @@
+jest.mock('../../chain/anchorWeb', () => ({ connectAnchorWeb: jest.fn(), AnchorWebCancelled: class AnchorWebCancelled extends Error {} }));
+jest.mock('../../chain/anchorDeviceImport', () => ({ prepareAnchorDeviceImport: jest.fn(), submitAnchorDeviceImport: jest.fn() }));
 jest.mock('react-native', () => ({
   TurboModuleRegistry: jest.requireActual('react-native').TurboModuleRegistry,
   NativeModules: jest.requireActual('react-native').NativeModules,
@@ -258,4 +260,34 @@ it('does not import or switch accounts if the network changes while web authoriz
   await act(async () => { finish({ type: 'success', url: 'eos3wallet://device-key-authorized' }); await completion!; });
   expect(importPendingDeviceKey).not.toHaveBeenCalled();
   expect(setAccount).not.toHaveBeenCalled();
+});
+
+
+import { connectAnchorWeb } from '../../chain/anchorWeb';
+import { prepareAnchorDeviceImport, submitAnchorDeviceImport } from '../../chain/anchorDeviceImport';
+it('Anchor import connects directly, shows an account review, then imports only after chain verification', async () => {
+  const session = {account:'alice',permission:'active'} as any;
+  const review = {built:{eosAccount:'alice'},hex:'reviewed'} as any;
+  jest.mocked(connectAnchorWeb).mockResolvedValue(session);
+  jest.mocked(prepareAnchorDeviceImport).mockResolvedValue(review);
+  await act(async () => { renderer=create(React.createElement(DeviceKeyImportScreen,{route:{params:{provider:'anchor'}}})); });
+  await act(async () => { await button('anchorImport.openWeb').props.onPress(); });
+  expect(connectAnchorWeb).toHaveBeenCalled();
+  expect(openAuthSessionAsync).not.toHaveBeenCalled();
+  expect(deviceKeyAuthorizeUrl).not.toHaveBeenCalled();
+  expect(importPendingDeviceKey).not.toHaveBeenCalled();
+  expect(renderer.root.findAllByType('Text').some((node:any)=>node.children.includes('alice'))).toBe(true);
+  await act(async () => { await button('anchorImport.confirm').props.onPress(); });
+  expect(submitAnchorDeviceImport).toHaveBeenCalledWith(session,review,expect.any(AbortSignal));
+  expect(importPendingDeviceKey).toHaveBeenCalledWith(pending,'alice','vaulta',{url:'https://node.test'});
+});
+it('Anchor signing errors retain the phone key and never import a wallet', async () => {
+  jest.mocked(connectAnchorWeb).mockResolvedValue({account:'alice'} as any);
+  jest.mocked(prepareAnchorDeviceImport).mockResolvedValue({hex:'review'} as any);
+  jest.mocked(submitAnchorDeviceImport).mockRejectedValue(new Error('rejected'));
+  await act(async () => { renderer=create(React.createElement(DeviceKeyImportScreen,{route:{params:{provider:'anchor'}}})); });
+  await act(async () => { await button('anchorImport.openWeb').props.onPress(); });
+  await act(async () => { await button('anchorImport.confirm').props.onPress(); });
+  expect(importPendingDeviceKey).not.toHaveBeenCalled();expect(setAccount).not.toHaveBeenCalled();
+  expect(button('anchorImport.openWeb')).toBeDefined();
 });

@@ -32,6 +32,9 @@ export default function AppUpdateSheet({
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
   const [err, setErr] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const alive = useRef(false);
+  const busy = useRef(false);
+  const installing = useRef(false);
 
   // 换了一个版本(或者重新打开)就从头开始
   useEffect(() => {
@@ -40,7 +43,10 @@ export default function AppUpdateSheet({
   }, [release?.versionCode]);
 
   // 面板被卸载时还在下载,把下载停掉,别在后台白跑流量
-  useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(() => {
+    alive.current = true;
+    return () => { alive.current = false; abortRef.current?.abort(); };
+  }, []);
 
   const forced = !!release?.forceUpdate;
   const downloading = phase.kind === 'downloading';
@@ -48,29 +54,38 @@ export default function AppUpdateSheet({
   const closable = !forced && !downloading;
 
   const install = async (fileUri: string) => {
+    if (!alive.current || installing.current) return;
+    installing.current = true;
     setErr(null);
     try {
       await installRelease(fileUri);
     } catch {
-      setErr(t('update.installFailed'));
-    }
+      if (alive.current) setErr(t('update.installFailed'));
+    } finally { installing.current = false; }
   };
 
   const start = async () => {
-    if (!release) return;
+    if (!release || busy.current) return;
+    busy.current = true;
     setErr(null);
     if (!canSelfUpdate) {
-      try { await Linking.openURL(release.apkUrl); } catch { setErr(t('update.openFailed')); }
+      try { await Linking.openURL(release.apkUrl); }
+      catch { if (alive.current) setErr(t('update.openFailed')); }
+      finally { busy.current = false; }
       return;
     }
     const controller = new AbortController();
     abortRef.current = controller;
     setPhase({ kind: 'downloading', fraction: 0 });
     try {
-      const fileUri = await downloadRelease(release, (fraction) => setPhase({ kind: 'downloading', fraction }), controller.signal);
+      const fileUri = await downloadRelease(release, fraction => {
+        if (alive.current && !controller.signal.aborted) setPhase({ kind: 'downloading', fraction });
+      }, controller.signal);
+      if (!alive.current || controller.signal.aborted) return;
       setPhase({ kind: 'ready', fileUri });
       await install(fileUri);
     } catch (e: any) {
+      if (!alive.current) return;
       setPhase({ kind: 'idle' });
       // 用户自己点了取消,不算出错
       if (e?.name !== 'AbortError') {
@@ -78,6 +93,7 @@ export default function AppUpdateSheet({
       }
     } finally {
       abortRef.current = null;
+      busy.current = false;
     }
   };
 
@@ -86,7 +102,7 @@ export default function AppUpdateSheet({
   const percent = phase.kind === 'downloading' && phase.fraction >= 0 ? Math.floor(phase.fraction * 100) : null;
 
   return (
-    <BottomSheet visible={release !== null} onClose={closable ? onClose : () => {}} closeOnBackdrop={closable}>
+    <BottomSheet visible={release !== null} onClose={closable ? onClose : () => {}} closeOnBackdrop={closable} priority={forced ? 100 : 0}>
       <View style={[styles.sheet, { paddingBottom: insets.bottom + spacing.md }]}>
         <View style={styles.head}>
           <View style={{ width: 30 }} />
@@ -111,7 +127,7 @@ export default function AppUpdateSheet({
 
             {release.releaseNotes ? (
               <ScrollView style={styles.notesBox} contentContainerStyle={{ padding: 14 }}>
-                <Text style={styles.notes}>{release.releaseNotes}</Text>
+                <Text selectable style={styles.notes}>{release.releaseNotes}</Text>
               </ScrollView>
             ) : null}
 
@@ -126,6 +142,8 @@ export default function AppUpdateSheet({
               </View>
             ) : null}
 
+            {forced ? <Text style={styles.hint}>{t('update.requiredHint')}</Text> : null}
+            {!canSelfUpdate ? <Text style={styles.hint}>{t('update.iosInstallHint')}</Text> : null}
             {phase.kind === 'ready' ? <Text style={styles.hint}>{t('update.installHint')}</Text> : null}
 
             {err ? (
@@ -156,7 +174,7 @@ export default function AppUpdateSheet({
                   disabled={downloading}
                   onPress={start}
                 >
-                  <Text style={styles.primaryTxt}>{t(canSelfUpdate ? 'update.updateNow' : 'update.openDownload')}</Text>
+                  <Text style={styles.primaryTxt}>{t('update.updateNow')}</Text>
                 </TouchableOpacity>
               )}
             </View>

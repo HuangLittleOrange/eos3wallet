@@ -1,4 +1,5 @@
 // 服务端提供绑定资料；客户端核对完整受限支付协议并重建 action 后才签名。
+import { notifyWalletDataChanged } from './walletDataEvents';
 import { eos3Request, signPlainTransactionJSON, type PlainTxJSON } from './eos3Sign';
 import { CHAINS, type ChainId, type NodeInfo } from './config';
 import { PAYLIMIT_CONTRACT } from '../passkey/constants';
@@ -142,5 +143,6 @@ export async function signAndCompleteBindAuthorization(opts: {
     signedTransaction: { signatures: [signature], serializedTransaction, transaction: plan.build.transaction },
     assetLimits: plan.intent.assetLimits,
   });
+  notifyWalletDataChanged({ chainId: plan.chain, accounts: [plan.intent.actor], permissions: true });
   return { txId: result.txid };
 }

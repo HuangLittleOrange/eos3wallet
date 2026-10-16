@@ -32,6 +32,7 @@ jest.mock('../../dapp/dappGate', () => ({
 jest.mock('../../i18n', () => ({ useI18n: jest.fn() }));
 jest.mock('../../content/AppContentContext', () => ({ useAppContent: jest.fn() }));
 jest.mock('../../components/AppUpdateSheet', () => 'AppUpdateSheet');
+jest.mock('../../update/AppUpdateProvider', () => ({ useAppUpdates: () => ({ checkUpdates: jest.fn(async () => null) }) }));
 jest.mock('../../update/appUpdate', () => ({ canSelfUpdate: false, currentAppVersion: () => '1.0.1' }));
 
 import React from 'react';

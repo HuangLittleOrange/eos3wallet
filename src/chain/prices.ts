@@ -18,6 +18,7 @@
 
 import { t } from '../i18n';
 import { fetchWithTimeout as fetchWithTimeoutRaw } from '../net/fetchRetry';
+import { ReadCache } from '../net/readCache';
 
 export type PriceSourceId = 'coingecko' | 'binance';
 
@@ -130,32 +131,37 @@ const FETCHERS: Record<PriceSourceId, () => Promise<PriceMap>> = {
 
 // 每个源各自 60 秒缓存,互不影响——切源不会读到另一个源的缓存,
 // 也不会因为切了源就把还没过期的老源缓存白白扔掉。
-const cache: Partial<Record<PriceSourceId, PriceSnapshot>> = {};
 const TTL_MS = 60_000;
+function validSnapshot(value: unknown): value is PriceSnapshot {
+  const snapshot = value as PriceSnapshot | null;
+  return !!snapshot && typeof snapshot.source === 'string' && snapshot.stale === false
+    && Number.isFinite(snapshot.updatedAt) && snapshot.updatedAt > 0 && snapshot.updatedAt <= Date.now()
+    && !!snapshot.prices && typeof snapshot.prices === 'object' && Object.keys(snapshot.prices).length > 0
+    && Object.entries(snapshot.prices).every(([name, quote]) => name in COINGECKO_IDS && quote
+      && Number.isFinite(quote.usd) && quote.usd >= 0 && Number.isFinite(quote.change24h));
+}
+const cache = new ReadCache<PriceSnapshot>(TTL_MS, { storagePrefix: 'eos3.prices.v1.', validate: validSnapshot });
+export function peekPrices(source: PriceSourceId): PriceSnapshot | null {
+  const saved = cache.get(source);
+  return saved.data ? { ...saved.data, stale: !!saved.error || Date.now() - saved.data.updatedAt >= TTL_MS } : null;
+}
+export async function loadPriceSnapshot(source: PriceSourceId): Promise<PriceSnapshot | null> {
+  await cache.hydrate(source); return peekPrices(source);
+}
 
 /** 拉取行情。60 秒内复用缓存,避免频繁请求被限流 */
 export async function fetchPrices(
   source: PriceSourceId = DEFAULT_PRICE_SOURCE,
   force = false
 ): Promise<PriceSnapshot> {
-  const cached = cache[source];
-  if (!force && cached && Date.now() - cached.updatedAt < TTL_MS) return cached;
-
   try {
-    const prices = await FETCHERS[source]();
-    const snap: PriceSnapshot = {
-      prices,
-      source: PRICE_SOURCES.find((s) => s.id === source)?.name ?? source,
-      updatedAt: Date.now(),
-      stale: false,
-    };
-    cache[source] = snap;
-    return snap;
+    return await cache.fetch(source, async () => ({
+      prices: await FETCHERS[source](), source: PRICE_SOURCES.find(s => s.id === source)!.name,
+      updatedAt: Date.now(), stale: false,
+    }), force);
   } catch {
-    // 失败不抛错 —— 钱包应当继续可用,只是价格标为兜底
-    const snap = cached && !cached.stale ? { ...cached, stale: true } : fallbackSnapshot();
-    cache[source] = snap;
-    return snap;
+    // Preserve the last successful price and its original time through repeated failures.
+    return peekPrices(source) ?? fallbackSnapshot();
   }
 }
 

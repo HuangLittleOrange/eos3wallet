@@ -29,7 +29,8 @@ import ToolsSheet from '../components/ToolsSheet';
 import TokenPickerSheet from '../components/TokenPickerSheet';
 import { loadTokenPrefs, TokenPrefs } from '../chain/tokenPrefs';
 import { listLinkSessions, subscribeLinkSessions } from '../dapp/linkSessions';
-import { AuthorizedApp, fetchAuthorizedApps, permissionDisplayAppType, permissionKey } from '../chain/permissions';
+import { AuthorizedApp, permissionDisplayAppType, permissionKey } from '../chain/permissions';
+import { useAuthorizedApps } from '../chain/useAuthorizedApps';
 import { RootStackParamList } from '../navigation/RootNavigator';
 import { useI18n, TranslationKey } from '../i18n';
 
@@ -58,40 +59,27 @@ export default function WalletScreen() {
   const [walletSheet, setWalletSheet] = useState(false);
   const [toolsSheet, setToolsSheet] = useState(false);
   const [pickFor, setPickFor] = useState<null | 'send' | 'receive'>(null);
-  const [tokenPrefs, setTokenPrefs] = useState<TokenPrefs>(EMPTY_TOKEN_PREFS);
+  const prefsScope = JSON.stringify([w.chainId, w.account]);
+  const [prefsState, setPrefsState] = useState<{ scope: string; value: TokenPrefs } | null>(null);
+  const tokenPrefs = prefsState?.scope === prefsScope ? prefsState.value : EMPTY_TOKEN_PREFS;
   const [linkSessionCount, setLinkSessionCount] = useState(0);
 
   // 资产区的"资产/授权"分栏——"授权"这栏跟 PermissionScreen 展示的是同一份
   // 数据(paylimit 受限权限),只是给首页开个更快的入口,不用先进"更多工具"。
   // 懒加载:切到这栏才拉一次,避免每次打开首页都多打一发不一定用得上的请求。
   const [assetTab, setAssetTab] = useState<'tokens' | 'permissions'>('tokens');
-  const [authorizedApps, setAuthorizedApps] = useState<AuthorizedApp[] | null>(null);
-  const [authorizedLoading, setAuthorizedLoading] = useState(false);
-  // 下拉刷新那颗原生转圈只在用户真的拉了一下时才亮——跟 useManualRefresh 一个道理:
-  // 切到这一栏的首次加载已经有列表里那颗转圈了,再让顶部也转一次,看着像整页卡了一下
-  const [authorizedPulled, setAuthorizedPulled] = useState(false);
-  const [authorizedErr, setAuthorizedErr] = useState<string | null>(null);
-
-  const loadAuthorizedApps = useCallback(() => {
-    setAuthorizedLoading(true);
-    setAuthorizedErr(null);
-    fetchAuthorizedApps(w.account)
-      .then((overview) => setAuthorizedApps(overview.permissions.filter((p) => p.managedByPayLimit)))
-      .catch((e: any) => setAuthorizedErr(e?.message ?? t('permission.queryFailed')))
-      .finally(() => {
-        setAuthorizedLoading(false);
-        setAuthorizedPulled(false);
-      });
-  }, [w.account, t]);
-
+  const authorized = useAuthorizedApps(w.chainId, assetTab === 'permissions' ? w.account : '');
+  const authorizedApps = authorized.data?.permissions.filter(p => p.managedByPayLimit) ?? null;
+  const authorizedLoading = authorized.refreshing || (assetTab === 'permissions' && !authorized.data && !authorized.error);
+  const authorizedErr = authorized.error ? String(authorized.error.message ?? t('permission.queryFailed')) : null;
+  const [authorizedPullScope, setAuthorizedPullScope] = useState<string | null>(null);
+  const authorizedPulled = authorizedPullScope === prefsScope;
   const onAuthorizedPull = useCallback(() => {
-    setAuthorizedPulled(true);
-    loadAuthorizedApps();
-  }, [loadAuthorizedApps]);
-
-  useEffect(() => {
-    if (assetTab === 'permissions') loadAuthorizedApps();
-  }, [assetTab, loadAuthorizedApps]);
+    setAuthorizedPullScope(prefsScope);
+    void authorized.refresh().catch(() => {}).finally(() => {
+      setAuthorizedPullScope(current => current === prefsScope ? null : current);
+    });
+  }, [authorized.refresh, prefsScope]);
 
   // 首页那颗"已连接 DApp"入口气泡(参考 TP)——不能只在这个页面重新聚焦时
   // 拉一遍,持久会话是 LinkSessionProvider 在后台收到推送/扫码就直接建立的,
@@ -112,7 +100,7 @@ export default function WalletScreen() {
     useCallback(() => {
       let cancelled = false;
       loadTokenPrefs(w.chainId, w.account).then((p) => {
-        if (!cancelled) setTokenPrefs(p);
+        if (!cancelled) setPrefsState({ scope: JSON.stringify([w.chainId, w.account]), value: p });
       });
       return () => {
         cancelled = true;
@@ -139,12 +127,11 @@ export default function WalletScreen() {
 
   const loading = w.status === 'loading';
   const { refreshing, onRefresh } = useManualRefresh(w.status, w.refresh);
-  const permissionBadges = useWalletPermissionBadges(w.currentWallet ? [w.currentWallet] : [], w.client, !walletSheet, w.resources);
+  const permissionBadges = useWalletPermissionBadges(w.currentWallet ? [w.currentWallet] : [], w.client, !walletSheet);
   const authPerms = w.currentWallet ? permissionBadges[w.currentWallet.id] ?? [] : [];
   // 冷启动/切账户这段空档,tokens 还是空的但上次有留快照的话,先拿快照垫一下,
-  // 别让页面一开就空转;真实数据一到(w.tokens 非空或 status 不再是 loading)
-  // 就自动让位,这里只影响这个"看一眼"的展示页,不碰任何签名/广播流程
-  const usingCache = loading && w.tokens.length === 0 && !!w.cachedTokens;
+  // 真实数据一到就自动让位;断网时继续保留快照,不碰签名/广播流程。
+  const usingCache = w.tokens.length === 0 && !!w.cachedTokens;
   const rawTokens = usingCache ? w.cachedTokens! : w.tokens;
 
   // 首页实际展示的列表 = 持有的代币(系统代币强制常显,其余按用户在「添加代币」页
