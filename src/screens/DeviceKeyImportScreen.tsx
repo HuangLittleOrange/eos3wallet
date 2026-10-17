@@ -30,8 +30,12 @@ const BLUE = '#1E88FF';
  * 已有 Passkey 账户导入：选择 eos3.app 或直接通过 Anchor 网页授权这台手机。
  * 本机密钥先加密保存为待授权记录,网页授权后按公钥查链并导入。
  */
-export default function DeviceKeyImportScreen({ route }: { route?: { params?: { provider?: 'anchor' } } }) {
+export default function DeviceKeyImportScreen({ route, purpose }: {
+  route?: { params?: { provider?: 'anchor'; purpose?: 'create' } };
+  purpose?: 'create';
+}) {
   const viaAnchor = route?.params?.provider === 'anchor';
+  const creating = (purpose ?? route?.params?.purpose) === 'create';
   const nav = useNavigation<any>();
   const insets = useSafeAreaInsets();
   const w = useWalletSession();
@@ -310,7 +314,7 @@ export default function DeviceKeyImportScreen({ route }: { route?: { params?: { 
 
   return (
     <View style={styles.root}>
-      <PageHeader title={t(viaAnchor ? 'import.viaAnchor' : 'import.viaEos3')} onBack={() => {
+      <PageHeader title={t(creating ? (viaAnchor ? 'createWalletMethod.anchorOneTap' : 'passkeyCreate.title') : viaAnchor ? 'import.viaAnchor' : 'import.viaEos3')} onBack={() => {
         if (nav.canGoBack()) nav.goBack();
         else nav.reset({ index: 0, routes: [{ name: 'Tabs' }] });
       }} />
@@ -318,9 +322,9 @@ export default function DeviceKeyImportScreen({ route }: { route?: { params?: { 
         <View style={styles.iconWrap}>
           <Ionicons name="phone-portrait-outline" size={48} color={BLUE} />
         </View>
-        <Text style={styles.title}>{t('deviceKeyImport.heroTitle')}</Text>
-        <Text style={styles.desc}>{t(viaAnchor ? 'anchorImport.heroDesc' : 'deviceKeyImport.heroDesc')}</Text>
-        <Text style={styles.accountHint}>{t(viaAnchor ? 'anchorImport.accountHint' : 'deviceKeyImport.accountHint')}</Text>
+        <Text style={styles.title}>{t(creating ? (viaAnchor ? 'anchorCreate.heroTitle' : 'passkeyCreate.heroTitle') : 'deviceKeyImport.heroTitle')}</Text>
+        <Text style={styles.desc}>{t(creating ? (viaAnchor ? 'anchorCreate.heroDesc' : 'passkeyCreate.heroDesc') : viaAnchor ? 'anchorImport.heroDesc' : 'deviceKeyImport.heroDesc')}</Text>
+        <Text style={styles.accountHint}>{t(viaAnchor ? 'anchorImport.accountHint' : creating ? 'passkeyCreate.noteText' : 'deviceKeyImport.accountHint')}</Text>
 
         <View style={styles.steps}>
           <Text style={[styles.step, !pending && styles.stepActive]}>{t('deviceKey.stepGenerate')}</Text>
@@ -411,7 +415,7 @@ export default function DeviceKeyImportScreen({ route }: { route?: { params?: { 
         ) : (
           <>
             <TouchableOpacity style={[styles.submit, (busy || editingName || w.chainId !== 'vaulta') && styles.submitOff]} disabled={busy || editingName || w.chainId !== 'vaulta'} activeOpacity={0.85} onPress={viaAnchor ? openAnchor : openWeb}>
-              <Text style={styles.submitTxt}>{t(viaAnchor ? (anchorReview ? 'anchorImport.confirm' : anchorAccount ? 'anchorImport.retry' : 'anchorImport.openWeb') : 'deviceKey.openWeb')}</Text>
+              <Text style={styles.submitTxt}>{t(viaAnchor ? (anchorReview ? 'anchorImport.confirm' : anchorAccount ? 'anchorImport.retry' : 'anchorImport.openWeb') : creating ? 'passkeyCreate.submit' : 'deviceKey.openWeb')}</Text>
             </TouchableOpacity>
             <Text style={styles.openHint}>{t(w.chainId === 'vaulta' ? (viaAnchor ? 'anchorImport.openWebHint' : 'deviceKeyImport.openWebHint') : (viaAnchor ? 'anchorImport.mainnetOnly' : 'deviceKey.webMainnetOnly'))}</Text>
             <TouchableOpacity style={[styles.secondary, (busy || editingName) && styles.submitOff]} disabled={busy || editingName} activeOpacity={0.85} onPress={() => void check()}>

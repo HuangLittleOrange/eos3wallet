@@ -8,9 +8,11 @@ import { sealMessage } from '../dapp/linkCrypto';
 import { listenLinkChannel } from '../dapp/linkSocket';
 import { CHAINS } from './config';
 import { t } from '../i18n';
+import { beginAnchorAuthorization } from './anchorAuthorization';
+import { ANCHOR_WEB_RETURN_URL } from './anchorWebReturn';
 
 export const ANCHOR_WEB_ORIGIN = 'https://vaulta.anchorwallet.io';
-const RETURN_URL = 'eos3wallet://device-key-authorized?provider=anchor';
+const RETURN_URL = ANCHOR_WEB_RETURN_URL;
 const APP_NAME = 'eos3wallet';
 const CHAIN = CHAINS.vaulta.chainIdHash;
 const esrOptions = { zlib: { deflateRaw: (b: Uint8Array) => deflateRaw(b), inflateRaw: (b: Uint8Array) => inflateRaw(b) } };
@@ -58,6 +60,8 @@ export function anchorWebUrl(params: Record<string, string>): string {
 /** The relay only transports a response; account access is decided by the final chain signature. */
 export async function openAnchorWebRequest(url: string, callback: string, signal?: AbortSignal): Promise<CallbackPayload> {
   if (new URL(url).origin !== ANCHOR_WEB_ORIGIN || signal?.aborted) throw new AnchorWebCancelled();
+  const stopAuthorization = await beginAnchorAuthorization();
+  if (signal?.aborted) { stopAuthorization(); throw new AnchorWebCancelled(); }
   return new Promise((resolve, reject) => {
     let done = false;
     let listener: ReturnType<typeof listenLinkChannel> | undefined;
@@ -79,8 +83,8 @@ export async function openAnchorWebRequest(url: string, callback: string, signal
       foreground.remove();
       signal?.removeEventListener('abort', abort);
       listener?.stop();
-      if (error) { void closeBrowser(false); reject(error); }
-      else void closeBrowser(true).then(() => resolve(payload!), reject);
+      if (error) { stopAuthorization(); void closeBrowser(false); reject(error); }
+      else void closeBrowser(true).then(() => { stopAuthorization(); resolve(payload!); }, error => { stopAuthorization(); reject(error); });
     };
     const abort = () => finish(new AnchorWebCancelled());
     const timer = setTimeout(() => finish(new Error(t('anchorImport.timeout'))), 300_000);
@@ -98,14 +102,22 @@ export async function openAnchorWebRequest(url: string, callback: string, signal
       // Android can abort the socket while Chrome/Passkey verification is in
       // front. Buoy buffers the callback, so reconnect before deciding cancel.
       listener?.stop();
-      listener = listenLinkChannel(callback, receive);
+      listener = listenLinkChannel(callback, receive, {
+        retryImmediately: () => Platform.OS === 'android' && AppState.currentState !== 'active',
+      });
     };
     const foreground = AppState.addEventListener('change', state => {
-      if (state === 'active') resumeReceiver();
+      // Restart on Android's pause too: a backoff scheduled just before pause
+      // will otherwise be frozen until the user manually closes the browser.
+      if (state === 'active' || (Platform.OS === 'android' && state === 'background')) resumeReceiver();
     });
     resumeReceiver();
     browserStarted = true;
-    void WebBrowser.openAuthSessionAsync(url, RETURN_URL).then(result => {
+    // Keep Chrome in our task. A separate browser task (SDK 57's default proxy)
+    // leaves our activity behind another task and can prevent the relay's deep
+    // link from bringing it forward under Android's background launch rules.
+    void WebBrowser.openAuthSessionAsync(url, RETURN_URL,
+      Platform.OS === 'android' ? { createTask: false } : undefined).then(result => {
       // The native session handles user cancellation; only the relay carries signatures.
       if (done) return;
       if (result.type === 'cancel' || result.type === 'dismiss' || result.type === 'success') {

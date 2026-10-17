@@ -2,6 +2,7 @@ import React from 'react';
 import { Platform, View, ActivityIndicator } from 'react-native';
 import { NavigationContainer, LinkingOptions } from '@react-navigation/native';
 import { navigationRef } from './navigationRef';
+import { isAnchorWebReturnUrl } from '../chain/anchorWebReturn';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,7 +29,6 @@ import DeviceKeyImportScreen from '../screens/DeviceKeyImportScreen';
 import SetMasterPasswordScreen from '../screens/SetMasterPasswordScreen';
 import CreateWalletMethodScreen from '../screens/CreateWalletMethodScreen';
 import CreateAccountPayScreen from '../screens/CreateAccountPayScreen';
-import PasskeyLoginScreen from '../screens/PasskeyLoginScreen';
 import PasskeyCreateScreen from '../screens/PasskeyCreateScreen';
 import SearchScreen from '../screens/SearchScreen';
 import AddTokenScreen from '../screens/AddTokenScreen';
@@ -64,11 +64,10 @@ export type RootStackParamList = {
   Import: undefined;
   ImportSecret: { mode: 'mnemonic' | 'privatekey' };
   ImportWatch: undefined;
-  DeviceKeyImport: { provider?: 'anchor' } | undefined;
+  DeviceKeyImport: { provider?: 'anchor'; purpose?: 'create' } | undefined;
   SetMasterPassword: undefined;
   CreateWalletMethod: undefined;
   CreateAccountPay: undefined;
-  PasskeyLogin: undefined;
   PasskeyCreate: undefined;
   Search: undefined;
   AddToken: undefined;
@@ -101,6 +100,7 @@ const Stack = createNativeStackNavigator<RootStackParamList>();
  */
 const linking: LinkingOptions<RootStackParamList> = {
   prefixes: ['https://eos3.app', 'aurorawallet://', 'eos3wallet://'],
+  filter: url => !isAnchorWebReturnUrl(url),
   config: {
     screens: {
       BindAuthorize: 'tgbind',
@@ -219,7 +219,6 @@ export default function RootNavigator() {
         <Stack.Screen name="SetMasterPassword" component={SetMasterPasswordScreen} />
         <Stack.Screen name="CreateWalletMethod" component={CreateWalletMethodScreen} />
         <Stack.Screen name="CreateAccountPay" component={CreateAccountPayScreen} />
-        <Stack.Screen name="PasskeyLogin" component={PasskeyLoginScreen} />
         <Stack.Screen name="PasskeyCreate" component={PasskeyCreateScreen} />
         <Stack.Screen name="Search" component={SearchScreen} />
         <Stack.Screen name="AddToken" component={AddTokenScreen} />

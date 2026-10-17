@@ -12,24 +12,8 @@ import { useI18n } from '../i18n';
 const BLUE = '#2E7DF7';
 
 /**
- * “创建钱包”的入口 —— 选合约付费开户还是 Google Passkey 开户,不再有
- * “助记词 + 手动填一个已经在别处开通好的账户名”这条旧路(已删除
- * CreateWalletScreen)。合约创建里已经包含完整的助记词生成/备份/验证,
- * 是旧流程的超集,不需要再单独留一条。
- *
- * 合约创建本质是往 signupwallet 合约转一笔钱 + 一个带公钥的 memo(参考
- * eoseyes.com/signup),这笔钱不一定非要本机已有钱包出——交易所提现、
- * 别的设备上的钱包,只要转账时能带上正确的 memo 都能触发建号。所以这一项
- * 一直可点;本机没有可签名钱包时,CreateAccountPayScreen 的支付步骤会退化成
- * “生成新钱包 + 展示转账收款信息”,而不是在这里就拦掉。
- *
- * 主密码网关整屏一起挡——参考 TP:不管接下来走合约建号还是 Google 一键注册,
- * 本机没设过主密码就先跳去 SetMasterPasswordScreen,和
- * ImportScreen/CreateAccountPayScreen 是同一套网关(设置完 goBack() 回这屏,
- * 取消则连这屏一起跳过,见 SetMasterPasswordScreen 顶部注释)。Google 开户
- * 本地其实不落任何需要密码保护的密钥,单看这一条本可以不用挡,但
- * 统一成"进这几个入口一律先设过主密码"这一条规则更符合直觉、也和 TP 对齐,
- * 不必让用户先猜"这条要设、那条不用设"。
+ * 合约付费开户，或通过 eos3.app / Anchor 网页授权开通本机钱包。
+ * 先设置主密码：网页授权使用的设备私钥也需加密保存在本机。
  */
 export default function CreateWalletMethodScreen() {
   const nav = useNavigation<any>();
@@ -65,20 +49,20 @@ export default function CreateWalletMethodScreen() {
           />
         </View>
 
-        {/* Passkey 相关的入口单独一组,始终展示 —— 不按系统版本提前藏掉。
-            能拿到的那个 isSupported() 只是"Android 9+ / iOS 15+"的粗判断,
-            既不保证真能用(没设锁屏、没有凭据提供方照样会失败),提前藏掉
-            还会让用户连"为什么不能用"都看不到。真正的可用性等 ceremony 跑起来
-            自然会有结果,失败路径已经有明确提示(见 nativePasskey.ts)。 */}
+        {/* Google 登录、开户和账户授权由网页完成，App 不调用原生 Passkey。 */}
         <View style={styles.group}>
-          {/* 后端目前只有 Google OAuth 一条建会话的路(/api/auth/google/start),
-              没有邮箱注册端点,所以文案照实写成 Google。等后端把邮箱注册接上
-              再换这一行。 */}
           <Row
             icon={<Ionicons name="logo-google" size={20} color="#EA4335" />}
             title={t('createWalletMethod.googleOneTap')}
             desc={t('createWalletMethod.googleOneTapDesc')}
             onPress={() => nav.navigate('PasskeyCreate')}
+          />
+          <View style={styles.sep} />
+          <Row
+            icon={<MaterialCommunityIcons name="anchor" size={22} color={BLUE} />}
+            title={t('createWalletMethod.anchorOneTap')}
+            desc={t('createWalletMethod.anchorOneTapDesc')}
+            onPress={() => nav.navigate('DeviceKeyImport', { provider: 'anchor', purpose: 'create' })}
           />
         </View>
       </View>
@@ -115,6 +99,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#F2F3F5' },
 
   group: { backgroundColor: colors.white, borderRadius: 12, marginBottom: 14, paddingHorizontal: 14 },
+  sep: { height: StyleSheet.hairlineWidth, backgroundColor: '#EEF0F3', marginLeft: 50 },
 
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 },
   rowOff: { opacity: 0.45 },

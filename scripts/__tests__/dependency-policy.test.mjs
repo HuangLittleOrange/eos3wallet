@@ -77,7 +77,11 @@ test('container source snapshot excludes environment, history, credentials and l
     assert.ok(manifest['src/crypto/vault.ts']);
     assert.ok(manifest['.npmrc']);
     assert.ok(manifest['dependency-policy.json']);
-    for (const name of Object.keys(manifest)) assert.doesNotMatch(name, /(^|\/)(\.env|\.git\/|\.codex\/|\.claude\/|credentials\/|backups\/|exports\/|android\/|ios\/)/);
+    assert.ok(manifest['modules/anchor-authorization/android/src/main/AndroidManifest.xml']);
+    for (const name of Object.keys(manifest)) {
+      assert.doesNotMatch(name, /(^|\/)(\.env|\.git\/|\.codex\/|\.claude\/|credentials\/|backups\/|exports\/)/);
+      if (/(^|\/)(android|ios)\//.test(name)) assert.match(name, /^modules\/[^/]+\/android\/(?:build\.gradle|src\/main\/(?:AndroidManifest\.xml|java\/.+\.kt))$/);
+    }
   } finally { fs.rmSync(directory, { recursive: true, force: true }); }
 });
 

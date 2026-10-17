@@ -1,21 +1,6 @@
-// eos3.app(eospasskey 项目)后端接口的客户端。
-//
-// 登录部分(/api/platform/passkey/auth/*)只用它已有的"纯 passkey 登录"接口,
-// 不涉及 Google 登录 / 开户,后端零改动。
-//
-// 注册/开户部分(/api/auth/google/*、/api/passkey-chain/register/*)是这次新加的 ——
-// 后端建号逻辑还在补,这边先按约定好的接口形状对接,细节见项目内的实现计划。
-//
-// 会话是 Cookie 形式(eos_platform_passkey_auth_challenge 挑战码 + 最终的登录态 Cookie)。
-// RN 的 fetch 走系统原生网络栈(iOS NSURLSession / Android OkHttp),同源请求默认会保留
-// 并携带 Set-Cookie 下发的 Cookie,这里显式带上 `credentials: 'include'` 和网页端保持一致;
-// 真机联调时需要确认这个假设成立,如果不行再补 @react-native-cookies/cookies 显式接管。
-//
-// Google 登录这段更麻烦:OAuth 要先跳系统浏览器(expo-web-browser 的 auth session)
-// 再跳回 App,系统浏览器建立的会话 Cookie 能不能被 App 自己的 fetch() 读到,两边是不是
-// 共享同一个 Cookie 存储,真机测试前不确定。留了一个可选的 bearer token 兜底路径:
-// 如果不行,后端可以在 returnTo 跳转的 URL 上带一个一次性 token,这边存下来后续
-// 显式当 Authorization 头带上,不依赖 Cookie 能不能共享。
+// eos3.app 的登录和 Passkey 开户接口。
+// 原生请求通过 credentials: 'include' 保留挑战 Cookie；Google 登录会话则由
+// 系统浏览器通过回跳 URL 的 fragment 交给 App，随后显式使用 Bearer token。
 import type {
   AuthenticationResponseJSON,
   CreationResponse,
@@ -60,11 +45,32 @@ async function request<T>(path: string, init?: RequestInit & { token?: string })
 type WrappedRequestOptions = { publicKey: PublicKeyCredentialRequestOptionsJSON };
 type WrappedCreationOptions = { publicKey: PublicKeyCredentialCreationOptionsJSON };
 
+// 与后端唯一允许的原生回跳地址及 app.json 已注册的 scheme 保持一致。
+export const GOOGLE_OAUTH_RETURN_URL = 'eos3wallet://passkey-create';
+
 /** 拼 Google OAuth 起始地址,交给 expo-web-browser 的 openAuthSessionAsync 打开 */
-export function googleOAuthStartUrl(returnTo: string): string {
+export function googleOAuthStartUrl(): string {
   const u = new URL(`${EOS3_BASE_URL}/api/auth/google/start`);
-  u.searchParams.set('returnTo', returnTo);
+  u.searchParams.set('returnTo', GOOGLE_OAUTH_RETURN_URL);
   return u.toString();
+}
+
+/** 只接受约定的回跳及 fragment 令牌；取消返回 null，其他失败不继续注册。 */
+export function googleOAuthTokenFromUrl(value: string): string | null {
+  const fail = () => new Eos3ApiError(t('eos3Error.googleAuthFailed'));
+  if (value.split(/[?#]/, 1)[0] !== GOOGLE_OAUTH_RETURN_URL) throw fail();
+  let callback: URL;
+  try {
+    callback = new URL(value);
+  } catch {
+    throw fail();
+  }
+  const authError = callback.searchParams.get('authError');
+  if (authError === 'oauth_cancelled') return null;
+  if (authError !== null) throw fail();
+  const tokens = new URLSearchParams(callback.hash.slice(1)).getAll('token');
+  if (tokens.length !== 1 || !tokens[0].trim()) throw fail();
+  return tokens[0];
 }
 
 export type Eos3PublicUser = {
@@ -128,9 +134,7 @@ export async function platformPasskeyRegisterOptions(token?: string): Promise<Wr
 
 /**
  * 第二步:把设备做出的 attestation 结果发回去校验,成功后建一条 passkey 凭据。
- * `wallet.eosAccount` 是否有值取决于后端有没有把"建链上账户"接到这个接口上 ——
- * 现状(见项目计划里的调研记录)是不接的,拿到 null 要提示用户稍后重试,
- * 不能假设这里一定会返回一个可用账户。
+ * 如果链上账户尚未创建完成，wallet.eosAccount 可能为空，调用方应提示稍后重试。
  */
 export function platformPasskeyRegisterVerify(response: CreationResponse, token?: string): Promise<Eos3RegisterResult> {
   return request<Eos3RegisterResult>('/api/passkey-chain/register/verify', {

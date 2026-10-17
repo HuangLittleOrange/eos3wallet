@@ -5,6 +5,7 @@
 // 断"——想一直收就得每收完一条马上重新订阅。断线/连不上时才需要退避重试,
 // 收到消息后紧接着重连不用等(不然错过 dApp 紧接着推来的下一条请求)。
 const MAX_BACKOFF_MS = 10_000;
+const MAX_IMMEDIATE_RETRIES = 3;
 
 function backoffMs(tries: number): number {
   return Math.min((tries * 10) ** 2, MAX_BACKOFF_MS);
@@ -39,9 +40,11 @@ export type LinkChannelListener = {
  * 网络断了/连不上会按退避公式重试,不会因为一次抖动就彻底停摆;`stop()`
  * 之后不会再重连,也不会再触发回调。
  */
-export function listenLinkChannel(channelUrl: string, onMessage: (raw: Uint8Array) => void): LinkChannelListener {
+export function listenLinkChannel(channelUrl: string, onMessage: (raw: Uint8Array) => void,
+  options: { retryImmediately?: () => boolean } = {}): LinkChannelListener {
   let stopped = false;
   let tries = 0;
+  let immediateRetries = 0;
   let current: WebSocket | null = null;
   let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -62,6 +65,7 @@ export function listenLinkChannel(channelUrl: string, onMessage: (raw: Uint8Arra
       tries = 0; // 连上就算这一轮退避结束,下次真断线从头计
     };
     socket.onmessage = (e) => {
+      if (stopped || current !== socket || handledReconnect) return;
       handledReconnect = true;
       socket.close();
       try {
@@ -75,8 +79,16 @@ export function listenLinkChannel(channelUrl: string, onMessage: (raw: Uint8Arra
       // current !== socket:这个 close 事件来自已经被替换掉的上一代连接
       // (比如 stop() 期间又收到一条消息触发了 connect()),不该由它来决定要不要重连
       if (handledReconnect || stopped || current !== socket) return;
+      handledReconnect = true;
       tries += 1;
-      retryTimer = setTimeout(connect, backoffMs(tries));
+      // Android pauses RN timers while a Custom Tab / Passkey prompt covers the
+      // app. A timer-only reconnect would wait for the very return this callback
+      // must trigger. Native socket events still run; allow a bounded recovery
+      // without timers for that transport, then fall back to normal backoff.
+      if (immediateRetries < MAX_IMMEDIATE_RETRIES && options.retryImmediately?.()) {
+        immediateRetries += 1;
+        connect();
+      } else retryTimer = setTimeout(connect, backoffMs(tries));
     };
     // onerror 后面必然紧跟一次 onclose,退避统一交给 onclose 处理,
     // 这里不接管:一次错误如果两边都调 connect(),会排上两条重连队列

@@ -2,6 +2,20 @@
 
 2026-10-16：导入钱包新增独立的“通过 Anchor 授权”入口。原有“通过 eos3.app 授权”入口保留，用于 eos3.app 的账户。
 
+## Google 网页开户与设备授权
+
+2026-10-17：创建钱包的“Google 一键开户”入口复用设备密钥授权流程，不再由 App 发起原生 Passkey 注册或登录。App 先生成并用主密码加密保存设备私钥，只将公钥、设备名和固定回跳地址带到 `https://eos3.app/account`。
+
+Google 登录、首次开户、已有账户状态判断和设备授权均在 eos3.app 网页完成。新用户在网页创建账户；已有账户直接授权本机设备，无需在 App 重复注册 Passkey。网页仍可按其账户方案使用 Passkey 验证和签名。直接通过 Anchor 网页连接已有账户的入口保持原有流程，不强制增加 Google 登录。
+
+完成授权后返回 `eos3wallet://device-key-authorized`，App 独立检查链上 active 权限，验证设备公钥具有足够权重后才导入为本机密钥钱包。后续 App 交易使用加密保存的设备私钥，通过钱包密码或已开启的生物识别确认。取消或失败保留待授权密钥以便重试。原生 Passkey 登录路由已移除；旧版 Passkey 钱包的签名支持保持原样。
+
+验证：71 项相关 Jest 测试、45 项工具测试及类型、源码检查通过。覆盖 Google 开户入口不调用原生 Passkey API、首次生成密钥、已有账户网页授权、取消、链上验证失败、测试网拦截，以及原有 eos3.app/Anchor 授权导入。未执行本次真实 Google 账户开户或链上授权交易。
+
+## Anchor 直接授权
+
+“创建钱包”新增“Anchor 一键开户”，与 Google 入口并列。它通过 `provider=anchor`、`purpose=create` 复用下述设备授权流程，页面使用开通本机钱包的文案；导入钱包入口保持原有文案。两者均连接 Anchor 网页账户、核对并签署设备授权、独立查链后导入，不在 App 内发起原生 Passkey 注册或登录，也不重新创建已有链上账户。
+
 Anchor 路径：导入钱包 → 通过 Anchor 授权 → 生成或恢复本机待授权密钥 → 直接打开 `https://vaulta.anchorwallet.io/sign` 连接已有 Passkey 账户 → 回到手机核对账户名与本机公钥 → 确认并通过 Anchor 网页签名 → API 代付广播 → 手机独立查询链上 active 权限后导入。
 
 整个 Anchor 路径不加载 eos3.app 网页，不请求 Google 登录，不发出 `anchor://` 或 `esr://` 应用跳转。`eos3.app` 仅作为已部署的设备授权 API，调用 `/api/passkey-chain/device-keys/account/build` 和 `/push`。没有增加依赖或更改依赖锁文件，也不需要本次再部署 Go API。
@@ -37,3 +51,22 @@ Anchor 路径：导入钱包 → 通过 Anchor 授权 → 生成或恢复本机�
 Android 在 Chrome/Google Passkey 验证期间可能以 `Software caused connection abort` 中断钱包的 WebSocket。Anchor 的回调 POST 已成功（HTTP 200），Buoy 会缓冲消息。钱包恢复前台时重新订阅该频道；浏览器的 `dismiss`、`cancel` 或 `success` 结果均先给予 8 秒恢复窗口，避免把已经完成的登录误判为取消。真正的拒绝、离开导入页面和超时仍会停止监听并清理计时器。
 
 2026-10-16 在既有 `EOS3_Passkey_API35`（Android 15、Google Play、已有 Google 账户和屏幕锁）上完成验证：真实 Anchor Passkey 登录，关闭登录网页后恢复已缓冲的 identity 回调，生成并核对授权交易；经用户确认后签名，自动返回钱包，广播、链上权限校验和导入全部成功。独立主网查询确认新增设备公钥生效、原 Passkey 保留、active 阈值仍为 1。测试使用现有开发客户端加载本地源码，诊断日志和直达测试页面的导航只存在于临时副本，正式源码无这些调试修改；尚未以新的正式 APK 复测。
+
+## Android 登录自动返回修复（2026-10-17）
+
+`same_device=true` 和 `return_path` 在连接、签名请求中均已设置。Anchor 网站 identity 分支发送后台回调后清理请求，并不会执行 `return_path`；客户端需要收到该回调后结束浏览器流程。不能只补 URL 参数来解决。
+
+Android 打开 Chrome/Passkey 界面会暂停 React Native 的 `JavaTimerManager`。旧接收器断线后只通过 `setTimeout` 重连，导致回调虽已缓冲，却要等用户手动返回 App 才能继续接收。修复在进入后台时重新订阅，并允许该传输在后台最多即时重连三次，不等待暂停的 JS 定时器；持续失败仍退回普通退避，恢复前台时重新订阅。其他 dApp 接收器保持原有退避策略。取消后迟到帧和重复 close 事件不再触发回调或创建并发连接。
+
+系统浏览器认证在 Android 指定 `createTask: false`，避免 SDK 57 默认代理将浏览器放到独立任务，便于回调的固定 deep link 将同一任务中的钱包恢复到前台；iOS 行为保持原样。回跳仍只恢复页面，最终导入必须通过原有交易审查与链上权限校验。
+
+回归覆盖后台定时器不推进时的断线恢复、三次重试上限、默认退避、重复关闭事件、取消后迟到帧、Android pause 重新订阅及浏览器任务选项。实际安装包验证结果见 `exports/android-anchor-auto-return-2026-10-17/`。
+
+## 后台网络限制的实测修复
+
+Android 1.0.8(7) 实测表明：仅即时重连和 createTask=false 仍不能自动返回。Anchor 回调响应为 HTTP 200 / X-Buoy-Delivery: buffered，同时系统 netpolicy 对钱包 UID 报告 blocked=APP_BACKGROUND；这不是返回参数缺失或单纯浏览器类型导致的问题。
+
+本地 Android Expo 模块 AnchorAuthorization 在用户发起连接或签名时启动短时 dataSync 前台服务，等待系统通知已建立后才打开浏览器。服务只保持这次回调连接可用，不接触私钥、Passkey 或签名内容。收到回调并恢复钱包前台、取消、异常或页面退出后按请求 token 结束服务；原生 310 秒截止时间及 stopWithTask 防止桥接消失后遗留通知。iOS 不使用该模块。最终交易审查和链上校验沿用原流程。
+
+
+2026-10-17 模拟器复测：授权页停留超过 35 秒后，前台任务保持网络 effective=NONE；Anchor callback 返回 X-Buoy-Delivery: delivered，钱包自动前台，任务随即停止。另修复回跳将开户页面误改成导入的问题：Anchor transport 使用独立 `eos3wallet://anchor-web-return`，React Navigation 过滤该唤醒链接，保留原页面及 create/import 参数；外部 `device-key-authorized` 与 tgbind 链接仍正常导航。

@@ -2,6 +2,7 @@ jest.mock('expo-web-browser', () => ({ openAuthSessionAsync: jest.fn(), dismissA
 jest.mock('../../crypto/keys', () => ({ generateKey: jest.fn() }));
 jest.mock('../../dapp/linkSocket', () => ({ listenLinkChannel: jest.fn() }));
 jest.mock('../../i18n', () => ({ t: (key: string) => key }));
+jest.mock('../anchorAuthorization', () => ({ beginAnchorAuthorization: jest.fn(async () => jest.fn()) }));
 import { AppState, Linking, Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { PrivateKey, Serializer, Transaction, UInt64 } from '@wharfkit/antelope';
@@ -12,6 +13,7 @@ import { generateKey } from '../../crypto/keys';
 import { unsealMessage } from '../../dapp/linkCrypto';
 import { AnchorWebCancelled, anchorWebUrl, connectAnchorWeb, openAnchorWebRequest, signWithAnchorWeb } from '../anchorWeb';
 import { CHAINS } from '../config';
+import { beginAnchorAuthorization } from '../anchorAuthorization';
 // This transport test needs matching ephemeral keys, not fixed protocol vectors.
 const key = PrivateKey.generate('K1');
 const remoteKey = PrivateKey.generate('K1');
@@ -38,18 +40,20 @@ beforeEach(() => {
 });
 afterEach(()=>{jest.restoreAllMocks();jest.useRealTimers();AppState.currentState='active';});
 it('opens Anchor web directly and sends interoperable link_create metadata without a device secret',async()=>{
-  jest.mocked(WebBrowser.openAuthSessionAsync).mockImplementation(async url=>{
+  jest.mocked(WebBrowser.openAuthSessionAsync).mockImplementation(async (url, returnUrl, options)=>{
+    expect(returnUrl).toBe('eos3wallet://anchor-web-return');
+    expect(options).toEqual({createTask:false});
     expect(url.startsWith('https://vaulta.anchorwallet.io/sign?')).toBe(true);
     expect(url).not.toContain('eos3.app');expect(url).not.toContain(String(key));
     const params=new URL(url).searchParams;const req=SigningRequest.from(params.get('esr')!,opts);
     expect(req.getInfoKey('same_device', 'bool')).toBe(true);
-    expect(req.getInfoKey('return_path')).toBe('eos3wallet://device-key-authorized?provider=anchor');
+    expect(req.getInfoKey('return_path')).toBe('eos3wallet://anchor-web-return');
     const expected=Serializer.encode({object:{session_name:'eos3wallet',request_key:key.toPublic(),user_agent:'EOS3 Wallet mobile'},type:'link_create',abi:{structs:[{name:'link_create',base:'',fields:[{name:'session_name',type:'name'},{name:'request_key',type:'public_key'},{name:'user_agent',type:'string$'}]}]}});
     expect(req.getRawInfoKey('link')!.hexString).toBe(expected.hexString);
     respond(req);return{type:'opened'} as any;
   });
   const session=await connectAnchorWeb();expect(session.account).toBe('aliceacct111');expect(String(session.messageKey)).toBe(String(remoteKey.toPublic()));expect(stop).toHaveBeenCalled();
-  expect(Linking.openURL).toHaveBeenCalledWith('eos3wallet://device-key-authorized?provider=anchor');
+  expect(Linking.openURL).toHaveBeenCalledWith('eos3wallet://anchor-web-return');
 });
 it.each(['cid','sa','sp','req','link_key'])('rejects a changed login %s',async field=>{
   tamper=payload=>{payload[field]=field==='sp'?'paytransfer':'INVALID';};
@@ -68,7 +72,7 @@ it('seals the exact reviewed transaction for the browser session and never asks 
     expect(p.get('sealed')).toBe(sealed.ciphertext.hexString);
     const req=SigningRequest.from(unsealMessage(sealed,remoteKey),opts);
     expect(req.getInfoKey('same_device', 'bool')).toBe(true);
-    expect(req.getInfoKey('return_path')).toBe('eos3wallet://device-key-authorized?provider=anchor');
+    expect(req.getInfoKey('return_path')).toBe('eos3wallet://anchor-web-return');
     expect(req.shouldBroadcast()).toBe(false);
     expect(Serializer.encode({object:req.getRawTransaction()}).hexString).toBe(hex);
     respond(req,tx);return {type:'opened'} as any;
@@ -117,6 +121,47 @@ it('aborts the callback recovery window immediately when the import screen is le
  const assertion=expect(result).rejects.toBeInstanceOf(AnchorWebCancelled);
  await jest.advanceTimersByTimeAsync(0);controller.abort();await assertion;
  expect(jest.getTimerCount()).toBe(0);expect(Linking.openURL).not.toHaveBeenCalled();
+});
+
+it('restarts the receiver on Android pause before timers freeze and limits timerless recovery to background',async()=>{
+ jest.useFakeTimers();let change!:(state:string)=>void;
+ jest.spyOn(AppState,'addEventListener').mockImplementation((_event,callback)=>{change=callback as any;return{remove:jest.fn()};});
+ jest.mocked(WebBrowser.openAuthSessionAsync).mockReturnValue(new Promise(()=>{}));
+ const controller=new AbortController();const result=connectAnchorWeb(controller.signal);
+ const assertion=expect(result).rejects.toBeInstanceOf(AnchorWebCancelled);
+ await Promise.resolve();
+ expect(listenLinkChannel).toHaveBeenCalledTimes(1);
+ expect(jest.mocked(listenLinkChannel).mock.calls[0][2]!.retryImmediately!()).toBe(false);
+ AppState.currentState='background';change('background');
+ expect(stop).toHaveBeenCalledTimes(1);
+ expect(listenLinkChannel).toHaveBeenCalledTimes(2);
+ expect(jest.mocked(listenLinkChannel).mock.calls[1][2]!.retryImmediately!()).toBe(true);
+ controller.abort();await assertion;expect(jest.getTimerCount()).toBe(0);
+});
+
+it('starts the foreground authorization task before opening Chrome and stops it after returning',async()=>{
+ const release=jest.fn();let running=false;
+ jest.mocked(beginAnchorAuthorization).mockImplementationOnce(async()=>{running=true;return release;});
+ jest.mocked(WebBrowser.openAuthSessionAsync).mockImplementation(async url=>{
+  expect(running).toBe(true);expect(release).not.toHaveBeenCalled();
+  respond(SigningRequest.from(new URL(url).searchParams.get('esr')!,opts));return{type:'opened'} as any;
+ });
+ await connectAnchorWeb();expect(release).toHaveBeenCalledTimes(1);
+});
+
+it('does not open Chrome if the native authorization task cannot start',async()=>{
+ jest.mocked(beginAnchorAuthorization).mockRejectedValueOnce(new Error('native task failed'));
+ await expect(connectAnchorWeb()).rejects.toThrow('native task failed');
+ expect(WebBrowser.openAuthSessionAsync).not.toHaveBeenCalled();
+});
+
+it('releases the native task if the screen is left while startup is in progress',async()=>{
+ const release=jest.fn();let ready!:(stop:()=>void)=>void;
+ jest.mocked(beginAnchorAuthorization).mockImplementationOnce(()=>new Promise(resolve=>{ready=resolve;}));
+ const controller=new AbortController();const result=connectAnchorWeb(controller.signal);
+ const assertion=expect(result).rejects.toBeInstanceOf(AnchorWebCancelled);
+ controller.abort();ready(release);await assertion;
+ expect(release).toHaveBeenCalledTimes(1);expect(WebBrowser.openAuthSessionAsync).not.toHaveBeenCalled();
 });
 
 it('waits for Android to return to the foreground before completing a login',async()=>{

@@ -34,7 +34,8 @@ async function main() {
   if (process.platform !== 'darwin' || !fs.existsSync('/usr/bin/sandbox-exec')) throw new Error('This entry point requires macOS sandbox-exec; no unsandboxed fallback.');
   const prepareCache = process.argv.length === 3 && process.argv[2] === '--prepare-cache';
   const unsignedOnly = process.argv.length === 3 && process.argv[2] === '--unsigned-only';
-  if (process.argv.length > 2 && !prepareCache && !unsignedOnly) throw new Error('Use no arguments, --unsigned-only, or --prepare-cache.');
+  const emulatorOnly = process.argv.length === 3 && process.argv[2] === '--emulator';
+  if (process.argv.length > 2 && !prepareCache && !unsignedOnly && !emulatorOnly) throw new Error('Use no arguments, --unsigned-only, --emulator, or --prepare-cache.');
   verifyDependencyPolicy();
   const scan = spawnSync(process.execPath, ['scripts/check-source.mjs'], { cwd: root, stdio: 'inherit' });
   if (scan.status !== 0) throw new Error('Public source scan failed.');
@@ -73,6 +74,7 @@ async function main() {
     if (!fs.existsSync(initialCache) && prepareCache) fs.mkdirSync(path.join(stage, 'gradle-home/caches/modules-2'), { recursive: true });
     else cloneCache(initialCache, path.join(stage, 'gradle-home/caches/modules-2'));
     const env = cleanEnvironment(stage, path.dirname(process.execPath), javaHome, sdk);
+    if (emulatorOnly) env.EOS3_ANDROID_ABI = 'arm64-v8a';
     // Reuse only npm's content-addressed public downloads, never installed code,
     // npm configuration, audit logs or native build outputs.
     const npmCache = path.join(root, '.codex/native-build-cache/npm-cache/_cacache');
@@ -128,6 +130,7 @@ async function main() {
       package: JSON.parse(fs.readFileSync(path.join(source, 'app.json'))).expo.android.package,
       versionName: JSON.parse(fs.readFileSync(path.join(source, 'app.json'))).expo.version,
       versionCode: JSON.parse(fs.readFileSync(path.join(source, 'app.json'))).expo.android.versionCode,
+      ...(emulatorOnly ? { reviewArchitecture: 'arm64-v8a' } : {}),
       productionSigning: false, iosNativeBuild: 'not-run', releaseApproved: false,
     }, null, 2) + '\n');
     if (unsignedOnly && process.env.GITHUB_ACTIONS === 'true' && process.env.GITHUB_OUTPUT) {

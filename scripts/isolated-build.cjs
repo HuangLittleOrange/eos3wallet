@@ -17,7 +17,11 @@ function copyPublicSource(destination, paths = sourcePaths()) {
   for (const name of paths) {
     // Never follow links or copy local tools, credentials, environment or native output.
     if (name.split('/').some((part) => part === '..') || path.isAbsolute(name)) throw new Error('Unexpected source path.');
-    if (/(^|\/)(?:\.git|\.claude|\.codex|node_modules|backups|exports|credentials|android|ios)(?:\/|$)|(^|\/)\.env|(^|\/)credentials\.json$|\.(?:pem|key|p8|p12|pfx|jks|keystore|mobileprovision|apk|aab|ipa|log)$/i.test(name)) continue;
+    if (/(^|\/)(?:\.git|\.claude|\.codex|node_modules|backups|exports|credentials)(?:\/|$)|(^|\/)\.env|(^|\/)credentials\.json$|\.(?:pem|key|p8|p12|pfx|jks|keystore|mobileprovision|apk|aab|ipa|log)$/i.test(name)) continue;
+    // Local Expo modules contain reviewed native source. Generated platform
+    // projects and module build output still never enter the public snapshot.
+    if (/(^|\/)(?:android|ios)(?:\/|$)/i.test(name) &&
+      !/^modules\/[^/]+\/android\/(?:build\.gradle|src\/main\/(?:AndroidManifest\.xml|java\/.+\.kt))$/.test(name)) continue;
     const source = path.join(root, name);
     if (!fs.existsSync(source)) continue;
     if (!fs.lstatSync(source).isFile() || fs.realpathSync(source) !== source) throw new Error('Symlinks and non-file source entries are not allowed.');

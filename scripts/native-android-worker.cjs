@@ -10,6 +10,8 @@ const root = path.resolve(__dirname, '..');
 const stage = path.dirname(root);
 const mode = process.argv[2];
 const policy = JSON.parse(fs.readFileSync(path.join(root, 'native-build-policy.json')));
+const reviewAbi = process.env.EOS3_ANDROID_ABI;
+if (reviewAbi && reviewAbi !== 'arm64-v8a') throw new Error('Unsupported emulator architecture.');
 
 function run(command, args, cwd = root) {
   const started = Date.now();
@@ -60,7 +62,8 @@ async function main() {
       run(gradle, ['--no-daemon', '--stacktrace', '--max-workers=4', '-Pkotlin.compiler.execution.strategy=in-process', '--init-script', init, 'resolvePublicArtifacts'], android);
       process.exit(0);
     }
-    run(gradle, ['--offline', '--no-daemon', '--stacktrace', '--max-workers=4', '-Pkotlin.compiler.execution.strategy=in-process', ':app:assembleRelease'], android);
+    run(gradle, ['--offline', '--no-daemon', '--stacktrace', '--max-workers=4', '-Pkotlin.compiler.execution.strategy=in-process',
+      ...(reviewAbi ? [`-PreactNativeArchitectures=${reviewAbi}`] : []), ':app:assembleRelease'], android);
     const unsigned = path.join(android, 'app/build/outputs/apk/release/app-release-unsigned.apk');
     if (!fs.existsSync(unsigned)) throw new Error('Expected an unsigned release APK.');
     fs.copyFileSync(unsigned, path.join(stage, 'app-release-unsigned.apk'));

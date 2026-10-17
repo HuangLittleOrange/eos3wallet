@@ -266,6 +266,30 @@ it('does not import or switch accounts if the network changes while web authoriz
 import { connectAnchorWeb } from '../../chain/anchorWeb';
 import { prepareAnchorDeviceImport, submitAnchorDeviceImport } from '../../chain/anchorDeviceImport';
 import { AnchorImportNetworkError } from '../../chain/anchorImportError';
+it('Anchor setup uses the import authorization and chain verification flow with creation copy', async () => {
+  const session = { account: 'alice', permission: 'active' } as any;
+  const review = { built: { eosAccount: 'alice' }, hex: 'reviewed' } as any;
+  jest.mocked(connectAnchorWeb).mockResolvedValue(session);
+  jest.mocked(prepareAnchorDeviceImport).mockResolvedValue(review);
+  await act(async () => {
+    renderer = create(React.createElement(DeviceKeyImportScreen, {
+      route: { params: { provider: 'anchor', purpose: 'create' } },
+    }));
+  });
+  expect(renderer.root.findByType('PageHeader').props.title).toBe('createWalletMethod.anchorOneTap');
+  expect(hasText('anchorCreate.heroTitle')).toBe(true);
+  expect(hasText('anchorCreate.heroDesc')).toBe(true);
+  await act(async () => { await button('anchorImport.openWeb').props.onPress(); });
+  expect(deviceKeyAuthorizeUrl).not.toHaveBeenCalled();
+  expect(openAuthSessionAsync).not.toHaveBeenCalled();
+  expect(importPendingDeviceKey).not.toHaveBeenCalled();
+  await act(async () => { await button('anchorImport.confirm').props.onPress(); });
+  expect(connectAnchorWeb).toHaveBeenCalledTimes(1);
+  expect(submitAnchorDeviceImport).toHaveBeenCalledWith(session, review, expect.any(AbortSignal));
+  expect(importPendingDeviceKey).toHaveBeenCalledWith(pending, 'alice', 'vaulta', { url: 'https://node.test' }, expect.any(AbortSignal));
+  expect(setAccount).toHaveBeenCalledWith('alice');
+});
+
 it('Anchor import connects directly, shows an account review, then imports only after chain verification', async () => {
   const session = {account:'alice',permission:'active'} as any;
   const review = {built:{eosAccount:'alice'},hex:'reviewed'} as any;
