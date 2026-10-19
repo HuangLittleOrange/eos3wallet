@@ -1,6 +1,5 @@
-// 记一份"哪些 dApp 通过身份请求拿到过本机的接收频道信息"的清单——纯展示层
-// 数据,不含任何密钥材料,AsyncStorage 即可(跟 chain/session.ts 记住上次
-// 会话是同一个道理)。
+// 记录哪些 dApp 获得了本机接收频道信息；也是接收推送时的准入名单。
+// 不含密钥材料，存放在 AsyncStorage，但写入与撤销必须保持顺序。
 //
 // 撤销的语义:本机的接收密钥只有一把,所有 dApp 共用同一条频道——不像
 // 「每个 dApp 一把独立密钥」那样,撤销可以直接吊销某一把。真正的撤销靠
@@ -53,18 +52,52 @@ function notifyLinkSessionsChanged(): void {
   listeners.forEach((l) => l());
 }
 
-/** 同一个 requestKey 再次建立会话(比如重新扫了次码)——覆盖旧记录,不叠加 */
-export async function recordLinkSession(session: LinkSession): Promise<void> {
-  const all = await listLinkSessions();
-  const next = [...all.filter((s) => s.requestKey !== session.requestKey), session];
-  await AsyncStorage.setItem(KEY, JSON.stringify(next));
-  notifyLinkSessionsChanged();
+// AsyncStorage has no atomic read-modify-write operation. All list mutations
+// share one queue; a rejected write still rejects its caller, not the next job.
+let mutationTail: Promise<void> = Promise.resolve();
+function mutateLinkSessions(update: (all: LinkSession[]) => LinkSession[]): Promise<void> {
+  const operation = mutationTail.then(async () => {
+    const all = await listLinkSessions();
+    await AsyncStorage.setItem(KEY, JSON.stringify(update(all)));
+    notifyLinkSessionsChanged();
+  });
+  mutationTail = operation.catch(() => {});
+  return operation;
 }
 
-export async function revokeLinkSession(requestKey: string): Promise<void> {
-  const all = await listLinkSessions();
-  await AsyncStorage.setItem(KEY, JSON.stringify(all.filter((s) => s.requestKey !== requestKey)));
-  notifyLinkSessionsChanged();
+// A signal belongs to a sender's current authorization lifetime. Revocation
+// cancels even requests already parsing/unlocking; a later login gets a new
+// lifetime and cannot revive old requests. Only admitted senders stay in memory.
+const authorizations = new Map<string, AbortController>();
+export async function authorizeLinkSession(requestKey: string): Promise<AbortSignal | null> {
+  let controller = authorizations.get(requestKey);
+  if (!controller) {
+    controller = new AbortController();
+    authorizations.set(requestKey, controller);
+  }
+  await mutationTail;
+  const known = await isKnownLinkSession(requestKey);
+  if (!known || controller.signal.aborted) {
+    controller.abort();
+    if (authorizations.get(requestKey) === controller) authorizations.delete(requestKey);
+    return null;
+  }
+  return controller.signal;
+}
+
+/** 同一个 requestKey 再次建立会话(比如重新扫了次码)——覆盖旧记录,不叠加 */
+export function recordLinkSession(session: LinkSession): Promise<void> {
+  const snapshot = { ...session };
+  return mutateLinkSessions((all) => [...all.filter((s) => s.requestKey !== snapshot.requestKey), snapshot]);
+}
+
+export function revokeLinkSession(requestKey: string): Promise<void> {
+  const operation = mutateLinkSessions((all) => all.filter((s) => s.requestKey !== requestKey));
+  const controller = authorizations.get(requestKey);
+  authorizations.delete(requestKey);
+  // Cancel immediately, including when storage is slow or the removal fails.
+  controller?.abort();
+  return operation;
 }
 
 export async function isKnownLinkSession(requestKey: string): Promise<boolean> {

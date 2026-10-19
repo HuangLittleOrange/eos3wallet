@@ -85,6 +85,7 @@
     "ios": "expo run:ios",
     "web": "expo start --web",
     "test": "node scripts/run-tests.cjs",
+    "test:update-native": "node --test scripts/__tests__/update-package-policy.test.mjs",
     "test:dependencies": "node --test scripts/__tests__/dependency-patches.test.mjs scripts/__tests__/dependency-policy.test.mjs scripts/__tests__/native-sandbox.test.mjs",
     "typecheck": "tsc --noEmit",
     "licenses": "node scripts/generate-notices.mjs",
@@ -112,6 +113,8 @@
       "<rootDir>/backups/"
     ],
     "modulePathIgnorePatterns": [
+      "<rootDir>/.claude/",
+      "<rootDir>/.codex/",
       "<rootDir>/exports/",
       "<rootDir>/backups/"
     ],

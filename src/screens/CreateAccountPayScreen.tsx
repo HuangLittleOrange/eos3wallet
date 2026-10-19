@@ -1,6 +1,7 @@
 import { useSigningGuard } from '../chain/useSigningGuard';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Linking, AppState } from 'react-native';
+import { APIError } from '@wharfkit/antelope';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -20,12 +21,15 @@ import { useResourceRepair } from '../components/ResourceRepairSheet';
 import { SIGNUP_AMOUNT, SIGNUP_CONTRACT, isSignupTokenSupported } from '../chain/signup';
 import { PendingSignupOrder, clearPendingSignup, loadPendingSignup, savePendingSignup } from '../chain/pendingSignup';
 import { generateKey } from '../crypto/keys';
+import { shouldInvalidateBackground } from '../crypto/systemAuthentication';
+import { verifyCreatedAccount } from '../chain/importAccount';
 import {
   addWallet,
   clearPendingKey,
   hasMasterPassword,
   loadPendingKey,
   newWalletId,
+  removeSecret,
   savePendingKey,
   saveSecret,
   verifyMasterPassword,
@@ -46,7 +50,7 @@ const RED = '#F0644E';
 type Step = 'checking' | 'name' | 'order' | 'save';
 
 const isAccount = isValidAccountName;
-// 轮询等新账户上链:间隔 5 秒,最多 24 次(2 分钟)—— 参考 TP/eoseyes 页面给出的
+// 轮询等新账户上链:每次查询完成后间隔 5 秒,最多 24 次——参考 TP/eoseyes 页面给出的
 // "几个块""大概 1 分钟"的量级,留了一倍余量
 const POLL_INTERVAL_MS = 5000;
 const POLL_MAX_TRIES = 24;
@@ -65,6 +69,8 @@ export default function CreateAccountPayScreen() {
   // ---------- 起名 ----------
   const [accountName, setAccountName] = useState('');
   const [nameCheck, setNameCheck] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
+  const [checkedName, setCheckedName] = useState('');
+  const [nameErr, setNameErr] = useState<string | null>(null);
   const [agreed, setAgreed] = useState(false);
   // 金额是固定的(SIGNUP_AMOUNT),这里只需要确认合约当前还收这个代币
   const [tokenOk, setTokenOk] = useState(false);
@@ -81,18 +87,62 @@ export default function CreateAccountPayScreen() {
   const signingGuard = useSigningGuard(JSON.stringify([payer?.id, payer?.publicKey, w.chainId,
     w.node.url, w.account, 'active']), confirm, () => setConfirm(null));
   const canPay = !!payer;
+  // The new account belongs to its order, independently of the paying wallet.
+  // reloadWallets may legitimately select it after the first wallet is saved.
+  const flowContext = JSON.stringify([w.chainId, w.node.url,
+    order?.id, order?.chainId, order?.accountName, order?.publicKey]);
+  const flow = useRef({ context: flowContext, generation: 0, mounted: true });
+  const verification = useRef<AbortController | null>(null);
+  const saving = useRef(false);
+  const creating = useRef(false);
+  const nameGeneration = useRef(0);
+  if (flow.current.context !== flowContext) {
+    flow.current.context = flowContext;
+    flow.current.generation++;
+    verification.current?.abort();
+  }
+  const currentFlow = () => {
+    const { generation, context } = flow.current;
+    return () => flow.current.mounted && flow.current.generation === generation &&
+      flow.current.context === context && AppState.currentState !== 'background';
+  };
+  useEffect(() => {
+    flow.current.mounted = true;
+    const invalidate = () => {
+      flow.current.generation++;
+      verification.current?.abort();
+      pollingRef.current = false;
+      if (pollTimer.current) clearTimeout(pollTimer.current);
+    };
+    const sub = AppState.addEventListener('change', state => {
+      if (state !== 'background' || !shouldInvalidateBackground()) return;
+      invalidate();
+      setPolling(false);
+    });
+    return () => { flow.current.mounted = false; invalidate(); sub.remove(); };
+  }, []);
+  useEffect(() => {
+    pollingRef.current = false;
+    if (pollTimer.current) clearTimeout(pollTimer.current);
+    setPolling(false);
+    setPwdOpen(false);
+    setSaveErr(null);
+    setStep(previous => previous === 'save' ? 'order' : previous);
+    setNameCheck('idle'); setCheckedName(''); setNameErr(null);
+  }, [flowContext]);
 
   // 进页面先查一遍本机有没有这条链的未完成订单;有的话弹出"是否前往激活"
   // (参考 TP 截图 1 后面那个弹窗),Delete 就地清掉从头开始,Confirm 直接进
   // 订单详情页。cancelable: false —— 和 TP 一样必须明确二选一。
   useEffect(() => {
     let alive = true;
+    const isCurrent = currentFlow();
     if (w.chainId !== 'vaulta') {
       setStep('name');
       return;
     }
     loadPendingSignup(w.chainId).then((o) => {
-      if (!alive) return;
+      if (!alive || !isCurrent()) return;
       if (!o) {
         setStep('name');
         return;
@@ -102,6 +152,7 @@ export default function CreateAccountPayScreen() {
           text: t('createAccountPay.resumeDelete'),
           style: 'destructive',
           onPress: () => {
+            if (!alive || !isCurrent()) return;
             clearPendingSignup(o.chainId).catch(() => {});
             clearPendingKey(o.publicKey).catch(() => {});
             setStep('name');
@@ -110,6 +161,7 @@ export default function CreateAccountPayScreen() {
         {
           text: t('createAccountPay.resumeConfirm'),
           onPress: () => {
+            if (!alive || !isCurrent()) return;
             setOrder(o);
             setAccountName(o.accountName);
             setStep('order');
@@ -167,6 +219,11 @@ export default function CreateAccountPayScreen() {
 
   // 账户名失焦查一次是否已被占用(不能完全杜绝抢注竞态,但能挡掉明显撞号的情况)
   const checkName = async (name: string) => {
+    if (flow.current.context !== flowContext) return;
+    const generation = ++nameGeneration.current;
+    const flowIsCurrent = currentFlow();
+    const isCurrent = () => generation === nameGeneration.current && flowIsCurrent();
+    setNameErr(null); setCheckedName('');
     if (!isAccount(name)) {
       setNameCheck('idle');
       return;
@@ -174,19 +231,29 @@ export default function CreateAccountPayScreen() {
     setNameCheck('checking');
     try {
       await w.client.getAccount(name);
-      setNameCheck('taken');
-    } catch {
-      setNameCheck('available');
+      if (isCurrent()) setNameCheck('taken');
+    } catch (error) {
+      if (!isCurrent()) return;
+      const missing = error instanceof APIError && error.path === '/v1/chain/get_account' &&
+        (['unknown_key_exception', 'unknown_account'].includes(error.name) ||
+          (error.error?.what === 'unspecified' && error.details?.some(d => d.file === 'http_plugin.cpp' && d.message.startsWith('unknown key'))));
+      setNameCheck(missing ? 'available' : 'idle');
+      if (missing) setCheckedName(name); else setNameErr(t('createAccountPay.nameCheckFailed'));
     }
+  };
+
+  const changeName = (name: string) => {
+    nameGeneration.current++;
+    setAccountName(name); setNameCheck('idle'); setCheckedName(''); setNameErr(null);
   };
 
   const useRandomName = () => {
     const name = randomAccountName();
-    setAccountName(name);
+    changeName(name);
     checkName(name);
   };
 
-  const nameReady = nameCheck === 'available' && agreed && tokenOk && !nextBusy;
+  const nameReady = isAccount(accountName) && checkedName === accountName && nameCheck === 'available' && agreed && tokenOk && !nextBusy;
 
   /**
    * 「下一步」:当场生成这个账户要用的密钥,存进临时槽位,并把订单落盘,
@@ -194,7 +261,8 @@ export default function CreateAccountPayScreen() {
    * 这把钥匙收进钱包时才要一次。
    */
   const goOrder = async () => {
-    if (!tokenOk) return;
+    if (!nameReady || creating.current || flow.current.context !== flowContext) return;
+    creating.current = true;
     setNextBusy(true);
     try {
       const key = generateKey();
@@ -222,6 +290,7 @@ export default function CreateAccountPayScreen() {
     } catch (e: any) {
       Alert.alert(t('createAccountPay.orderCreateFailed'), e?.message ?? t('send.unknownError'));
     } finally {
+      creating.current = false;
       setNextBusy(false);
     }
   };
@@ -268,7 +337,7 @@ export default function CreateAccountPayScreen() {
       const res = await transact({ chainId: w.chainId, node: w.node, actor: w.account, signer, actions: confirm, isCurrent: attempt.isCurrent });
       setConfirm(null);
       await patchOrder({ status: 'submitted', txid: res.txId, explorerUrl: res.explorerUrl });
-      startPolling();
+      startPolling(false);
     } catch (e: any) {
       if (attempt.isCurrent() && !repair.offer(e, signer, 'active')) setTxErr(e?.message ?? t('send.signOrBroadcastFailed'));
     } finally {
@@ -290,44 +359,51 @@ export default function CreateAccountPayScreen() {
   const [pollTimedOut, setPollTimedOut] = useState(false);
   const pollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pollingRef = useRef(false);
-  /** 建号后从链上读到的、这把钥匙实际控制的权限(通常是 owner + active) */
-  const [onChainPerms, setOnChainPerms] = useState<string[] | null>(null);
-
+  const pollAttempts = useRef(0);
   const pollOnce = useCallback(async () => {
+    if (!order || order.chainId !== w.chainId || order.accountName !== accountName ||
+        flow.current.context !== flowContext || !pollingRef.current) return;
+    const isCurrent = currentFlow();
+    const controller = new AbortController();
+    verification.current = controller;
     try {
-      const acct = await w.client.getAccount(accountName);
+      await w.client.getAccount(order.accountName);
+      if (!isCurrent() || !pollingRef.current) return;
+      await verifyCreatedAccount({ chainId: order.chainId, account: order.accountName,
+        publicKey: order.publicKey, signal: controller.signal });
+      if (!isCurrent() || !pollingRef.current || controller.signal.aborted) return;
       pollingRef.current = false;
       setPolling(false);
-      // 顺手从链上读这把钥匙实际拿到了哪些权限,存进钱包记录 —— signupwallet
-      // 目前是 owner/active 都用同一把钥匙,但那是合约的行为、不是我们能替它保证的,
-      // 所以照实读,不硬编码(资产页顶部那个权限标就靠这份记录)
-      const mine = acct.permissions.filter((p) => p.keys.includes(order?.publicKey ?? '')).map((p) => p.name);
-      if (mine.length) setOnChainPerms(mine);
+      setTxErr(null);
       setStep('save');
       return;
-    } catch {
-      // 还没建好
+    } catch (error: any) {
+      if (!isCurrent() || controller.signal.aborted) return;
+      setTxErr(error instanceof APIError ? t('importSecret.accountVerificationFailed') : error?.message ?? t('importSecret.accountVerificationFailed'));
+    } finally {
+      if (verification.current === controller) verification.current = null;
     }
-    if (!pollingRef.current) return;
-    setPollTries((n) => {
-      const next = n + 1;
-      if (next >= POLL_MAX_TRIES) {
-        pollingRef.current = false;
-        setPolling(false);
-        setPollTimedOut(true);
-      } else {
-        pollTimer.current = setTimeout(pollOnce, POLL_INTERVAL_MS);
-      }
-      return next;
-    });
+    if (!isCurrent() || !pollingRef.current) return;
+    const next = ++pollAttempts.current;
+    setPollTries(next);
+    if (next >= POLL_MAX_TRIES) {
+      pollingRef.current = false;
+      setPolling(false);
+      setPollTimedOut(true);
+    } else {
+      pollTimer.current = setTimeout(pollOnce, POLL_INTERVAL_MS);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accountName, w.client, order?.publicKey]);
+  }, [accountName, w.client, w.chainId, order, flowContext]);
 
-  const startPolling = () => {
-    if (order?.status !== 'submitted') patchOrder({ status: 'submitted' });
+  const startPolling = (markSubmitted = true) => {
+    if (!order || order.chainId !== w.chainId || flow.current.context !== flowContext ||
+        pollingRef.current || saving.current || AppState.currentState === 'background') return;
+    if (markSubmitted && order.status !== 'submitted') void patchOrder({ status: 'submitted' });
     pollingRef.current = true;
     setPolling(true);
     setPollTries(0);
+    pollAttempts.current = 0;
     setPollTimedOut(false);
     pollOnce();
   };
@@ -348,6 +424,8 @@ export default function CreateAccountPayScreen() {
         style: 'destructive',
         onPress: async () => {
           pollingRef.current = false;
+          flow.current.generation++;
+          verification.current?.abort();
           if (pollTimer.current) clearTimeout(pollTimer.current);
           await clearPendingSignup(w.chainId).catch(() => {});
           if (order) await clearPendingKey(order.publicKey).catch(() => {});
@@ -371,45 +449,72 @@ export default function CreateAccountPayScreen() {
   const [saveErr, setSaveErr] = useState<string | null>(null);
 
   const saveWallet = async (pwd: string) => {
-    if (!order) return;
+    if (!order || order.chainId !== w.chainId || flow.current.context !== flowContext ||
+        saving.current || AppState.currentState === 'background') return;
+    saving.current = true;
+    const snapshot = order;
+    const flowIsCurrent = currentFlow();
+    const controller = new AbortController();
+    verification.current = controller;
+    const isCurrent = () => flowIsCurrent() && !controller.signal.aborted;
+    let secretId: string | undefined;
+    let persisted = false;
+    let persistenceAttempted = false;
     setSaveBusy(true);
     setSaveErr(null);
     try {
       if (!(await verifyMasterPassword(pwd))) {
-        setSaveErr(t('importSecret.masterPasswordWrong'));
+        if (isCurrent()) setSaveErr(t('importSecret.masterPasswordWrong'));
         return;
       }
-      const priv = await loadPendingKey(order.publicKey);
+      if (!isCurrent()) return;
+      const authPermissions = await verifyCreatedAccount({ chainId: snapshot.chainId, account: snapshot.accountName,
+        publicKey: snapshot.publicKey, signal: controller.signal });
+      if (!isCurrent()) return;
+      const priv = await loadPendingKey(snapshot.publicKey);
+      if (!isCurrent()) return;
       if (!priv) {
         setSaveErr(t('createAccountPay.pendingKeyMissing'));
         return;
       }
       const id = newWalletId();
+      secretId = id;
       await saveSecret(id, priv, pwd);
+      if (!isCurrent()) return;
+      persistenceAttempted = true;
       await addWallet({
         id,
-        account: order.accountName,
-        publicKey: order.publicKey,
-        path: order.path,
+        account: snapshot.accountName,
+        publicKey: snapshot.publicKey,
+        path: snapshot.path,
         createdAt: Date.now(),
         source: 'privatekey',
-        chainId: order.chainId,
-        authPermissions: onChainPerms ?? undefined,
-      });
+        chainId: snapshot.chainId,
+        authPermissions,
+      }, pwd);
+      persisted = true;
+      if (!isCurrent()) return;
       // 正式条目写好了才清临时槽位,中间任何一步失败都还能重来
-      if (order) await clearPendingKey(order.publicKey).catch(() => {});
-      await clearPendingSignup(order.chainId).catch(() => {});
+      await clearPendingKey(snapshot.publicKey).catch(() => {});
+      if (!isCurrent()) return;
+      await clearPendingSignup(snapshot.chainId).catch(() => {});
       await w.reloadWallets();
-      w.setAccount(order.accountName);
-      Alert.alert(t('createAccountPay.accountCreatedTitle'), t('createAccountPay.accountCreatedBody', { account: order.accountName }), [
+      if (!isCurrent()) return;
+      w.setAccount(snapshot.accountName);
+      Alert.alert(t('createAccountPay.accountCreatedTitle'), t('createAccountPay.accountCreatedBody', { account: snapshot.accountName }), [
         // reset 而不是 navigate——这是一次性的三步建号流程(起名/订单/存钥匙),
         // 完成之后「返回」键不该还能翻回中间那几步
         { text: t('permission.ok'), onPress: () => nav.reset({ index: 0, routes: [{ name: 'Tabs' }] }) },
       ]);
     } catch (e: any) {
-      setSaveErr(e?.message ?? t('importSecret.saveFailed'));
+      if (isCurrent()) setSaveErr(e?.message ?? t('importSecret.saveFailed'));
     } finally {
-      setSaveBusy(false);
+      // A rejected native index write may already have committed. Keep the
+      // encrypted slot after persistence was attempted, along with recovery.
+      if (secretId && !persisted && !persistenceAttempted) await removeSecret(secretId).catch(() => {});
+      if (verification.current === controller) verification.current = null;
+      saving.current = false;
+      if (flow.current.mounted) setSaveBusy(false);
     }
   };
 
@@ -449,11 +554,13 @@ export default function CreateAccountPayScreen() {
                 </TouchableOpacity>
               </View>
 
-              <AccountNameBoxes value={accountName} onChangeText={setAccountName} onBlur={() => checkName(accountName)} />
+              <AccountNameBoxes value={accountName} onChangeText={changeName} onBlur={() => checkName(accountName)} />
 
               <View style={styles.statusLine}>
                 {accountName.length > 0 && !isAccount(accountName) ? (
                   <Text style={styles.err}>{accountNameError(accountName) ?? t('send.invalidAccount')}</Text>
+                ) : nameErr ? (
+                  <Text style={styles.err}>{nameErr}</Text>
                 ) : nameCheck === 'checking' ? (
                   <Text style={styles.hint}>{t('createAccountPay.checking')}</Text>
                 ) : nameCheck === 'taken' ? (
@@ -631,7 +738,7 @@ export default function CreateAccountPayScreen() {
           activeOpacity={0.85}
           // 本机有能付款的钱包、且这单还没付 → 直接走签名转账;
           // 否则(外部转账)就是 TP 那个"我转好了,去激活"的语义:查链上有没有建好
-          onPress={canPay && !paid ? review : startPolling}
+          onPress={canPay && !paid ? review : () => startPolling()}
         >
           <Text style={styles.halfBtnTxt}>
             {canPay && !paid ? t('createAccountPay.payAndCreate') : t('createAccountPay.activeAccount')}

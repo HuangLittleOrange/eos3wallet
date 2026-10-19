@@ -7,6 +7,8 @@ jest.mock('expo-file-system', () => ({ DownloadTask: jest.fn(), File: jest.fn(),
 jest.mock('expo-file-system/legacy', () => ({ getContentUriAsync: jest.fn() }));
 jest.mock('expo-intent-launcher', () => ({ startActivityAsync: jest.fn() }));
 
+jest.mock('expo', () => ({ requireNativeModule: jest.fn() }));
+
 type Mod = typeof import('../appUpdate');
 
 /** 模块在加载时就按平台算好了 canSelfUpdate,所以每个用例都按安卓重新加载一份 */
@@ -107,4 +109,37 @@ it('拒绝错误平台和不完整或带登录凭据的下载 URL', async () => 
     mockFetch(() => ok({ updateAvailable: true, release: release({ apkUrl }) }));
     await expect(loadAndroid().checkForUpdate()).rejects.toMatchObject({ code: 'insecure-url' });
   }
+});
+
+
+describe('verified Android installation', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    require('expo-intent-launcher');
+    require('expo-file-system/legacy');
+  });
+  it('checks the exact cached APK and advertised version before invoking the system installer', async () => {
+    const verify = jest.fn(async () => true);
+    require('expo').requireNativeModule.mockReturnValue({ verify });
+    require('expo-file-system/legacy').getContentUriAsync.mockResolvedValue('content://wallet/update');
+    await loadAndroid().installRelease('file:///cache/update.apk', 5);
+    expect(verify).toHaveBeenCalledWith('file:///cache/update.apk', 5);
+    expect(require('expo-intent-launcher').startActivityAsync).toHaveBeenCalledWith('android.intent.action.VIEW',
+      { data: 'content://wallet/update', type: 'application/vnd.android.package-archive', flags: 1 });
+  });
+  it.each(['wrong-package', 'wrong-signer', 'wrong-version', 'invalid-apk'])('blocks %s without handing it to the installer', async reason => {
+    require('expo').requireNativeModule.mockReturnValue({ verify: jest.fn(async () => { throw new Error(reason); }) });
+    await expect(loadAndroid().installRelease('file:///cache/update.apk', 5)).rejects.toMatchObject({ code: 'verify' });
+    expect(require('expo-file-system/legacy').getContentUriAsync).not.toHaveBeenCalled();
+    expect(require('expo-intent-launcher').startActivityAsync).not.toHaveBeenCalled();
+  });
+  it('refuses a missing verifier, false results, and non-new/invalid version codes without fallback', async () => {
+    const mod = loadAndroid();
+    require('expo').requireNativeModule.mockImplementation(() => { throw new Error('old binary'); });
+    await expect(mod.installRelease('file:///cache/update.apk', 5)).rejects.toMatchObject({ code: 'verify' });
+    require('expo').requireNativeModule.mockImplementation(() => ({ verify: async () => false }));
+    await expect(mod.installRelease('file:///cache/update.apk', 5)).rejects.toMatchObject({ code: 'verify' });
+    for (const code of [0, 3, 4.5, NaN]) await expect(mod.installRelease('file:///cache/update.apk', code)).rejects.toMatchObject({ code: 'verify' });
+    expect(require('expo-intent-launcher').startActivityAsync).not.toHaveBeenCalled();
+  });
 });

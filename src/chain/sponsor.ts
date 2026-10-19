@@ -4,7 +4,7 @@ import 'react-native-get-random-values';
 
 import { Asset } from '@wharfkit/antelope';
 
-import { getCachedAbi, invalidateAbi } from './abiCache';
+import { getSigningAbi, invalidateSigningAbi } from './signingAbi';
 import { Eos3SignError, signSerializedTransaction } from './eos3Sign';
 import {
   SPONSOR_ACCOUNT,
@@ -280,12 +280,12 @@ export type SponsorIntent = {
    * 冒出任何手续费都会被当成未确认操作拒签。
    */
   approvedFee?: { quantity: string; receiver: string };
-  /** 测试注入用;不传就从 node 现建 APIClient 拉链上 ABI */
+  /** Tests may inject schemas; production uses the built-in RPC quorum. */
   getAbi?: AbiProvider;
 };
 
-function nodeAbiProvider(node: NodeInfo): AbiProvider {
-  return (account: string) => getCachedAbi(node.url, account);
+function nodeAbiProvider(chainId: string): AbiProvider {
+  return (account: string) => getSigningAbi(chainId, account);
 }
 
 /**
@@ -317,7 +317,7 @@ export async function signAndPushSponsored(opts: {
       sponsorFee: opts.intent.approvedFee?.quantity,
       sponsorFeeReceiver: opts.intent.approvedFee?.receiver,
       feeTokenContract: opts.intent.feeTokenContract,
-      getAbi: opts.intent.getAbi ?? nodeAbiProvider(opts.node),
+      getAbi: opts.intent.getAbi ?? nodeAbiProvider(opts.chainId),
     });
   try {
     await runIntentCheck();
@@ -327,8 +327,8 @@ export async function signAndPushSponsored(opts: {
     // 用新鲜 ABI 再核一次,仍然对不上才是真的有问题。只对默认的缓存 provider
     // 这样做;测试注入的 getAbi 没有缓存这一说,重跑一遍也是同样结果。
     if (!(e instanceof TxIntentMismatchError) || opts.intent.getAbi) throw e;
-    for (const a of opts.intent.actions) invalidateAbi(opts.node.url, a.account);
-    invalidateAbi(opts.node.url, opts.intent.feeTokenContract);
+    for (const a of opts.intent.actions) invalidateSigningAbi(opts.chainId, a.account);
+    invalidateSigningAbi(opts.chainId, opts.intent.feeTokenContract);
     await runIntentCheck();
   }
 

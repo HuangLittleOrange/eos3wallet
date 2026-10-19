@@ -13,7 +13,7 @@ import { isEsrLink } from './esr-links';
 import { getLinkIdentity } from './linkIdentity';
 import { sealedMessageFromWire, unsealMessage } from './linkCrypto';
 import { listenLinkChannel, LinkChannelListener } from './linkSocket';
-import { isKnownLinkSession } from './linkSessions';
+import { authorizeLinkSession } from './linkSessions';
 
 export default function LinkSessionProvider() {
   const { openEsr } = useDappSession();
@@ -33,17 +33,24 @@ export default function LinkSessionProvider() {
   useEffect(() => {
     let cancelled = false;
     let listener: LinkChannelListener | null = null;
+    let wanted = false;
+    let starting = false;
+    let transportGeneration = 0;
 
-    const handleMessage = async (raw: Uint8Array) => {
+    const handleMessage = async (raw: Uint8Array, generation: number) => {
+      const isCurrent = () => !cancelled && wanted && AppState.currentState === 'active' && generation === transportGeneration;
       try {
+        if (!isCurrent()) return;
         const sealed = sealedMessageFromWire(raw);
         // 先比对"认不认识这个发送方",不认识的直接丢弃——不用白跑一次
         // ECDH+AES 解密,也不会弹确认框打扰用户(见 linkSessions.ts 顶部注释,
         // 这就是撤销会话的实际生效点)
-        if (!(await isKnownLinkSession(String(sealed.from)))) return;
+        const signal = await authorizeLinkSession(String(sealed.from));
+        if (!signal || signal.aborted || !isCurrent()) return;
         const replayKey = `${String(sealed.from)}:${String(sealed.nonce)}`;
         if (seenNoncesRef.current.has(replayKey)) return;
         const identity = await getLinkIdentity();
+        if (signal.aborted || !isCurrent() || seenNoncesRef.current.has(replayKey)) return;
         const plaintext = unsealMessage(sealed, identity.privateKey);
         // 解封成功才记入去重表——伪造/损坏的消息不占名额,也不会把同一条
         // 合法消息"第一次就没处理成"的重试挡在门外
@@ -52,7 +59,7 @@ export default function LinkSessionProvider() {
           seenNoncesRef.current.delete(seenNoncesRef.current.values().next().value!);
         }
         // 解密出来的是签名请求本体(不带 esr: 前缀也一样接得住)
-        openEsrRef.current(isEsrLink(plaintext) ? plaintext : `esr:${plaintext}`);
+        openEsrRef.current(isEsrLink(plaintext) ? plaintext : `esr:${plaintext}`, signal);
       } catch {
         // 解不开/格式不对的推送——校验和错、伪造的、传输中坏掉,统统当噪音
         // 丢弃,不弹任何东西打扰用户
@@ -63,25 +70,27 @@ export default function LinkSessionProvider() {
     // 订阅出两条监听同一频道的连接,同一条推送被处理两遍(第二遍撞上去重表
     // 才没弹出两个确认框),而且旧的那条永远没人 stop()。wanted 记的是
     // "现在到底还想不想听",await 回来先对一遍,免得 stop() 之后才把连接建起来。
-    let wanted = false;
-    let starting = false;
     const start = async () => {
       wanted = true;
       if (listener || starting) return;
       starting = true;
+      const generation = ++transportGeneration;
       try {
         const identity = await getLinkIdentity();
-        if (!wanted || cancelled) return;
-        listener = listenLinkChannel(identity.channelUrl, handleMessage);
+        if (!wanted || cancelled || generation !== transportGeneration) return;
+        listener = listenLinkChannel(identity.channelUrl, (raw) => { void handleMessage(raw, generation); });
       } catch {
         // 接收身份读不出来(SecureStore 一过性抖动之类)——这是个静默的后台
         // 功能,不该弹任何东西打扰用户;下次前后台切换会自动再试一次
       } finally {
         starting = false;
+        // A new foreground may arrive while the previous identity read is pending.
+        if (wanted && !cancelled && generation !== transportGeneration) void start();
       }
     };
     const stop = () => {
       wanted = false;
+      transportGeneration++;
       listener?.stop();
       listener = null;
     };

@@ -71,5 +71,9 @@ export class DappAccessGuard {
     this.grants.add(this.grantKey());
     return true;
   }
-  disconnect(): void { this.grants.delete(this.grantKey()); }
+  disconnect(): void {
+    this.grants.delete(this.grantKey());
+    // A new connection may grant new requests, never revive an old approval.
+    this.cancelPending();
+  }
 }

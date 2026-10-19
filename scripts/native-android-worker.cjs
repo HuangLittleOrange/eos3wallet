@@ -32,6 +32,7 @@ async function main() {
     if (mode === 'build') {
       run('npm', ['test', '--', '--runInBand']);
       run('npm', ['run', 'typecheck']);
+      run('npm', ['run', 'test:update-native']);
     }
     run('node', ['node_modules/expo/bin/cli', 'prebuild', '--platform', 'android', '--no-install', '--template', './node_modules/expo/template.tgz']);
     const android = path.join(root, 'android');

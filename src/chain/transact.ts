@@ -1,5 +1,5 @@
 // 交易构建、签名与广播
-import { PrivateKey, Name, Asset, Checksum256, Signature } from '@wharfkit/antelope';
+import { PrivateKey, Name, Asset, Checksum256, Signature, Transaction } from '@wharfkit/antelope';
 import { Session, TransactHookTypes } from '@wharfkit/session';
 import type { WalletPlugin } from '@wharfkit/session';
 import { WalletPluginPrivateKey } from '@wharfkit/wallet-plugin-privatekey';
@@ -7,6 +7,8 @@ import { WalletPluginPrivateKey } from '@wharfkit/wallet-plugin-privatekey';
 import { CHAINS, ChainId, NodeInfo } from './config';
 import { assertAccountName } from './account';
 import { WalletPluginPasskey } from './walletPluginPasskey';
+import { WalletPluginCold } from './walletPluginCold';
+import { requestColdSignature } from './coldSigning';
 import { signDigestWithPasskey } from '../passkey/webauthnSigning';
 import { fetchWithRetry } from '../net/fetchRetry';
 import {
@@ -20,6 +22,8 @@ import { t } from '../i18n';
 import { rememberSponsorFee } from './sponsorFeeCache';
 import { notifyTransactionApplied } from './walletDataEvents';
 import { assertResolvedActionsMatch } from './transactionSafety';
+import { coreActionAbi } from './coreTokenAbi';
+import { getSigningAbi } from './signingAbi';
 import { AuthorizationFailureError, explainAuthorizationFailure, isAuthorizationFailure } from './authorizationError';
 
 export type ActionSpec = {
@@ -39,9 +43,11 @@ export type TransactResult = {
 /** 签名者:本机明文私钥,或 eos3.app 的 passkey(每次签名都现场发起系统认证) */
 export type Signer =
   | { kind: 'privatekey'; privateKey: string }
-  | { kind: 'passkey'; credentialIdHex: string; chainPublicKey: string };
+  | { kind: 'passkey'; credentialIdHex: string; chainPublicKey: string }
+  | { kind: 'external'; account: string; chainSlug: ChainId };
 
-function walletPluginFor(signer: Signer): WalletPlugin {
+function walletPluginFor(signer: Signer, isCurrent?: () => boolean): WalletPlugin {
+  if (signer.kind === 'external') return new WalletPluginCold(signer.chainSlug, signer.account, isCurrent);
   if (signer.kind === 'passkey') {
     return new WalletPluginPasskey({ credentialIdHex: signer.credentialIdHex, chainPublicKey: signer.chainPublicKey });
   }
@@ -62,11 +68,17 @@ function walletPluginFor(signer: Signer): WalletPlugin {
  */
 function makeSession(chainId: ChainId, node: NodeInfo, actor: string, signer: Signer, permission = 'active', isCurrent?: () => boolean, actions?: ActionSpec[], onRpcFailure?: (error: unknown) => void) {
   const checkContext = () => { if (isCurrent && !isCurrent()) throw new Error(t('dappBrowser.requestChanged')); };
-  const walletPlugin = walletPluginFor(signer);
+  const walletPlugin = walletPluginFor(signer, isCurrent);
   const originalSign = walletPlugin.sign.bind(walletPlugin);
-  walletPlugin.sign = (resolved, context) => {
+  walletPlugin.sign = async (resolved, context) => {
     checkContext();
-    if (actions) assertResolvedActionsMatch(resolved.transaction, actions, actor, permission);
+    if (actions) {
+      const contracts = [...new Set(actions.filter(a => !coreActionAbi(a.account, a.name)).map(a => a.account))];
+      const abis = new Map(await Promise.all(contracts.map(async account =>
+        [account, await getSigningAbi(CHAINS[chainId].chainIdHash, account)] as const)));
+      checkContext();
+      assertResolvedActionsMatch(resolved.transaction, actions, actor, permission, abis);
+    }
     return originalSign(resolved, context);
   };
   return new Session(
@@ -155,7 +167,7 @@ export async function transactionFailure(err: unknown, opts: Pick<TransactOpts, 
   const failure = toBroadcastError(err, { actor: opts.actor, permission: opts.permission ?? 'active' });
   if (!(failure instanceof AuthorizationFailureError)) return failure;
   let publicKey: string | undefined;
-  try { publicKey = opts.signer.kind === 'passkey' ? opts.signer.chainPublicKey : PrivateKey.from(opts.signer.privateKey).toPublic().toString(); }
+  try { publicKey = opts.signer.kind === 'passkey' ? opts.signer.chainPublicKey : opts.signer.kind === 'privatekey' ? PrivateKey.from(opts.signer.privateKey).toPublic().toString() : undefined; }
   catch { /* Never expose a private key or key-parser error in diagnostics. */ }
   return explainAuthorizationFailure(failure, {
     nodeUrl: opts.node.url, chainId: CHAINS[opts.chainId].chainIdHash, publicKey, isCurrent: opts.isCurrent,
@@ -191,7 +203,7 @@ export async function transact(opts: TransactOpts): Promise<TransactResult> {
           data: a.data,
         })),
       },
-      { broadcast: true, allowModify: false }
+      { broadcast: true, allowModify: false, ...(opts.signer.kind === 'external' ? { expireSeconds: 300 } : {}) }
     );
     const txId = String(result.resolved?.transaction.id ?? result.response?.transaction_id ?? '');
     notifyTransactionApplied(opts.chainId, opts.actor, actions);
@@ -266,7 +278,13 @@ export async function sponsoredTransact(opts: TransactOpts & { approvedFee?: str
  * requestSignature 递过来的已序列化交易。正常自己拼交易走 transact(),
  * 那条路由 session 内部签名,不经过这里。
  */
-export async function signDigest(signer: Signer, digest: Checksum256): Promise<Signature> {
+export async function signDigest(signer: Signer, digest: Checksum256, external?: {
+  transaction: Transaction; chainId: string; permission: string; isCurrent?: () => boolean;
+}): Promise<Signature> {
+  if (signer.kind === 'external') {
+    if (!external || !external.transaction.signingDigest(external.chainId).equals(digest)) throw new Error(t('coldSigning.unsupportedMessage'));
+    return requestColdSignature({ ...external, actor: signer.account, chainSlug: signer.chainSlug });
+  }
   if (signer.kind === 'passkey') {
     return signDigestWithPasskey({
       digest: digest.array,

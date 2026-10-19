@@ -44,6 +44,40 @@ const deferred = <T,>() => {
 const mount = async () => { await act(async () => { renderer = create(React.createElement(harness)); }); };
 const open = async () => { await act(async () => { await flow.open('esr:first'); }); };
 
+it.each(['privatekey', 'passkey'])('an observation account can log in after importing its %s wallet without remounting', async source => {
+  const state = jest.mocked(useWalletSession).getMockImplementation()!();
+  const observation = { ...state, hasAccount: true, currentWallet: undefined } as any;
+  jest.mocked(useWalletSession).mockReturnValue(observation);
+  await mount();
+  await open();
+  expect(flow.esr).toBeNull();
+  jest.mocked(Alert.alert).mockClear();
+
+  jest.mocked(useWalletSession).mockReturnValue({ ...observation,
+    currentWallet: { id: 'imported-wallet', source } });
+  await act(async () => { renderer.update(React.createElement(harness)); });
+  await open();
+  expect(flow.esr?.req.isIdentity).toBe(true);
+  expect(Alert.alert).not.toHaveBeenCalled();
+});
+
+it('switching to observation rejects fresh identity requests but still accepts transaction requests', async () => {
+  await mount();
+  await open();
+  const state = jest.mocked(useWalletSession).getMockImplementation()!();
+  jest.mocked(useWalletSession).mockReturnValue({ ...state, hasAccount: true, currentWallet: undefined } as any);
+  await act(async () => { renderer.update(React.createElement(harness)); });
+  expect(flow.esr).toBeNull();
+  await open();
+  expect(flow.esr).toBeNull();
+  expect(Alert.alert).toHaveBeenCalledWith('dappBrowser.cannotParseTitle', 'coldSigning.unsupportedMessage');
+
+  const transaction = { ...parsed('esr:transaction'), req: { ...parsed().req, isIdentity: false } };
+  jest.mocked(parseEsr).mockResolvedValueOnce(transaction);
+  await open();
+  expect(flow.esr).toBe(transaction);
+});
+
 beforeEach(() => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   jest.useFakeTimers().setSystemTime(new Date('2026-10-09T01:00:00Z'));

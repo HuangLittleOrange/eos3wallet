@@ -38,6 +38,7 @@ export default function EsrFlowOverlay({ flow, origin }: {
         error={flow.err}
         walletId={flow.wallet?.id}
         passkey={flow.wallet?.source === 'passkey'}
+        external={flow.wallet?.source === 'watch'}
         onConfirm={flow.submitPassword}
         onConfirmBiometric={flow.submitBiometric}
         onConfirmPasskey={flow.submitPasskey}

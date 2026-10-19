@@ -35,4 +35,8 @@ TP 适配层将钱包读取和签名转换为公共的 `getIdentity`、`getBalan
 
 `window.tp` 的业务失败保持 `{ result: false, data: null, msg }`，SDK 桥继续通过指定的全局回调名返回 JSON 字符串。扫码仍返回字符串，返回/关闭/全屏等调用仍不返回值，其他链的方法仍明确返回不支持。
 
+Scatter 的 eosjs2 API 存在 `hasRequiredTaposFields` 方法时，注入层按过期时间字段、数字类型和整数范围检查 TAPOS，兼容旧版 eosjs 把零参考区块误判为缺失的问题。WharfKit 的 TokenPocket/Scatter 通道可以使用 `0/0` 的不广播账户验证交易；钱包保留原始交易字节与 `broadcast: false`，继续走原生解码、链校验和用户确认，不重建交易头。零参考区块可用于签名，不代表交易能通过链上的 TAPOS 校验。
+
 `use-token-pocket-browser.test.ts` 覆盖原生动作、扫码取消、读取失败与重试、上下文更新和响应；`token-pocket-user-agent.test.ts` 覆盖 UA；`injected.test.ts` 覆盖 SDK 全量方法与 Scatter/TP 的接口约定。
+
+观察账户的交易签名可交由 TP 冷钱包完成离线扫码往返，保留原始交易字节和 DApp 的广播职责。实现、支持范围与验收边界见 [观察钱包与 TP 冷钱包签名](cold-wallet-signing.md)。

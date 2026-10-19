@@ -1,5 +1,6 @@
 import { buildInjectedScript } from '../injected';
 import { DappAccessGuard } from '../accessGuard';
+import { Serializer, Transaction } from '@wharfkit/antelope';
 
 // 注入脚本是"字符串里的代码",tsc 检查不到它——语法错了要到真机 WebView
 // 里才炸,而且表现是 DApp 静默连不上钱包,很难排查。这里至少把语法兜住。
@@ -318,7 +319,83 @@ class FakeEosjs2Api {
   }
 }
 
+// Reproduce the legacy eosjs check bundled by protocol-scatter, using real
+// Antelope transaction bytes to verify that the bridge never changes them.
+class LegacyTaposApi extends FakeEosjs2Api {
+  hasRequiredTaposFields(tx: any) {
+    return !!(tx.expiration && tx.ref_block_num && tx.ref_block_prefix);
+  }
+  async transact(tx: any, cfg: { broadcast: boolean }) {
+    if (!this.hasRequiredTaposFields(tx)) {
+      throw new Error('Required configuration or TAPOS fields are not present');
+    }
+    const signed = await this.opts.signatureProvider.sign({
+      chainId: 'aca376f206b8fc25a6ed44dbdc66547c36c6c33e3a119ffbeaef943642f0e906',
+      serializedTransaction: Serializer.encode({ object: Transaction.from(tx) }).array,
+    });
+    return cfg.broadcast ? this.opts.rpc.push_transaction(signed) : signed;
+  }
+}
+
 describe('scatter.eos() 对接 eosjs2', () => {
+  const challenge = (num: number, prefix: number) => ({
+    expiration: new Date(Date.now() + 120_000).toISOString().slice(0, 19),
+    ref_block_num: num, ref_block_prefix: prefix,
+    actions: [{ account: 'eoseyespower', name: 'noop',
+      authorization: [{ actor: 'alice', permission: 'active' }], data: '' }],
+  });
+
+  it.each([[0, 0], [0, 123], [123, 0], [123, 456], [65535, 4294967295]])(
+    '旧 eosjs 接受合法参考区块 %i/%i,原样签名且不广播', async (num, prefix) => {
+      const { win, sent, settle } = runInjected();
+      const rpc = { get_info: jest.fn(), push_transaction: jest.fn() };
+      const api = win.scatter.eos({}, LegacyTaposApi, { rpc });
+      const tx = challenge(num, prefix);
+      const before = JSON.stringify(tx);
+      const expectedBytes = Serializer.encode({ object: Transaction.from(tx) });
+      // Observe rejection immediately so a regression fails without an unhandled promise.
+      const completion = api.transact(tx, { broadcast: false }).then(
+        (result: any) => ({ result }), (error: Error) => ({ error })
+      );
+      expect(sent).toHaveLength(1);
+      expect(sent[0].method).toBe('signTransaction');
+      expect(sent[0].params.serializedTransaction).toBe(expectedBytes.hexString);
+      expect(sent[0].params.chainId).toBe('aca376f206b8fc25a6ed44dbdc66547c36c6c33e3a119ffbeaef943642f0e906');
+      settle('signTransaction', { signatures: ['SIG_K1_challenge'] });
+      const { result } = await completion;
+      expect(result.signatures).toEqual(['SIG_K1_challenge']);
+      expect(Array.from(result.serializedTransaction)).toEqual(Array.from(expectedBytes.array));
+      expect(JSON.stringify(tx)).toBe(before);
+      expect(rpc.get_info).not.toHaveBeenCalled();
+      expect(rpc.push_transaction).not.toHaveBeenCalled();
+    }
+  );
+
+  it.each([
+    { expiration: undefined }, { ref_block_num: undefined }, { ref_block_prefix: undefined },
+    { ref_block_num: '0' }, { ref_block_prefix: '0' },
+    { ref_block_num: -1 }, { ref_block_num: 65536 }, { ref_block_num: 0.5 },
+    { ref_block_prefix: -1 }, { ref_block_prefix: 4294967296 },
+    { ref_block_prefix: NaN }, { ref_block_prefix: Infinity },
+  ])('旧 eosjs 仍拒绝缺失或非法的 TAPOS 字段: %j', async (fields) => {
+    const { win, sent } = runInjected();
+    const api = win.scatter.eos({}, LegacyTaposApi, { rpc: {} });
+    await expect(api.transact({ ...challenge(0, 0), ...fields }, { broadcast: false }))
+      .rejects.toThrow('TAPOS');
+    expect(sent).toHaveLength(0);
+  });
+
+  it('零参考区块请求被用户拒绝时保留拒绝结果,不广播', async () => {
+    const { win, sent, settle } = runInjected();
+    const rpc = { push_transaction: jest.fn() };
+    const api = win.scatter.eos({}, LegacyTaposApi, { rpc });
+    const pending = api.transact(challenge(0, 0), { broadcast: false });
+    const rejected = expect(pending).rejects.toThrow('User rejected');
+    if (sent.length) settle('signTransaction', 'User rejected', false);
+    await rejected;
+    expect(rpc.push_transaction).not.toHaveBeenCalled();
+  });
+
   it('用页面给的 Api 类建实例,保留页面的 rpc,只换掉 signatureProvider', () => {
     const { win } = runInjected();
     const rpc = { endpoint: 'https://node' };

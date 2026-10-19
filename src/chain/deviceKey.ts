@@ -3,12 +3,13 @@ import { EOS3_BASE_URL } from '../passkey/constants';
 import { generateKey, findAccountsByKey, type KeyAccountMatch } from '../crypto/keys';
 import {
   importStoredPendingDeviceKey, discardStoredPendingDeviceKey, loadPendingDeviceKey,
-  newWalletId, removeSecret, savePendingDeviceKey, saveSecret, verifyMasterPassword,
+  newWalletId, settlePendingDevicePublication, savePendingDeviceKey, saveSecret, verifyMasterPassword,
   WrongPasswordError, type DeviceKeyMeta, type PendingDeviceKey, type StoredWallet,
 } from '../crypto/vault';
 import { CHAINS, type ChainId } from './config';
 import { t } from '../i18n';
 import { fetchWithRetry } from '../net/fetchRetry';
+import { verifyImportedAccount } from './importAccount';
 
 export function deviceLabel(): string {
   const c = (Platform.constants ?? {}) as { Brand?: string; Model?: string; Manufacturer?: string };
@@ -49,7 +50,7 @@ export async function createPendingDeviceKey(password: string, chainId: ChainId)
   try {
     await savePendingDeviceKey(pending);
   } catch (error) {
-    await removeSecret(pending.id).catch(() => {});
+    if (await settlePendingDevicePublication(pending).catch(() => false)) return pending;
     throw error;
   }
   return pending;
@@ -58,7 +59,8 @@ export async function createPendingDeviceKey(password: string, chainId: ChainId)
 export async function discardPendingDeviceKey(pending: PendingDeviceKey, node: { url: string }, chainId: ChainId): Promise<void> {
   if (!pending.chainId) throw new Error(t('deviceKey.legacyPendingRecovery'));
   assertPendingDeviceChain(pending, chainId);
-  // 跨设备授权可能没有回调；任何链查询失败都不能证明删除安全。
+  // Positive references require import first. Empty remote indexes are only a
+  // hint: even unanimous empty results never authorize destroying the key.
   const references = await Promise.allSettled((Object.keys(CHAINS) as ChainId[]).map((chain) =>
     findDeviceKeyAccountsStrict(chain === chainId ? node : CHAINS[chain].nodes[0], pending, chain)));
   const failed = references.find((result) => result.status === 'rejected');
@@ -66,7 +68,7 @@ export async function discardPendingDeviceKey(pending: PendingDeviceKey, node: {
   if (references.some((result) => result.status === 'fulfilled' && result.value.length)) {
     throw new Error(t('deviceKey.authorizedImportFirst'));
   }
-  await discardStoredPendingDeviceKey(pending);
+  await discardStoredPendingDeviceKey(pending); // Retains ciphertext in local recovery.
 }
 
 export function assertPendingDeviceChain(pending: PendingDeviceKey, chainId: ChainId): void {
@@ -121,7 +123,7 @@ export function accountsWithActive(matches: KeyAccountMatch[]): string[] {
   return matches.filter((m) => !m.permissions.length || m.permissions.includes('active')).map((m) => m.account);
 }
 
-/** 导入已加密的待授权密钥，并原子清除 pending 记录。 */
+/** 发布已加密的待授权密钥；索引确认写入后才清除 pending 记录。 */
 export async function importPendingDeviceKey(pending: PendingDeviceKey, account: string, chainId: ChainId, node: { url: string }, signal?: AbortSignal): Promise<StoredWallet> {
   assertPendingDeviceChain(pending, chainId);
   if (signal?.aborted) throw new Error(t('anchorImport.cancelled'));
@@ -135,6 +137,9 @@ export async function importPendingDeviceKey(pending: PendingDeviceKey, account:
       Number.isSafeInteger(key.weight) && key.weight >= active.required_auth.threshold && samePublicKey(key.key, pending.publicKey))) {
     throw new Error(t('deviceKeyImport.notYet'));
   }
+  if (signal?.aborted) throw new Error(t('anchorImport.cancelled'));
+  await verifyImportedAccount({ chainId, account, publicKey: pending.publicKey, permissions: ['active'],
+    requireDirectThreshold: true, signal });
   const wallet: StoredWallet = {
     id: pending.id,
     account,

@@ -54,13 +54,15 @@ export default function AppUpdateSheet({
   const closable = !forced && !downloading;
 
   const install = async (fileUri: string) => {
-    if (!alive.current || installing.current) return;
+    if (!release || !alive.current || installing.current) return;
     installing.current = true;
     setErr(null);
     try {
-      await installRelease(fileUri);
-    } catch {
-      if (alive.current) setErr(t('update.installFailed'));
+      await installRelease(fileUri, release.versionCode);
+    } catch (error) {
+      if (alive.current && error instanceof AppUpdateError && error.code === 'verify') setPhase({ kind: 'idle' });
+      if (alive.current) setErr(t(error instanceof AppUpdateError && error.code === 'verify'
+        ? 'update.verifyFailed' : 'update.installFailed'));
     } finally { installing.current = false; }
   };
 

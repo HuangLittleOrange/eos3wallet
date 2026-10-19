@@ -91,7 +91,7 @@ git push origin v1.0.3
 
 The release workflow compiles offline, signs with the fixed certificate in an independent network-disabled sandbox, generates GitHub artifact attestations, and publishes an English GitHub Release. These stages use separate runners. Signing secrets are restricted to version tags in the `android-production-signing` environment and are available only to the independent signing step.
 
-Each release uses its version tag, displays the actual APK application version, and provides three downloads: the APK, an outer checksum file, and a complete evidence ZIP. The ZIP includes the original unsigned APK, provenance, public certificate, metadata, source hashes, logs, and third-party notices. A successful release becomes Latest, which the introduction website reads on page load to update its version and download information.
+Each release uses its version tag, displays the actual APK application version, and provides three downloads: the APK, an outer checksum file, and a complete evidence ZIP. The ZIP includes the original unsigned APK, provenance, public certificate, metadata, source hashes, logs, and third-party notices. A successful release becomes Latest, which the introduction website mirrors in the background when an Android release is saved in the admin console. Verified version information and download links are rendered into the served HTML before visitors open the page.
 
 Open **Actions → Main tests** for routine checks and **Actions → Public Android APK** for release build logs, hashes, and provenance. See [public builds and provenance verification](docs/github-android-build.md) for signing environment setup and verification commands. No version tag is created automatically by pushing to `main`.
 

@@ -25,9 +25,10 @@ type Ctx = {
    * EsrRequestHost.tsx 顶部注释:这类请求本质只是弹确认框、签名、把签名
    * POST 出去,不需要真的起一个 WebView。
    */
-  openEsr: (uri: string) => void;
+  openEsr: (uri: string, signal?: AbortSignal) => void;
   /** EsrRequestHost 消费掉一条待处理请求后调用,清空这个槽位 */
   pendingEsr: string | null;
+  pendingEsrSignal: AbortSignal | undefined;
   clearPendingEsr: () => void;
   minimize: () => void;
   restore: () => void;
@@ -41,17 +42,19 @@ let nextId = 1;
 export function DappSessionProvider({ children }: { children: React.ReactNode }) {
   const [session, setSession] = useState<DappSession | null>(null);
   const [minimized, setMinimized] = useState(false);
-  const [pendingEsr, setPendingEsr] = useState<string | null>(null);
+  const [pendingRequest, setPendingRequest] = useState<{ uri: string; signal?: AbortSignal } | null>(null);
+  const pendingEsr = pendingRequest?.uri ?? null;
+  const pendingEsrSignal = pendingRequest?.signal;
 
   const openDapp = useCallback((url: string) => {
     setSession({ id: nextId++, url });
     setMinimized(false);
   }, []);
 
-  const openEsr = useCallback((uri: string) => {
-    setPendingEsr(uri);
+  const openEsr = useCallback((uri: string, signal?: AbortSignal) => {
+    if (!signal?.aborted) setPendingRequest({ uri, signal });
   }, []);
-  const clearPendingEsr = useCallback(() => setPendingEsr(null), []);
+  const clearPendingEsr = useCallback(() => setPendingRequest(null), []);
 
   const minimize = useCallback(() => setMinimized(true), []);
   const restore = useCallback(() => setMinimized(false), []);
@@ -63,8 +66,8 @@ export function DappSessionProvider({ children }: { children: React.ReactNode })
   // 和 WalletContext 同一条规则:Provider 的 value 必须 memo 化,
   // 不然每次渲染造新对象,所有消费方跟着白渲染一遍
   const value = useMemo(
-    () => ({ session, minimized, openDapp, openEsr, pendingEsr, clearPendingEsr, minimize, restore, close }),
-    [session, minimized, openDapp, openEsr, pendingEsr, clearPendingEsr, minimize, restore, close]
+    () => ({ session, minimized, openDapp, openEsr, pendingEsr, pendingEsrSignal, clearPendingEsr, minimize, restore, close }),
+    [session, minimized, openDapp, openEsr, pendingEsr, pendingEsrSignal, clearPendingEsr, minimize, restore, close]
   );
 
   return <DappSessionCtx.Provider value={value}>{children}</DappSessionCtx.Provider>;

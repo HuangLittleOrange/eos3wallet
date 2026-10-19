@@ -18,7 +18,8 @@ import {
   findAccountsForDeviceKey,
   importPendingDeviceKey,
 } from '../chain/deviceKey';
-import { hasMasterPassword, loadPendingDeviceKey, updatePendingDeviceKeyLabel, WrongPasswordError, type PendingDeviceKey } from '../crypto/vault';
+import { hasMasterPassword, loadPendingDeviceKey, listRecoverableDeviceKeys, restoreRecoverableDeviceKey,
+  updatePendingDeviceKeyLabel, WrongPasswordError, type PendingDeviceKey } from '../crypto/vault';
 import { useI18n } from '../i18n';
 import { AnchorWebCancelled, connectAnchorWeb, type AnchorWebSession } from '../chain/anchorWeb';
 import { prepareAnchorDeviceImport, submitAnchorDeviceImport, type DeviceKeyReview } from '../chain/anchorDeviceImport';
@@ -45,6 +46,7 @@ export default function DeviceKeyImportScreen({ route, purpose }: {
   const mountedRef = useRef(true);
   const recoveredRef = useRef(false);
   const [pending, setPending] = useState<PendingDeviceKey | null | undefined>(undefined);
+  const [recoverable, setRecoverable] = useState<PendingDeviceKey[]>([]);
   const [asking, setAsking] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -60,7 +62,9 @@ export default function DeviceKeyImportScreen({ route, purpose }: {
   useEffect(() => {
     let alive = true;
     mountedRef.current = true;
-    loadPendingDeviceKey().then((value) => { if (alive) setPending(value); })
+    Promise.all([loadPendingDeviceKey(), listRecoverableDeviceKeys()]).then(([value, saved]) => {
+      if (alive) { setPending(value); setRecoverable(saved); }
+    })
       .catch((error) => { if (alive) setHint(error?.message ?? t('signupError.pendingReadFailed')); });
     return () => { alive = false; mountedRef.current = false; };
   }, []);
@@ -91,6 +95,7 @@ export default function DeviceKeyImportScreen({ route, purpose }: {
       setAsking(false);
     } catch (e: any) {
       setErr(e instanceof WrongPasswordError ? e.message : e?.message ?? t('deviceKey.failed'));
+      await refreshDeviceKeys();
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -250,24 +255,48 @@ export default function DeviceKeyImportScreen({ route, purpose }: {
       { text: t('walletDetail.cancel'), style: 'cancel' },
       {
         text: t('deviceKey.discard'),
-        style: 'destructive',
         onPress: async () => {
           if (busyRef.current) return;
           busyRef.current = true;
           setBusy(true);
           try {
             await discardPendingDeviceKey(pending, w.node, w.chainId);
-            setPending(null);
             setHint(null);
           } catch (error: any) {
             setHint(error?.message ?? t('deviceKey.failed'));
           } finally {
+            await refreshDeviceKeys();
             busyRef.current = false;
-            setBusy(false);
+            if (mountedRef.current) setBusy(false);
           }
         },
       },
     ]);
+  };
+
+  // Read back after writes, including native commit-then-reject failures.
+  const refreshDeviceKeys = async () => {
+    try {
+      const [current, saved] = await Promise.all([loadPendingDeviceKey(), listRecoverableDeviceKeys()]);
+      if (mountedRef.current) { setPending(current); setRecoverable(saved); }
+    } catch (error: any) {
+      if (mountedRef.current) setHint(error?.message ?? t('signupError.pendingReadFailed'));
+    }
+  };
+
+  const restore = async (id: string) => {
+    if (busyRef.current || pending !== null) return;
+    busyRef.current = true; setBusy(true); setHint(null);
+    try {
+      await restoreRecoverableDeviceKey(id);
+      recoveredRef.current = false;
+    } catch (error: any) {
+      if (mountedRef.current) setHint(error?.message ?? t('deviceKey.failed'));
+    } finally {
+      await refreshDeviceKeys();
+      busyRef.current = false;
+      if (mountedRef.current) setBusy(false);
+    }
   };
 
   useEffect(() => {
@@ -401,17 +430,31 @@ export default function DeviceKeyImportScreen({ route, purpose }: {
             {hint ? (
               <TouchableOpacity style={styles.secondary} onPress={() => {
                 setHint(null);
-                loadPendingDeviceKey().then(setPending)
-                  .catch((error) => setHint(error?.message ?? t('signupError.pendingReadFailed')));
+                void refreshDeviceKeys();
               }}>
                 <Text style={styles.secondaryTxt}>{t('onboarding.retry')}</Text>
               </TouchableOpacity>
             ) : <ActivityIndicator color={BLUE} />}
           </>
         ) : !pending ? (
-          <TouchableOpacity style={[styles.submit, busy && styles.submitOff]} disabled={busy} activeOpacity={0.85} onPress={() => setAsking(true)}>
-            <Text style={styles.submitTxt}>{t('deviceKey.generate')}</Text>
-          </TouchableOpacity>
+          <>
+            <TouchableOpacity style={[styles.submit, busy && styles.submitOff]} disabled={busy} activeOpacity={0.85} onPress={() => setAsking(true)}>
+              <Text style={styles.submitTxt}>{t('deviceKey.generate')}</Text>
+            </TouchableOpacity>
+            {recoverable.length ? <View style={styles.keyCard}>
+              <Text style={styles.keyLabel}>{t('deviceKey.recoveryTitle')}</Text>
+              <Text style={styles.openHint}>{t('deviceKey.recoveryHint')}</Text>
+              {recoverable.map(saved => <View key={saved.id}>
+                <Text style={styles.keyValue}>{saved.label}</Text>
+                <Text style={styles.keyMono} selectable>{saved.publicKey}</Text>
+                <TouchableOpacity style={styles.secondary} disabled={busy}
+                  accessibilityRole="button" accessibilityLabel={`${t('deviceKey.restore')}: ${saved.publicKey}`}
+                  onPress={() => void restore(saved.id)}>
+                  <Text style={styles.secondaryTxt}>{t('deviceKey.restore')}</Text>
+                </TouchableOpacity>
+              </View>)}
+            </View> : null}
+          </>
         ) : (
           <>
             <TouchableOpacity style={[styles.submit, (busy || editingName || w.chainId !== 'vaulta') && styles.submitOff]} disabled={busy || editingName || w.chainId !== 'vaulta'} activeOpacity={0.85} onPress={viaAnchor ? openAnchor : openWeb}>

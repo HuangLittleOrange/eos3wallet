@@ -6,7 +6,7 @@
 // 页面完全可以嘴上说转 1 个币、实际打包的是转空全部余额。
 import { ABI, Serializer, Transaction } from '@wharfkit/antelope';
 
-import { getCachedAbi } from '../chain/abiCache';
+import { getSigningAbi } from '../chain/signingAbi';
 import type { ActionSpec } from '../chain/transact';
 import { assertVisibleTransaction, decodeVisibleAction } from '../chain/transactionSafety';
 
@@ -19,7 +19,7 @@ export type DecodedTx = {
 
 export async function decodeSerializedTransaction(
   serializedTransaction: string,
-  opts: { nodeUrl: string; actor: string }
+  opts: { nodeUrl: string; actor: string; chainId: string }
 ): Promise<DecodedTx> {
   const transaction = Serializer.decode({ data: serializedTransaction, type: Transaction });
   assertVisibleTransaction(transaction);
@@ -34,7 +34,7 @@ export async function decodeSerializedTransaction(
 
     let data: Record<string, any>;
     try {
-      const abi = ABI.from(await getCachedAbi(opts.nodeUrl, String(action.account)));
+      const abi = ABI.from(await getSigningAbi(opts.chainId, String(action.account)));
       data = decodeVisibleAction(action, abi);
     } catch {
       throw new Error('Cannot decode transaction action');

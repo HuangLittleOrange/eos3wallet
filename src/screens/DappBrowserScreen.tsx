@@ -42,6 +42,7 @@ import { assertVisibleTransaction } from '../chain/transactionSafety';
 import { shouldInvalidateBackground } from '../crypto/systemAuthentication';
 import { useBrowserEsr } from '../dapp/use-browser-esr';
 import { useTokenPocketBrowser } from '../dapp/use-token-pocket-browser';
+import { transactionWallet } from '../chain/transactionWallet';
 import { tokenPocketUserAgent } from '../dapp/token-pocket-user-agent';
 import { preflightDappResources } from '../dapp/resourcePreflight';
 import { addDappHistory, isDappFavorite, listDappHistory, setDappThumbnail, toggleDappFavorite } from '../dapp/dappGate';
@@ -130,10 +131,10 @@ export default function DappBrowserScreen() {
   const [siteName, setSiteName] = useState('');
   const browserUserAgent = useMemo(() => tokenPocketUserAgent(Platform.OS, Platform.Version, (Platform as any).constants), []);
 
-  const wallet = w.currentWallet;
+  const wallet = transactionWallet(w);
   const isPasskey = wallet?.source === 'passkey';
   // 本机密钥(明文私钥/助记词或 passkey)均可在任意网络签名广播,含主网
-  const canSign = !!wallet && wallet.source !== 'watch';
+  const canSign = !!wallet;
   // 钱包卡片默认权限;dApp 在请求里为当前账户显式指定了权限时优先用它
   // (见 prepareActionRequest)——确认弹窗会原样展示 actor@permission,
   // owner 权限另有醒目警告,用户看到的就是实际要签的。
@@ -210,6 +211,7 @@ export default function DappBrowserScreen() {
 
   const tokenPocket = useTokenPocketBrowser({
     client: w.client, account: w.account, url, pageUrl: navUrl, reply,
+    isConnected: () => access.current.connected(),
     goBack: () => webRef.current?.goBack(),
     close: () => { void close(); },
     importWallet: async () => {
@@ -236,18 +238,25 @@ export default function DappBrowserScreen() {
       // Only this native-created closure can bind a request to its original instance.
       const requestIsCurrent = access.current.capture(msg.id, contextRef.current);
       const capturedRequest = { ...msg, isCurrent: requestIsCurrent };
-      if (browserEsr.handleBridgeRequest(msg, () => reply(msg.id, true, true))) return;
+      // Async replies and native Alert callbacks belong to this request instance.
+      const replyCurrent: typeof reply = (id, ok, payload) => {
+        if (requestIsCurrent()) reply(id, ok, payload);
+      };
+      if (browserEsr.handleBridgeRequest(msg, () => replyCurrent(msg.id, true, true))) return;
+      if (msg.method === 'getActions' && !msg.params?.account && !access.current.connected()) {
+        replyCurrent(msg.id, false, t('dappBrowser.connectionRequired')); return;
+      }
       const needsConnection = ['arbitrarySignature', 'signTransaction', 'requestSignature'];
       if (needsConnection.includes(msg.method)) {
-        if (!access.current.connected()) { reply(msg.id, false, t('dappBrowser.connectionRequired')); return; }
-        if (pendingRequest.current) { reply(msg.id, false, t('dappBrowser.requestPending')); return; }
+        if (!access.current.connected()) { replyCurrent(msg.id, false, t('dappBrowser.connectionRequired')); return; }
+        if (pendingRequest.current) { replyCurrent(msg.id, false, t('dappBrowser.requestPending')); return; }
         pendingRequest.current = msg.id;
       }
 
       switch (msg.method) {
         case 'getIdentity': {
           if (!w.hasAccount) {
-            reply(msg.id, false, 'no account');
+            replyCurrent(msg.id, false, 'no account');
             return;
           }
           const capturedContext = contextRef.current;
@@ -255,16 +264,16 @@ export default function DappBrowserScreen() {
             if (!requestIsCurrent()) return;
             if (!access.current.connect(msg.id, capturedContext)) return;
             setConnected(true);
-            reply(msg.id, true, { account: w.account, publicKey: activeKey });
+            replyCurrent(msg.id, true, { account: w.account, publicKey: activeKey });
           };
           if (access.current.connected()) disclose();
-          else if (pendingConnection.current) reply(msg.id, false, t('dappBrowser.requestPending'));
+          else if (pendingConnection.current) replyCurrent(msg.id, false, t('dappBrowser.requestPending'));
           else {
             pendingConnection.current = msg.id;
             Alert.alert(t('dappBrowser.connectTitle'), t('dappBrowser.connectBody', {
             origin: secureDappOrigin(currentUrl.current) ?? '', account: w.account,
           }), [
-            { text: t('walletDetail.cancel'), style: 'cancel', onPress: () => reply(msg.id, false, t('dappBrowser.userRejected')) },
+            { text: t('walletDetail.cancel'), style: 'cancel', onPress: () => replyCurrent(msg.id, false, t('dappBrowser.userRejected')) },
             { text: t('dappBrowser.connectAllow'), onPress: disclose },
             ], { cancelable: false });
           }
@@ -272,44 +281,48 @@ export default function DappBrowserScreen() {
         }
 
         case 'getIdentityFromPermissions':
-          reply(msg.id, true, w.hasAccount && access.current.connected() ? { account: w.account, publicKey: activeKey } : null);
+          replyCurrent(msg.id, true, w.hasAccount && access.current.connected() ? { account: w.account, publicKey: activeKey } : null);
           return;
 
         case 'forgetIdentity':
+          // Acknowledge this request before revoking every outstanding instance.
+          replyCurrent(msg.id, true, true);
           access.current.disconnect();
           pendingRequest.current = null;
+          pendingConnection.current = null;
+          tokenPocket.cancelScan();
           setActions(null);
           setReq(null);
+          setReqPermission(null);
           setPendingTx(null);
           setPendingMessage(null);
           setConnected(false);
-          reply(msg.id, true, true);
           return;
 
         case 'getAccount':
-          if (!msg.params?.account && !access.current.connected()) { reply(msg.id, false, t('dappBrowser.connectionRequired')); return; }
+          if (!msg.params?.account && !access.current.connected()) { replyCurrent(msg.id, false, t('dappBrowser.connectionRequired')); return; }
           w.client
             .getAccount(String(msg.params?.account ?? w.account))
-            .then((r) => reply(msg.id, true, r))
-            .catch((err) => reply(msg.id, false, String(err?.message ?? err)));
+            .then((r) => replyCurrent(msg.id, true, r))
+            .catch((err) => replyCurrent(msg.id, false, String(err?.message ?? err)));
           return;
 
         case 'getBalance':
-          if (!msg.params?.account && !access.current.connected()) { reply(msg.id, false, t('dappBrowser.connectionRequired')); return; }
+          if (!msg.params?.account && !access.current.connected()) { replyCurrent(msg.id, false, t('dappBrowser.connectionRequired')); return; }
           w.client
             .getBalance(
               String(msg.params?.contract ?? w.client.config.systemToken),
               String(msg.params?.account ?? w.account)
             )
-            .then((r) => reply(msg.id, true, r))
-            .catch((err) => reply(msg.id, false, String(err?.message ?? err)));
+            .then((r) => replyCurrent(msg.id, true, r))
+            .catch((err) => replyCurrent(msg.id, false, String(err?.message ?? err)));
           return;
 
         case 'getTableRows':
           w.client
             .getTableRows(msg.params ?? {})
-            .then((r) => reply(msg.id, true, r))
-            .catch((err) => reply(msg.id, false, String(err?.message ?? err)));
+            .then((r) => replyCurrent(msg.id, true, r))
+            .catch((err) => replyCurrent(msg.id, false, String(err?.message ?? err)));
           return;
 
         /**
@@ -326,15 +339,19 @@ export default function DappBrowserScreen() {
          * 整个关掉、连带把正常登录也堵死。
          */
         case 'arbitrarySignature': {
+          if (wallet?.source === 'watch') {
+            replyCurrent(msg.id, false, t('coldSigning.unsupportedMessage'));
+            return;
+          }
           const raw = msg.params?.data;
           const text = typeof raw === 'string' ? raw : '';
           // eslint-disable-next-line no-control-regex
           if (!text || /[\u0000-\u0008\u000e-\u001f]/.test(text) || text.length > 512) {
-            reply(msg.id, false, t('dappBrowser.messageNotPlainText'));
+            replyCurrent(msg.id, false, t('dappBrowser.messageNotPlainText'));
             return;
           }
           if (!canSign) {
-            reply(msg.id, false, t('dappBrowser.readOnlyRejected'));
+            replyCurrent(msg.id, false, t('dappBrowser.readOnlyRejected'));
             Alert.alert(t('dappBrowser.rejectedTitle'), t('dappBrowser.rejectedBody'));
             return;
           }
@@ -353,7 +370,7 @@ export default function DappBrowserScreen() {
          */
         case 'signTransaction': {
           if (!canSign) {
-            reply(msg.id, false, t('dappBrowser.readOnlyRejected'));
+            replyCurrent(msg.id, false, t('dappBrowser.readOnlyRejected'));
             Alert.alert(t('dappBrowser.rejectedTitle'), t('dappBrowser.rejectedBody'));
             return;
           }
@@ -361,12 +378,13 @@ export default function DappBrowserScreen() {
           // 页面指定了链就必须和钱包当前所在的链一致。不校验的话,签出来的东西
           // 在另一条链上有效,而用户是在这条链的确认界面上点的确认。
           if (wantedChain && wantedChain !== w.client.config.chainIdHash.toLowerCase()) {
-            reply(msg.id, false, t('dappBrowser.chainMismatch'));
+            replyCurrent(msg.id, false, t('dappBrowser.chainMismatch'));
             return;
           }
           decodeSerializedTransaction(String(msg.params?.serializedTransaction ?? ''), {
             nodeUrl: w.node.url,
             actor: w.account,
+            chainId: w.client.config.chainIdHash,
           })
             .then((decoded) => {
               if (!requestIsCurrent()) return;
@@ -377,13 +395,13 @@ export default function DappBrowserScreen() {
               setReqPermission(decoded.permission);
               repair.prepare(decoded.permission ?? permission);
             })
-            .catch((err) => { if (requestIsCurrent()) reply(msg.id, false, String(err?.message ?? err)); });
+            .catch((err) => { if (requestIsCurrent()) replyCurrent(msg.id, false, String(err?.message ?? err)); });
           return;
         }
 
         case 'requestSignature': {
           if (!canSign) {
-            reply(msg.id, false, t('dappBrowser.readOnlyRejected'));
+            replyCurrent(msg.id, false, t('dappBrowser.readOnlyRejected'));
             Alert.alert(t('dappBrowser.rejectedTitle'), t('dappBrowser.rejectedBody'));
             return;
           }
@@ -396,14 +414,14 @@ export default function DappBrowserScreen() {
             setReqPermission(prepared.permission);
             repair.prepare(prepared.permission);
           } catch {
-            reply(msg.id, false, t('dappBrowser.noRecognizableAction'));
+            replyCurrent(msg.id, false, t('dappBrowser.noRecognizableAction'));
           }
           return;
         }
 
         default:
-          if (tokenPocket.handleRequest(msg)) return;
-          reply(msg.id, false, t('dappBrowser.unsupportedMethod', { method: msg.method }));
+          if (tokenPocket.handleRequest(capturedRequest)) return;
+          replyCurrent(msg.id, false, t('dappBrowser.unsupportedMethod', { method: msg.method }));
       }
     },
     [w, activeKey, canSign, reply, browserEsr.handleBridgeRequest, tokenPocket.handleRequest, t]
@@ -437,7 +455,9 @@ export default function DappBrowserScreen() {
         await preflightDappResources({ transaction: pendingTx, actor: w.account, nodeUrl: w.node.url });
         if (!isCurrent()) throw new Error(t('dappBrowser.requestChanged'));
         assertVisibleTransaction(pendingTx);
-        const sig = await signDigest(signer, pendingTx.signingDigest(w.client.config.chainIdHash));
+        const sig = await signDigest(signer, pendingTx.signingDigest(w.client.config.chainIdHash), {
+          transaction: pendingTx, chainId: w.client.config.chainIdHash, permission: effectivePermission, isCurrent,
+        });
         if (!isCurrent()) throw new Error(t('dappBrowser.requestChanged'));
         reply(req.id, true, { signatures: [String(sig)] });
         clearPending();
@@ -845,6 +865,7 @@ export default function DappBrowserScreen() {
         error={txErr}
         walletId={wallet?.id}
         passkey={isPasskey}
+        external={wallet?.source === 'watch'}
         origin={host}
         onConfirm={submit}
         onConfirmBiometric={submitBiometric}

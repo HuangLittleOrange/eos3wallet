@@ -35,3 +35,16 @@ test('changed permissions and inserted actions cannot bypass the last signing bo
   expect(() => assertResolvedActionsMatch(tx(owner), [expected], 'alice', 'active')).toThrow('authorization');
   expect(() => assertResolvedActionsMatch(tx(owner), [], 'alice', 'owner')).toThrow('actions');
 });
+
+test('every unpinned action needs a verified schema, including custom contracts and NFT transfers', () => {
+  const nft = ABI.from({ structs: [{ name: 'transfer', base: '', fields: [
+    { name: 'sender', type: 'name' }, { name: 'recipient', type: 'name' },
+    { name: 'asset_ids', type: 'uint64[]' }, { name: 'memo', type: 'string' },
+  ] }], actions: [{ name: 'transfer', type: 'transfer', ricardian_contract: '' }] });
+  const spec = { account: 'atomicassets', name: 'transfer', data: { sender: 'alice', recipient: 'bob', asset_ids: ['123'], memo: '' } };
+  const action = Action.from({ ...spec, authorization: auth }, nft);
+  expect(() => assertResolvedActionsMatch(tx(action), [spec], 'alice', 'active')).toThrow('Unverified');
+  expect(() => assertResolvedActionsMatch(tx(action), [spec], 'alice', 'active', new Map([[spec.account, nft]]))).not.toThrow();
+  expect(() => assertResolvedActionsMatch(tx(action), [{ ...spec, data: { ...spec.data, recipient: 'carol' } }],
+    'alice', 'active', new Map([[spec.account, nft]]))).toThrow('differs');
+});

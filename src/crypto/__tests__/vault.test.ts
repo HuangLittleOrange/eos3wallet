@@ -16,6 +16,7 @@ jest.mock('expo-secure-store', () => {
   };
 });
 jest.mock('react-native-get-random-values', () => ({}));
+jest.mock('../../net/fetchRetry', () => ({ fetchWithRetry: jest.fn() }));
 jest.mock('../../i18n', () => ({
   t: (key: string) => key,
 }));
@@ -64,12 +65,18 @@ import {
   updatePendingDeviceKeyLabel,
   importStoredPendingDeviceKey,
   discardStoredPendingDeviceKey,
+  listRecoverableDeviceKeys,
+  restoreRecoverableDeviceKey,
   PendingDeviceKey,
   biometricEnabled,
   enableBiometric,
   disableBiometric,
   loadSecretWithBiometric,
 } from '../vault';
+import { discardPendingDeviceKey } from '../../chain/deviceKey';
+import { fetchWithRetry } from '../../net/fetchRetry';
+import { CHAINS } from '../../chain/config';
+import { PrivateKey } from '@wharfkit/antelope';
 
 // PBKDF2 20 万次迭代走(mock 出来的)原生实现本身很快,放宽超时只是给较慢的
 // CI 机器留余量,不是像纯 JS 实现那样必须依赖大额超时才能跑完。
@@ -348,7 +355,7 @@ describe('钱包索引', () => {
     expect(await listWallets()).toHaveLength(2);
   });
 
-  it('listWallets 顺手清掉索引里已存在的重复记录', async () => {
+  it('listWallets merges metadata in its view without rewriting the source index', async () => {
     const dup1 = wallet({ id: 'aaaa', createdAt: 1000, authPermissions: ['active'] });
     const dup2 = { ...dup1, id: 'bbbb', createdAt: 2000, authPermissions: ['owner'] };
     memStore.set('aurora.wallet.index', JSON.stringify([dup1, dup2]));
@@ -357,6 +364,8 @@ describe('钱包索引', () => {
     expect(list).toHaveLength(1);
     expect(list[0].id).toBe('aaaa');
     expect([...(list[0].authPermissions ?? [])].sort()).toEqual(['active', 'owner']);
+    expect(JSON.parse(memStore.get('aurora.wallet.index')!)).toEqual([dup1, dup2]);
+    expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled();
   });
 });
 
@@ -448,11 +457,13 @@ describe('device-wide biometric unlock', () => {
     await seedWallet('alice');
     memStore.set('aurora.bio.alice', password);
     memStore.set('aurora.bio.alice.flag', '1');
-    jest.mocked(SecureStore.getItemAsync).mockImplementationOnce(async (key) => memStore.get(key) ?? null)
-      .mockImplementationOnce(async (key) => memStore.get(key) ?? null)
-      .mockImplementationOnce(async (key) => memStore.get(key) ?? null)
-      .mockRejectedValueOnce(new Error('User cancelled'));
+    jest.mocked(SecureStore.getItemAsync).mockImplementation(async (key, options) => {
+      if (key === 'aurora.bio.alice' && options?.requireAuthentication) throw new Error('User cancelled');
+      return memStore.get(key) ?? null;
+    });
     await expect(loadSecretWithBiometric('alice')).rejects.toThrow('vaultError.cancelled');
+    expect(SecureStore.getItemAsync).toHaveBeenCalledWith('aurora.bio.alice',
+      expect.objectContaining({ requireAuthentication: true }));
     expect(memStore.has(globalKey)).toBe(false);
     expect(memStore.get('aurora.bio.alice')).toBe(password);
   });
@@ -503,7 +514,7 @@ describe('device-wide biometric unlock', () => {
     expect(memStore.has(globalKey)).toBe(false);
   });
 
-  it('deduplicating wallet records cleans only legacy per-wallet credentials', async () => {
+  it('wallet list loading never clears legacy or shared biometric credentials', async () => {
     memStore.set(globalKey, password);
     memStore.set(globalFlag, '1');
     memStore.set('aurora.wallet.index', JSON.stringify([
@@ -512,6 +523,7 @@ describe('device-wide biometric unlock', () => {
     await expect(listWallets()).resolves.toHaveLength(1);
     await expect(biometricEnabled()).resolves.toBe(true);
     expect(memStore.get(globalKey)).toBe(password);
+    expect(SecureStore.deleteItemAsync).not.toHaveBeenCalled();
   });
 });
 
@@ -634,14 +646,100 @@ describe('pending device authorization storage', () => {
     expect(memStore.get('aurora.wallet.' + pending.id)).toBe('encrypted-secret');
   });
 
-  it('failed secret removal restores the pending recovery record', async () => {
+  it('a failure to clear pending leaves its ciphertext and recovery record intact', async () => {
     await seed();
-    jest.mocked(SecureStore.deleteItemAsync)
-      .mockImplementationOnce(async (key) => { memStore.delete(key); })
-      .mockRejectedValueOnce(new Error('secret removal failed'));
-    await expect(discardStoredPendingDeviceKey(pending)).rejects.toThrow('secret removal failed');
+    jest.mocked(SecureStore.deleteItemAsync).mockRejectedValueOnce(new Error('pending removal failed'));
+    await expect(discardStoredPendingDeviceKey(pending)).rejects.toThrow('pending removal failed');
     await expect(loadPendingDeviceKey()).resolves.toEqual(pending);
     expect(memStore.get('aurora.wallet.' + pending.id)).toBe('encrypted-secret');
+    await expect(listRecoverableDeviceKeys()).resolves.toEqual([pending]);
+    await discardStoredPendingDeviceKey(pending);
+    await expect(restoreRecoverableDeviceKey(pending.id)).resolves.toEqual(pending);
+  });
+
+  it('does not erase an authorized key when the selected RPC lies about empty references', async () => {
+    const key = PrivateKey.generate('K1');
+    const current = { ...pending, publicKey: String(key.toPublic()), legacyPublicKey: key.toPublic().toLegacyString() };
+    await saveSecret(current.id, String(key), 'test-password');
+    await savePendingDeviceKey(current);
+    // The selected source hides the real authorization; the other chain has none.
+    // Correct chain IDs and syntactically valid empty indexes are not proof of non-use.
+    jest.mocked(fetchWithRetry).mockImplementation(async url => ({ ok: true, json: async () =>
+      String(url).endsWith('/get_info') ? { chain_id: String(url).includes('jungle') ? CHAINS.jungle4.chainIdHash : CHAINS.vaulta.chainIdHash }
+        : { accounts: [] },
+    }) as Response);
+    await discardPendingDeviceKey(current, { url: 'https://malicious.invalid' }, 'vaulta');
+    await expect(loadSecret(current.id, 'test-password')).resolves.toBe(String(key));
+    await expect(listRecoverableDeviceKeys()).resolves.toEqual([current]);
+    await restoreRecoverableDeviceKey(current.id);
+    await expect(loadPendingDeviceKey()).resolves.toEqual(current);
+    await importStoredPendingDeviceKey(current, wallet({ id: current.id, publicKey: current.publicKey }));
+    await expect(loadSecret(current.id, 'test-password')).resolves.toBe(String(key));
+  });
+
+  it('does not erase a key even when all indexes are empty or lag behind a new authorization', async () => {
+    await seed(); await discardStoredPendingDeviceKey(pending);
+    expect(memStore.get('aurora.wallet.' + pending.id)).toBe('encrypted-secret');
+    await expect(listRecoverableDeviceKeys()).resolves.toEqual([pending]);
+    await expect(loadPendingDeviceKey()).resolves.toBeNull();
+  });
+
+  it.each(['aurora.deviceKey.recovery.pending-id', 'aurora.deviceKey.recoveryIds'])(
+    'a failed archive write at %s keeps the active recovery record and ciphertext', async slot => {
+      await seed();
+      jest.mocked(SecureStore.setItemAsync).mockImplementationOnce(async (key, value) => {
+        if (key === slot) throw new Error('archive failed');
+        memStore.set(key, value);
+      });
+      if (slot.endsWith('recoveryIds')) jest.mocked(SecureStore.setItemAsync).mockRejectedValueOnce(new Error('archive failed'));
+      await expect(discardStoredPendingDeviceKey(pending)).rejects.toThrow('archive failed');
+      await expect(loadPendingDeviceKey()).resolves.toEqual(pending);
+      expect(memStore.get('aurora.wallet.' + pending.id)).toBe('encrypted-secret');
+    });
+
+  it('commit-then-reject on pending removal still leaves a discoverable key', async () => {
+    await seed();
+    jest.mocked(SecureStore.deleteItemAsync).mockImplementationOnce(async key => {
+      memStore.delete(key); throw new Error('native reply lost');
+    });
+    await expect(discardStoredPendingDeviceKey(pending)).rejects.toThrow('native reply lost');
+    await expect(loadPendingDeviceKey()).resolves.toBeNull();
+    await expect(listRecoverableDeviceKeys()).resolves.toEqual([pending]);
+    await restoreRecoverableDeviceKey(pending.id);
+    expect(memStore.get('aurora.wallet.' + pending.id)).toBe('encrypted-secret');
+  });
+
+  it('multiple archived keys remain distinguishable and restoring cannot replace an active key', async () => {
+    await seed(); await discardStoredPendingDeviceKey(pending);
+    const next = { ...pending, id: 'next-key', publicKey: 'next-public' };
+    memStore.set('aurora.wallet.' + next.id, 'next-encrypted');
+    await savePendingDeviceKey(next);
+    await expect(restoreRecoverableDeviceKey(pending.id)).rejects.toThrow('vaultError.pendingKeyExists');
+    await discardStoredPendingDeviceKey(next);
+    expect((await listRecoverableDeviceKeys()).map(key => key.id)).toEqual([pending.id, next.id]);
+    await restoreRecoverableDeviceKey(pending.id);
+    await expect(listRecoverableDeviceKeys()).resolves.toEqual([next]);
+    await expect(loadPendingDeviceKey()).resolves.toEqual(pending);
+  });
+
+  it('a failed restore publication leaves the archive recoverable', async () => {
+    await seed(); await discardStoredPendingDeviceKey(pending);
+    jest.mocked(SecureStore.setItemAsync).mockRejectedValueOnce(new Error('restore failed'));
+    await expect(restoreRecoverableDeviceKey(pending.id)).rejects.toThrow('restore failed');
+    await expect(listRecoverableDeviceKeys()).resolves.toEqual([pending]);
+    await expect(loadPendingDeviceKey()).resolves.toBeNull();
+    expect(memStore.get('aurora.wallet.' + pending.id)).toBe('encrypted-secret');
+  });
+
+  it('rotates archived ciphertext with the master password before it is restored or imported', async () => {
+    await setMasterPassword('old-password');
+    await saveSecret(pending.id, 'synthetic-device-secret', 'old-password');
+    await savePendingDeviceKey(pending); await discardStoredPendingDeviceKey(pending);
+    await changeMasterPassword('old-password', 'new-password');
+    await expect(loadSecret(pending.id, 'new-password')).resolves.toBe('synthetic-device-secret');
+    await expect(loadSecret(pending.id, 'old-password')).rejects.toBeInstanceOf(WrongPasswordError);
+    await restoreRecoverableDeviceKey(pending.id); await importStoredPendingDeviceKey(pending, imported());
+    await expect(loadSecret(pending.id, 'new-password')).resolves.toBe('synthetic-device-secret');
   });
 });
 

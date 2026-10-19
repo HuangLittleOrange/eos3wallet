@@ -14,6 +14,7 @@ import * as Application from 'expo-application';
 import { DownloadTask, File, Paths } from 'expo-file-system';
 import { getContentUriAsync } from 'expo-file-system/legacy';
 import * as IntentLauncher from 'expo-intent-launcher';
+import { requireNativeModule } from 'expo';
 
 import { EOS3_BASE_URL } from '../passkey/constants';
 import { fetchWithTimeout } from '../net/fetchRetry';
@@ -46,7 +47,7 @@ export const canSelfUpdate = Platform.OS === 'android';
 export const canCheckUpdates = canSelfUpdate || Platform.OS === 'ios';
 
 export class AppUpdateError extends Error {
-  constructor(public readonly code: 'network' | 'server' | 'insecure-url' | 'download' | 'install') {
+  constructor(public readonly code: 'network' | 'server' | 'insecure-url' | 'download' | 'install' | 'verify') {
     super(code);
   }
 }
@@ -122,7 +123,13 @@ export async function downloadRelease(
  * 签名的包才能覆盖安装。第一次用时系统会先让用户去设置里允许本 App 安装应用,
  * 允许完回到 App 需要再点一次安装。
  */
-export async function installRelease(fileUri: string): Promise<void> {
+export async function installRelease(fileUri: string, versionCode: number): Promise<void> {
+  try {
+    if (!canSelfUpdate || !Number.isSafeInteger(versionCode) || versionCode <= currentVersionCode()) throw new Error();
+    const verifier = requireNativeModule<{ verify(uri: string, version: number): Promise<boolean> }>('WalletUpdateVerification');
+    // No JS-only fallback: an older native binary must never silently skip this check.
+    if (await verifier.verify(fileUri, versionCode) !== true) throw new Error();
+  } catch { throw new AppUpdateError('verify'); }
   try {
     const contentUri = await getContentUriAsync(fileUri);
     await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {

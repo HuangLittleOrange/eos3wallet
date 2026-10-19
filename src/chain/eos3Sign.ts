@@ -4,7 +4,7 @@
 // 公共的"请求 eos3.app API"和"本地签一笔它返回的交易"两件事,避免两处重复。
 import { ABI, Action, Bytes, Checksum256, Name, PrivateKey, Serializer, Transaction } from '@wharfkit/antelope';
 
-import { getCachedAbi } from './abiCache';
+import { getSigningAbi } from './signingAbi';
 import { EOS3_BASE_URL } from '../passkey/constants';
 import { signDigestWithPasskey } from '../passkey/webauthnSigning';
 import type { NodeInfo } from './config';
@@ -97,7 +97,7 @@ export async function signPlainTransactionJSON(opts: {
   const abis = await Promise.all(
     contracts.map(async (contract) => ({
       contract: Name.from(contract),
-      abi: await getCachedAbi(opts.node.url, contract),
+      abi: await getSigningAbi(opts.chainId, contract),
     }))
   );
 
@@ -107,6 +107,7 @@ export async function signPlainTransactionJSON(opts: {
   const chainId = Checksum256.from(opts.chainId);
   const digest = transaction.signingDigest(chainId);
 
+  if (opts.signer.kind === 'external') throw new Error(t('coldSigning.unsupportedFlow'));
   const signature =
     opts.signer.kind === 'passkey'
       ? await signDigestWithPasskey({
@@ -146,6 +147,7 @@ export async function signSerializedTransaction(opts: {
   const digestInput = Bytes.from(chainId.array).appending(txBytes).appending(new Uint8Array(32));
   const digest = Checksum256.hash(digestInput);
 
+  if (opts.signer.kind === 'external') throw new Error(t('coldSigning.unsupportedFlow'));
   const signature =
     opts.signer.kind === 'passkey'
       ? await signDigestWithPasskey({

@@ -24,6 +24,7 @@ import { PowerupMarket } from '../chain/client';
 import { estimateTransfersForPayment, fracForResourceUnits, perTransferResourceWeights } from '../chain/powerupPricing';
 import { accountNameError, isValidAccountName } from '../chain/account';
 import ConfirmTxSheet from '../components/ConfirmTxSheet';
+import { transactionWallet } from '../chain/transactionWallet';
 import RexOperations from '../components/RexOperations';
 import { ActionSpec, Signer, transact } from '../chain/transact';
 import { useResourceRepair } from '../components/ResourceRepairSheet';
@@ -95,7 +96,7 @@ export default function ResourceScreen() {
     (t) => t.contract === w.client.config.systemToken && t.symbol === w.client.config.symbol
   );
   const liquid = systemTokenBalance?.amount ?? 0;
-  const wallet = w.currentWallet;
+  const wallet = transactionWallet(w);
   const isPasskey = wallet?.source === 'passkey';
   // 本机密钥(明文私钥/助记词或 passkey)均可在任意网络签名广播,含主网
   const canSign = !!wallet;
@@ -481,6 +482,7 @@ export default function ResourceScreen() {
         notice={confirmNotice}
         walletId={wallet?.id}
         passkey={isPasskey}
+        external={wallet?.source === 'watch'}
         onConfirm={submit}
         onConfirmBiometric={submitBiometric}
         onConfirmPasskey={submitPasskey}

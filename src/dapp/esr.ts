@@ -10,9 +10,9 @@ import { notifyTransactionApplied } from '../chain/walletDataEvents';
 import { deflateRaw, inflateRaw } from 'pako';
 import { fetch as callbackFetch } from 'expo/fetch';
 import { SigningRequest, ResolvedSigningRequest } from '@wharfkit/signing-request';
-import { ABI, APIClient, Name, PublicKey, Serializer, Signature, SignedTransaction } from '@wharfkit/antelope';
+import { ABI, APIClient, Name, PublicKey, Serializer, Signature, SignedTransaction, TimePointSec } from '@wharfkit/antelope';
 
-import { getCachedAbi } from '../chain/abiCache';
+import { getSigningAbi } from '../chain/signingAbi';
 import { CHAINS, ChainConfig, ChainId, NodeInfo } from '../chain/config';
 import { ActionSpec, Signer, signDigest, transactionFailure } from '../chain/transact';
 import { getLinkIdentity, linkDeviceName } from './linkIdentity';
@@ -53,7 +53,12 @@ export function identityExpirationMs(resolved: ResolvedSigningRequest): number |
 
 export function assertIdentityNotExpired(resolved: ResolvedSigningRequest): void {
   const expiration = identityExpirationMs(resolved);
-  if (expiration !== null && Date.now() >= expiration) throw new EsrIdentityExpiredError();
+  if (expiration === null) return; // ESR v2 has no expiring identity proof.
+  const now = Date.now();
+  if (!Number.isFinite(expiration) || expiration > now + ESR_IDENTITY_TIMEOUT_SECONDS * 1000) {
+    throw new Error(t('esrError.identityInvalidExpiration'));
+  }
+  if (now >= expiration) throw new EsrIdentityExpiredError();
 }
 
 export type EsrRequest = {
@@ -118,27 +123,22 @@ export async function parseEsr(
     requested: chainLabel(String(info.chain_id)), current: opts.config.name,
   }));
 
-  // 交易请求需要合约 ABI 才能解析 action 数据。多个合约的 ABI 相互独立,
-  // 并发拉取且走缓存(abiCache)——同一个 dApp 会话连续签几笔不用回回重拉;
-  // 之前是逐个串行 await,涉及 N 个合约就要 N 次节点往返排队,
-  // 用户从点击到看到确认弹窗要多等好几秒。
-  // 个别合约拿不到 ABI 时跳过(和以前 `if (r.abi)` 的行为一致)——真缺了
-  // 关键 ABI,下面 resolve() 自己会报错,不在这里提前拦。
-  // resolve() 要的是 ABI 类实例(靠它的 getActionType() 解出 action 数据结构),
-  // getCachedAbi() 拿到的是裸 JSON——直接塞进去解析阶段就会以
-  // "abi.getActionType is not a function" 崩掉,这里补一层 ABI.from() 包装。
+  // Resolve and display with corroborated schemas. Missing or disputed ABIs
+  // stop the request before a confirmation can present misleading fields.
   const abis = new Map<string, ABI>();
   if (!request.isIdentity()) {
     await Promise.all(
       request.getRequiredAbis().map(async (acc) => {
-        try {
-          abis.set(String(acc), ABI.from(await getCachedAbi(opts.node.url, String(acc))));
-        } catch {}
+        abis.set(String(acc), ABI.from(await getSigningAbi(walletChain, String(acc))));
       })
     );
   }
 
-  const header = info.getTransactionHeader(request.isIdentity() ? ESR_IDENTITY_TIMEOUT_SECONDS : 120);
+  // Identity proofs have no TAPOS dependency. Their lifetime must never be
+  // extended by a node's self-reported head time.
+  const header = request.isIdentity()
+    ? { expiration: TimePointSec.from(new Date((Math.floor(Date.now() / 1000) + ESR_IDENTITY_TIMEOUT_SECONDS) * 1000)) }
+    : info.getTransactionHeader(120);
   // 多链请求 resolve 时必须显式指定选用的链,单链请求传了也无妨(会被请求自带的覆盖)
   const resolved = request.resolve(
     abis,
@@ -148,6 +148,7 @@ export async function parseEsr(
 
   if (!request.isIdentity()) assertVisibleTransaction(resolved.transaction);
   else {
+    assertIdentityNotExpired(resolved);
     // Identity requests can explicitly specify an account/permission instead of placeholders.
     const auth = resolved.transaction.actions[0]?.authorization;
     if (auth?.length !== 1 || String(auth[0].actor) !== opts.actor ||
@@ -238,7 +239,10 @@ export async function signAndCallback(opts: {
   }
   checkContext();
   // signingDigest 是只读属性,链 id 已在 resolve 阶段固定进请求里
-  const sig: Signature = await signDigest(opts.signer, opts.resolved.signingDigest);
+  const sig: Signature = await signDigest(opts.signer, opts.resolved.signingDigest, {
+    transaction: opts.resolved.transaction, chainId: opts.chainId,
+    permission: opts.permission ?? 'active', isCurrent: opts.isCurrent,
+  });
   checkContext();
   // System authentication can outlast the proof even when it was valid before signing.
   assertIdentityNotExpired(opts.resolved);

@@ -24,7 +24,8 @@ export function decodeVisibleAction(action: Action, abi: ABI): Record<string, an
   return data;
 }
 
-export function assertResolvedActionsMatch(transaction: Transaction, actions: ActionSpec[], actor: string, permission: string): void {
+export function assertResolvedActionsMatch(transaction: Transaction, actions: ActionSpec[], actor: string, permission: string,
+  verifiedAbis?: ReadonlyMap<string, ABI>): void {
   assertVisibleTransaction(transaction);
   if (transaction.actions.length !== actions.length) throw new Error('Transaction actions changed');
   transaction.actions.forEach((actual, index) => {
@@ -32,8 +33,9 @@ export function assertResolvedActionsMatch(transaction: Transaction, actions: Ac
     if (String(actual.account) !== expected.account || String(actual.name) !== expected.name ||
         actual.authorization.length !== 1 || String(actual.authorization[0].actor) !== actor ||
         String(actual.authorization[0].permission) !== permission) throw new Error('Transaction authorization changed');
-    const abi = coreActionAbi(expected.account, expected.name);
-    if (abi && Action.from({ ...expected, authorization: actual.authorization }, abi).data.hexString !== actual.data.hexString) {
+    const abi = coreActionAbi(expected.account, expected.name) ?? verifiedAbis?.get(expected.account);
+    if (!abi) throw new Error('Unverified action ABI');
+    if (Action.from({ ...expected, authorization: actual.authorization }, abi).data.hexString !== actual.data.hexString) {
       throw new Error('Action differs from confirmed content');
     }
   });

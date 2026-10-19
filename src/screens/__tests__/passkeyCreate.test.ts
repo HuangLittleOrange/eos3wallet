@@ -28,13 +28,13 @@ jest.mock('../../chain/deviceKey', () => ({
   createPendingDeviceKey: jest.fn(), discardPendingDeviceKey: jest.fn(),
   findAccountsForDeviceKey: jest.fn(), importPendingDeviceKey: jest.fn(),
 }));
-jest.mock('../../crypto/vault', () => ({ loadPendingDeviceKey: jest.fn(), hasMasterPassword: jest.fn(), updatePendingDeviceKeyLabel: jest.fn() }));
+jest.mock('../../crypto/vault', () => ({ loadPendingDeviceKey: jest.fn(), listRecoverableDeviceKeys: jest.fn(async () => []), restoreRecoverableDeviceKey: jest.fn(), hasMasterPassword: jest.fn(), updatePendingDeviceKeyLabel: jest.fn() }));
 jest.mock('../../i18n', () => ({ t: (key: string) => key, useI18n: () => ({ t: (key: string) => key }) }));
 
 import React from 'react';
 import { openAuthSessionAsync, WebBrowserResultType } from 'expo-web-browser';
 import { useWalletSession } from '../../chain/WalletContext';
-import { loadPendingDeviceKey, updatePendingDeviceKeyLabel } from '../../crypto/vault';
+import { loadPendingDeviceKey, listRecoverableDeviceKeys, updatePendingDeviceKeyLabel } from '../../crypto/vault';
 import { deviceKeyAuthorizeUrl, findAccountsForDeviceKey, importPendingDeviceKey } from '../../chain/deviceKey';
 import PasskeyCreateScreen from '../PasskeyCreateScreen';
 import { createPendingDeviceKey } from '../../chain/deviceKey';
@@ -60,6 +60,7 @@ beforeEach(() => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   jest.resetAllMocks();
   jest.mocked(loadPendingDeviceKey).mockResolvedValue(pending);
+  jest.mocked(listRecoverableDeviceKeys).mockResolvedValue([]);
   jest.mocked(createPendingDeviceKey).mockResolvedValue(pending);
   jest.mocked(deviceKeyAuthorizeUrl).mockReturnValue('https://eos3.app/account?deviceKey=public');
   jest.mocked(updatePendingDeviceKeyLabel).mockImplementation(async (value, name) => ({ ...value, label: name.trim() }));

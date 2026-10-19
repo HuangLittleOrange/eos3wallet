@@ -12,6 +12,7 @@ import { Alert, AppState } from 'react-native';
 import type { ResolvedSigningRequest } from '@wharfkit/signing-request';
 
 import { useWalletSession } from '../chain/WalletContext';
+import { transactionWallet } from '../chain/transactionWallet';
 import { biometricSigner, passkeySigner, passwordSigner, type SignerGetter } from '../chain/signers';
 import { useResourceRepair } from '../components/ResourceRepairSheet';
 import { signingPermission } from '../crypto/vault';
@@ -29,11 +30,13 @@ export function useEsrFlow(opts: {
   const w = useWalletSession();
   const { t } = useI18n();
 
-  const wallet = w.currentWallet;
-  const canSign = !!wallet && wallet.source !== 'watch';
+  const wallet = transactionWallet(w);
+  const walletSource = wallet?.source;
+  const canSign = !!wallet;
   const permission = signingPermission(wallet);
 
   const [esr, setEsr] = useState<EsrFlowState>(null);
+  const [esrGeneration, setEsrGeneration] = useState(0);
   /** parseEsr 内部要打一次链上 get_info,节点慢的时候点击/扫码到弹出确认框
    *  之间会有明显空档——给个即时反馈,不然像是没反应 */
   const [parsing, setParsing] = useState(false);
@@ -43,17 +46,25 @@ export function useEsrFlow(opts: {
   const generationRef = useRef(0);
   const submittingRef = useRef(false);
   const mountedRef = useRef(true);
+  const sourceSignalRef = useRef<AbortSignal | undefined>(undefined);
+  const sourceCleanupRef = useRef<(() => void) | undefined>(undefined);
+  const releaseSource = useCallback(() => {
+    sourceCleanupRef.current?.();
+    sourceCleanupRef.current = undefined;
+    sourceSignalRef.current = undefined;
+  }, []);
   const walletContext = JSON.stringify([wallet?.id, w.account, w.chainId, w.node.url]);
   const contextRef = useRef(walletContext);
   contextRef.current = walletContext;
   const invalidate = useCallback(() => {
+    releaseSource();
     generationRef.current++;
     activeRequestRef.current = null;
     setEsr(null);
     setErr(null);
     setParsing(false);
     setBusy(false);
-  }, []);
+  }, [releaseSource]);
   useEffect(invalidate, [walletContext, invalidate]);
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
@@ -70,8 +81,9 @@ export function useEsrFlow(opts: {
       mountedRef.current = false;
       generationRef.current += 1;
       activeRequestRef.current = null;
+      releaseSource();
     };
-  }, []);
+  }, [releaseSource]);
 
   useEffect(() => {
     if (!esr) return;
@@ -88,49 +100,54 @@ export function useEsrFlow(opts: {
 
   /** 接收一条 esr:/anchor:// 请求:解析并弹确认框;只读账户直接提示不能登录 */
   const open = useCallback(
-    async (uri: string) => {
+    async (uri: string, signal?: AbortSignal) => {
       // Reserve synchronously: both the page bridge and navigation may intercept the same link.
-      if (!mountedRef.current || activeRequestRef.current !== null || submittingRef.current) return;
+      if (signal?.aborted || !mountedRef.current || activeRequestRef.current !== null || submittingRef.current) return;
       if (!canSign) {
         Alert.alert(t('dappBrowser.cannotLoginTitle'), t('dappBrowser.cannotLoginBody'));
         return;
       }
       const generation = ++generationRef.current;
       activeRequestRef.current = generation;
+      sourceSignalRef.current = signal;
+      if (signal) {
+        signal.addEventListener('abort', invalidate, { once: true });
+        sourceCleanupRef.current = () => signal.removeEventListener('abort', invalidate);
+      }
       setParsing(true);
       try {
         const parsed = await parseEsr(uri, { actor: w.account, permission, node: w.node, config: w.client.config });
+        if (walletSource === 'watch' && parsed.req.isIdentity) throw new Error(t('coldSigning.unsupportedMessage'));
         if (!mountedRef.current || generationRef.current !== generation) return;
         setErr(null);
+        setEsrGeneration(generation);
         setEsr(parsed);
         if (!parsed.req.isIdentity) repair.prepare(permission);
       } catch (e: any) {
         if (!mountedRef.current || generationRef.current !== generation) return;
         activeRequestRef.current = null;
+        releaseSource();
         Alert.alert(t('dappBrowser.cannotParseTitle'), e?.message ?? t('dappBrowser.cannotParseBody'));
       } finally {
         if (mountedRef.current && generationRef.current === generation) setParsing(false);
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [canSign, w.account, permission, w.node, w.client, t]
+    [canSign, walletSource, w.account, permission, w.node, w.client, t, invalidate, releaseSource]
   );
 
   const close = useCallback(() => {
     if (submittingRef.current) return;
-    generationRef.current += 1;
-    activeRequestRef.current = null;
-    setParsing(false);
-    setEsr(null);
-    setErr(null);
-  }, []);
+    invalidate();
+  }, [invalidate]);
 
   const submit = async (getSigner: SignerGetter) => {
-    if (!esr || !wallet || activeRequestRef.current === null || submittingRef.current || !mountedRef.current) return;
+    if (!esr || !wallet || activeRequestRef.current !== esrGeneration || submittingRef.current || !mountedRef.current) return;
     const generation = generationRef.current;
     const capturedContext = contextRef.current;
+    const sourceSignal = sourceSignalRef.current;
     const isCurrent = () => mountedRef.current && AppState.currentState !== 'background' &&
-      generationRef.current === generation && contextRef.current === capturedContext;
+      !sourceSignal?.aborted && generationRef.current === generation && contextRef.current === capturedContext;
     submittingRef.current = true;
     setBusy(true);
     setErr(null);
@@ -151,6 +168,7 @@ export function useEsrFlow(opts: {
       });
       if (!mountedRef.current || generationRef.current !== generation) return;
       const wasIdentity = esr.req.isIdentity;
+      releaseSource();
       activeRequestRef.current = null;
       setEsr(null);
       if (r.kind === 'redirect') {

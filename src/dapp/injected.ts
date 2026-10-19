@@ -353,8 +353,9 @@ export function buildInjectedScript(opts: {
      *   站点的 TokenPocket 通道就走它)会接着调 deserializeTransactionWithActions
      *   和 transact(tx, { broadcast: false }),期待拿回 { serializedTransaction,
      *   signatures }——签名归钱包,广播归页面。所以这里用页面自己给的 Api 类
-     *   new 一个实例,只把 signatureProvider 换成我们的,签名请求落到 App 的
-     *   "只签名"通道(解码交易、弹确认框、校验链、出签名),其余全用 eosjs 原生实现。
+     *   new 一个实例,接入 signatureProvider 并修正旧版的 TAPOS 零值检查。
+     *   签名请求落到 App 的"只签名"通道(解码交易、弹确认框、校验链、出签名),
+     *   序列化和广播选项仍由 eosjs 处理。
      *
      * eosjs1:scatter.eos(network, Eos, options),老站点用。返回一个带
      *   transact/transaction 的对象,钱包拼交易并广播。
@@ -385,7 +386,18 @@ export function buildInjectedScript(opts: {
         var opts = {};
         for (var k in options || {}) opts[k] = options[k];
         opts.signatureProvider = signatureProvider;
-        return new Api(opts);
+        var api = new Api(opts);
+        // Legacy eosjs rejects zero refs with !!(expiration && num && prefix).
+        // protocol-scatter can pass 0/0 for non-broadcast ownership challenges.
+        // Check presence/type/range without rebuilding any signed header bytes.
+        if (typeof api.hasRequiredTaposFields === 'function') {
+          api.hasRequiredTaposFields = function (tx) {
+            return !!(tx && typeof tx.expiration === 'string' && tx.expiration &&
+              Number.isInteger(tx.ref_block_num) && tx.ref_block_num >= 0 && tx.ref_block_num <= 65535 &&
+              Number.isInteger(tx.ref_block_prefix) && tx.ref_block_prefix >= 0 && tx.ref_block_prefix <= 4294967295);
+          };
+        }
+        return api;
       }
 
       return {

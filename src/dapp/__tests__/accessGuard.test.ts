@@ -34,6 +34,22 @@ test('no permission before consent; explicit logout revokes it', () => {
   expect(guard.connected()).toBe(false);
 });
 
+test('disconnect invalidates old signatures and connection prompts even after reconnect and id reuse', () => {
+  const guard = connectedGuard();
+  guard.accept('doc:sign', 'doc', source, context);
+  guard.accept('doc:connect', 'doc', source, context);
+  const oldSign = guard.capture('doc:sign', context);
+  const oldConnect = guard.capture('doc:connect', context);
+  guard.disconnect();
+  expect(oldSign()).toBe(false); expect(oldConnect()).toBe(false);
+  expect(guard.connect('doc:connect', context)).toBe(false);
+  expect(guard.accept('doc:connect', 'doc', source, context)).toBe(true);
+  expect(guard.connect('doc:connect', context)).toBe(true);
+  expect(guard.accept('doc:sign', 'doc', source, context)).toBe(true);
+  expect(oldSign()).toBe(false); expect(oldConnect()).toBe(false);
+  expect(guard.capture('doc:sign', context)()).toBe(true);
+});
+
 test('origins are isolated by scheme, host and port; HTTP cannot connect', () => {
   const guard = connectedGuard();
   for (const url of ['https://other.example', 'https://app.example:444', 'http://app.example']) {

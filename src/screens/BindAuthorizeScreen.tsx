@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, ActivityIndicator, TouchableOpacity, Alert, AppState } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { useNavigation, useRoute, RouteProp } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -10,6 +10,8 @@ import PageHeader from '../components/PageHeader';
 import ConfirmTxSheet from '../components/ConfirmTxSheet';
 import AssetEditSheet from '../components/AssetEditSheet';
 import { useWalletSession } from '../chain/WalletContext';
+import { useSigningGuard } from '../chain/useSigningGuard';
+import { shouldInvalidateBackground } from '../crypto/systemAuthentication';
 import { ActionSpec, Signer } from '../chain/transact';
 import { BindAuthorizationInfo, PayLimitAssetConfig, PreparedBindAuthorization, buildBindAuthorization, prepareBindAuthorization, signAndCompleteBindAuthorization } from '../chain/bindAuthorize';
 import { displayBindLimit, normalizeBindAssets } from '../chain/bindIntent';
@@ -69,7 +71,30 @@ export default function BindAuthorizeScreen() {
   const [busy, setBusy] = useState(false);
   const [txErr, setTxErr] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<{ plan: PreparedBindAuthorization; context: string } | null>(null);
-  const context = JSON.stringify([bindId, w.chainId, w.account, w.node.url, wallet?.id]);
+  const context = JSON.stringify([bindId, w.chainId, w.account, w.node.url, wallet?.id, wallet?.publicKey]);
+  const confirmedRef = useRef(confirmed);
+  confirmedRef.current = confirmed;
+  const invalidateConfirmation = () => {
+    confirmedRef.current = null;
+    setConfirmed(null);
+    setConfirmOpen(false);
+  };
+  const signingGuard = useSigningGuard(context, confirmed, invalidateConfirmation);
+  const preparationGeneration = useRef(0);
+  const previousContext = useRef(context);
+  if (previousContext.current !== context) {
+    previousContext.current = context;
+    preparationGeneration.current++;
+  }
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'background' && shouldInvalidateBackground()) {
+        preparationGeneration.current++;
+        invalidateConfirmation();
+      }
+    });
+    return () => sub.remove();
+  }, []);
   const contextRef = useRef(context);
   contextRef.current = context;
   const mounted = useRef(true);
@@ -102,7 +127,7 @@ export default function BindAuthorizeScreen() {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bindId, w.account, w.chainId, w.node.url, wallet?.id, canSign]);
+  }, [bindId, w.account, w.chainId, w.node.url, wallet?.id, wallet?.publicKey, canSign]);
 
   const openEdit = (asset: AuthorizedAppAsset) => {
     setTxErr(null);
@@ -144,7 +169,7 @@ export default function BindAuthorizeScreen() {
   };
 
   const openConfirm = async () => {
-    if (!info || submitting.current) return;
+    if (!info || submitting.current || AppState.currentState === 'background') return;
     if (assets.length === 0) {
       Alert.alert(t('bindAuthorize.atLeastOneAsset'));
       return;
@@ -153,6 +178,9 @@ export default function BindAuthorizeScreen() {
     submitting.current = true;
     setTxErr(null);
     const requestContext = context;
+    const generation = preparationGeneration.current;
+    const isCurrent = () => mounted.current && contextRef.current === requestContext &&
+      preparationGeneration.current === generation && AppState.currentState !== 'background';
     const assetLimits = assets.map(toAssetConfig);
     try {
       const fresh = await buildBindAuthorization({ bindId, eosAccount: w.account, assetLimits });
@@ -160,38 +188,42 @@ export default function BindAuthorizeScreen() {
         bindId, eosAccount: w.account, chain: w.chainId, node: w.node,
         build: fresh, preview: info, assetLimits,
       });
-      if (!mounted.current || contextRef.current !== requestContext) return;
+      if (!isCurrent()) return;
       setConfirmed({ plan, context: requestContext });
       setConfirmOpen(true);
     } catch (e: any) {
-      Alert.alert(t('bindAuthorize.failed'), e?.message ?? undefined);
+      if (isCurrent()) Alert.alert(t('bindAuthorize.failed'), e?.message ?? undefined);
     } finally {
       submitting.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
 
   const runConfirm = async (getSigner: () => Promise<Signer>) => {
-    if (!wallet || !confirmed || submitting.current) return;
+    if (!wallet || !confirmed || confirmedRef.current !== confirmed || submitting.current) return;
     const current = confirmed;
+    const attempt = signingGuard.begin();
+    if (!attempt) return;
     submitting.current = true;
     setBusy(true);
     setTxErr(null);
     try {
       await signAndCompleteBindAuthorization({
         plan: current.plan, getSigner,
-        isCurrent: () => mounted.current && contextRef.current === current.context,
+        isCurrent: () => attempt.isCurrent() && mounted.current && confirmedRef.current === current && contextRef.current === current.context,
       });
+      if (!attempt.isCurrent() || confirmedRef.current !== current) return;
       setConfirmOpen(false);
       setConfirmed(null);
       Alert.alert(t('bindAuthorize.submitted'), t('bindAuthorize.granted'), [
         { text: t('permission.ok'), onPress: () => nav.navigate('Permission') },
       ]);
     } catch (e: any) {
-      setTxErr(e?.message ?? t('permission.actionFailed'));
+      if (attempt.isCurrent()) setTxErr(e?.message ?? t('permission.actionFailed'));
     } finally {
+      attempt.finish();
       submitting.current = false;
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
 
@@ -311,8 +343,7 @@ export default function BindAuthorizeScreen() {
         visible={confirmOpen && confirmed !== null && confirmed.context === context}
         onClose={() => {
           if (submitting.current) return;
-          setConfirmOpen(false);
-          setConfirmed(null);
+          invalidateConfirmation();
           setTxErr(null);
         }}
         actions={confirmOpen && confirmed ? [confirmSummaryAction()] : []}

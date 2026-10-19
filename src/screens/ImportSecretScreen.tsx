@@ -31,7 +31,8 @@ import {
   DerivedKey,
   KeyAccountMatch,
 } from '../crypto/keys';
-import { addWallet, newWalletId, saveSecret, verifyMasterPassword } from '../crypto/vault';
+import { addWallet, newWalletId, removeSecret, saveSecret, verifyMasterPassword } from '../crypto/vault';
+import { verifyImportedAccount } from '../chain/importAccount';
 import type { RootStackParamList } from '../navigation/RootNavigator';
 import { useI18n } from '../i18n';
 
@@ -61,6 +62,11 @@ export default function ImportSecretScreen() {
   // 整个页面都在输入/展示助记词或私钥,挂载期间全程禁截屏
   const protectedScreen = useScreenCaptureGuard(true, 'import-secret');
   const importGeneration = useRef(0);
+  const importContext = JSON.stringify([w.chainId, w.node?.url, w.historyNode?.url]);
+  const contextRef = useRef(importContext); contextRef.current = importContext;
+  const mounted = useRef(true);
+  const saving = useRef(false);
+  const verification = useRef<AbortController | null>(null);
   const [derived, setDerived] = useState<DerivedKey | null>(null);
   const [found, setFound] = useState<KeyAccountMatch[] | null>(null);
   // 每个账户勾选的权限——默认按链上检测结果预勾选,用户可在确认导入前调整
@@ -84,7 +90,7 @@ export default function ImportSecretScreen() {
   // 底部主按钮两个阶段各自的可用条件:还没解析出账户时看密钥格式对不对;
   // 解析完了看是不是选中了要导入的账户——密码是否够长、对不对留给
   // PasswordDialog 自己的输入框和 saveWallet 里的 verifyMasterPassword 判断
-  const submitDisabled = !protectedScreen || (derived ? saveBusy || !selectedAccount : !secretOk || busy);
+  const submitDisabled = !protectedScreen || busy || (derived ? saveBusy || !selectedAccount : !secretOk);
 
   const togglePerm = (account: string, perm: string) => {
     setSelectedPerms((prev) => {
@@ -98,7 +104,8 @@ export default function ImportSecretScreen() {
 
   /** 生成新助记词 —— 仅用于测试网演示 */
   const generate = () => {
-    if (!protectedScreen) return;
+    if (!protectedScreen || saving.current) return;
+    importGeneration.current++;
     setSecret(newMnemonic(12));
     setErr(null);
     setDerived(null);
@@ -107,11 +114,14 @@ export default function ImportSecretScreen() {
 
   /** 第一步:本地派生密钥并扫链找账户,不写入任何存储,不涉及密码 */
   const preview = async () => {
-    if (!protectedScreen) return;
-    const generation = importGeneration.current;
+    if (!protectedScreen || saving.current) return;
+    const generation = ++importGeneration.current;
+    const context = importContext;
+    const isCurrent = () => mounted.current && generation === importGeneration.current && context === contextRef.current;
     setBusy(true);
     setErr(null);
     setFound(null);
+    setSelectedAccount(null);
     try {
       const k = mode === 'mnemonic' ? deriveFromMnemonic(secret) : fromPrivateKey(secret);
       setDerived(k);
@@ -124,7 +134,7 @@ export default function ImportSecretScreen() {
       if (!accts.length) {
         accts = await findAccountsByKey(chainUrl, k.legacyPublicKey, hyperion).catch(() => [] as KeyAccountMatch[]);
       }
-      if (generation !== importGeneration.current) return;
+      if (!isCurrent()) return;
       setFound(accts);
       setSelectedPerms(
         Object.fromEntries(accts.map((a) => [a.account, a.permissions.length ? a.permissions : ['active']]))
@@ -132,10 +142,11 @@ export default function ImportSecretScreen() {
       // 默认选中第一个——只找到一个账户是最常见的情况,这样不用再多点一下
       setSelectedAccount(accts[0]?.account ?? null);
     } catch (e: any) {
+      if (!isCurrent()) return;
       setErr(e?.message ?? t('importSecret.keyParseFailed'));
       setDerived(null);
     } finally {
-      setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   };
 
@@ -143,28 +154,44 @@ export default function ImportSecretScreen() {
    * 加密保存并切换到该账户。account 从 selectedAccount 闭包里取,跟主按钮
    * 点下去时选中的是同一个 —— 对话框开着的时候底下的账户行也点不到。 */
   const saveWallet = async (pwd: string) => {
-    if (!derived || !selectedAccount || !protectedScreen) return;
+    if (!derived || !selectedAccount || !protectedScreen || busy || saving.current) return;
+    saving.current = true;
     const account = selectedAccount;
+    const key = derived;
+    const chainId = w.chainId;
+    const authPermissions = [...(selectedPerms[account] ?? [])];
+    const generation = importGeneration.current;
+    const context = importContext;
+    const controller = new AbortController();
+    verification.current = controller;
+    const isCurrent = () => mounted.current && !controller.signal.aborted &&
+      AppState.currentState !== 'background' && generation === importGeneration.current && contextRef.current === context;
     setSaveBusy(true);
     setSaveErr(null);
     try {
       if (!(await verifyMasterPassword(pwd))) {
-        setSaveErr(t('importSecret.masterPasswordWrong'));
+        if (isCurrent()) setSaveErr(t('importSecret.masterPasswordWrong'));
         return;
       }
+      if (!isCurrent()) return;
+      await verifyImportedAccount({ chainId, account, publicKey: key.publicKey, permissions: authPermissions, signal: controller.signal });
+      if (!isCurrent()) return;
       const id = newWalletId();
-      await saveSecret(id, derived.privateKey, pwd);
+      await saveSecret(id, key.privateKey, pwd);
+      if (!isCurrent()) { await removeSecret(id); return; }
       await addWallet({
         id,
         account,
-        publicKey: derived.publicKey,
-        path: derived.path,
+        publicKey: key.publicKey,
+        path: key.path,
         createdAt: Date.now(),
         source: mode === 'mnemonic' ? 'mnemonic' : 'privatekey',
-        chainId: w.chainId,
-        authPermissions: selectedPerms[account]?.length ? selectedPerms[account] : undefined,
-      });
+        chainId,
+        authPermissions,
+      }, pwd);
+      if (!isCurrent()) return;
       await w.reloadWallets();
+      if (!isCurrent()) return;
       w.setAccount(account);
       Alert.alert(t('importSecret.importSuccessTitle'), t('importSecret.importSuccessBody', { account }), [
         // reset 而不是 navigate——这一屏刚刚显示过明文私钥/助记词,不能让「返回」
@@ -172,22 +199,34 @@ export default function ImportSecretScreen() {
         { text: t('permission.ok'), onPress: () => nav.reset({ index: 0, routes: [{ name: 'Tabs' }] }) },
       ]);
     } catch (e: any) {
-      setSaveErr(e?.message ?? t('importSecret.saveFailed'));
+      if (isCurrent()) setSaveErr(e?.message ?? t('importSecret.saveFailed'));
     } finally {
-      setSaveBusy(false);
+      if (verification.current === controller) verification.current = null;
+      saving.current = false;
+      if (mounted.current) setSaveBusy(false);
     }
   };
 
   useEffect(() => {
+    importGeneration.current++;
+    verification.current?.abort();
+    setDerived(null); setFound(null); setSelectedAccount(null); setSelectedPerms({});
+    setPwdOpen(false); setBusy(false); setErr(null); setSaveErr(null);
+  }, [importContext]);
+
+  useEffect(() => {
+    mounted.current = true;
     const sub = AppState.addEventListener('change', (state) => {
       if (state !== 'background') return;
       importGeneration.current++;
+      verification.current?.abort();
       setSecret('');
       setDerived(null);
       setFound(null);
+      setBusy(false);
       setPwdOpen(false);
     });
-    return () => { importGeneration.current++; sub.remove(); };
+    return () => { mounted.current = false; importGeneration.current++; verification.current?.abort(); sub.remove(); };
   }, []);
 
   return (
@@ -217,8 +256,11 @@ export default function ImportSecretScreen() {
           </View>
           <TextInput
             value={protectedScreen ? secret : ''}
-            editable={protectedScreen}
+            editable={protectedScreen && !saveBusy}
             onChangeText={(v) => {
+              importGeneration.current++;
+              verification.current?.abort();
+              setBusy(false);
               setSecret(v);
               setDerived(null);
               setFound(null);
@@ -256,6 +298,7 @@ export default function ImportSecretScreen() {
           ) : (
             <View style={styles.resultCard}>
               <Text style={styles.foundLabel}>{t('importSecret.foundAccounts', { n: found.length })}</Text>
+              <Text style={styles.permHint}>{t('importSecret.accountControlNote')}</Text>
               {/* 每行只负责"选中哪个账户 + 调整这个账户要导入的权限",不再各自
                   带一颗导入按钮——真正的导入动作统一收到底部那一颗主按钮上,
                   和上面"解析并查找"共用同一个位置,不会出现两颗按钮都像是

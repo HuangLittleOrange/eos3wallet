@@ -8,10 +8,11 @@ import { dappDeviceId } from './dappDeviceId';
 import { isDappFavorite, toggleDappFavorite } from './dappGate';
 import { SaveImageError, saveRemoteImage } from './saveRemoteImage';
 
-type Request = { id: string; method: string; params?: any };
+type Request = { id: string; method: string; params?: any; isCurrent?: () => boolean };
 type Options = {
   client: Pick<ChainClient, 'getActions'>;
   account: string;
+  isConnected: () => boolean;
   url: string;
   pageUrl: string;
   reply: (id: string, ok: boolean, payload: any) => void;
@@ -28,16 +29,18 @@ export function useTokenPocketBrowser(options: Options) {
   const { t } = useI18n();
   const latest = useRef({ ...options, t });
   latest.current = { ...options, t };
-  const [scanRequestId, setScanRequestId] = useState<string | null>(null);
+  const [scanRequest, setScanRequest] = useState<Request | null>(null);
   const [fullScreen, setFullScreen] = useState(false);
   const [menubarInFullScreen, setMenubarInFullScreen] = useState(false);
   const [navGestures, setNavGestures] = useState(false);
-  const cancelScan = useCallback(() => setScanRequestId(null), []);
+  const cancelScan = useCallback(() => setScanRequest(null), []);
 
   const handleRequest = useCallback((request: Request): boolean => {
     const opts = latest.current;
     const p = request.params ?? {};
-    const reply = (ok: boolean, payload: unknown) => opts.reply(request.id, ok, payload);
+    const reply = (ok: boolean, payload: unknown) => {
+      if (!request.isCurrent || request.isCurrent()) opts.reply(request.id, ok, payload);
+    };
     const fail = (error: any) => reply(false, String(error?.message ?? error));
     let host = opts.pageUrl;
     try { host = new URL(opts.pageUrl).host; } catch {}
@@ -47,6 +50,10 @@ export function useTokenPocketBrowser(options: Options) {
         dappDeviceId(host || opts.url).then((id) => reply(true, id), fail);
         return true;
       case 'getActions': {
+        if (!p.account && !opts.isConnected()) {
+          reply(false, opts.t('dappBrowser.connectionRequired'));
+          return true;
+        }
         const limit = Math.min(Math.max(Number(p.count) || 10, 1), 100);
         const skip = Math.max(Number(p.start) || 0, 0);
         opts.client.getActions(String(p.account ?? opts.account), { limit, skip }).then((page) => {
@@ -59,7 +66,7 @@ export function useTokenPocketBrowser(options: Options) {
         return true;
       }
       case 'scanQR':
-        setScanRequestId(request.id);
+        setScanRequest(request);
         return true;
       case 'share': {
         const message = [p.title, p.description, p.url].filter(Boolean).join('\n');
@@ -120,13 +127,13 @@ export function useTokenPocketBrowser(options: Options) {
     handleRequest, cancelScan, fullScreen, menubarInFullScreen, navGestures,
     scanElement: (
       <DappScanModal
-        visible={scanRequestId !== null}
+        visible={scanRequest !== null}
         onResult={(text) => {
-          if (scanRequestId) options.reply(scanRequestId, true, text);
+          if (scanRequest && (!scanRequest.isCurrent || scanRequest.isCurrent())) options.reply(scanRequest.id, true, text);
           cancelScan();
         }}
         onCancel={() => {
-          if (scanRequestId) options.reply(scanRequestId, false, t('dappBrowser.userRejected'));
+          if (scanRequest && (!scanRequest.isCurrent || scanRequest.isCurrent())) options.reply(scanRequest.id, false, t('dappBrowser.userRejected'));
           cancelScan();
         }}
       />

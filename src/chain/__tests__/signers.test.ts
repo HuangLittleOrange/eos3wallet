@@ -3,6 +3,7 @@ jest.mock('../../i18n', () => ({ t: (key: string) => key }));
 import { PrivateKey } from '@wharfkit/antelope';
 import { loadSecret, loadSecretWithBiometric, type StoredWallet } from '../../crypto/vault';
 import { passwordSigner, biometricSigner } from '../signers';
+import { transactionWallet } from '../transactionWallet';
 const key = PrivateKey.generate('K1');
 const wallet = { id: 'test', publicKey: String(key.toPublic()) } as StoredWallet;
 test('matching password and biometric keys retain local signing', async () => {
@@ -20,4 +21,14 @@ test('malformed key-parser errors do not disclose input to callers', async () =>
   const error = await biometricSigner(wallet)().catch((e) => e);
   expect(error.message).toBe('walletDetail.unlockFailed');
   expect(error.message).not.toContain('invalid-secret-material');
+});
+
+test('an observation account gets an external signer without decrypting or storing any local secret', async () => {
+  jest.mocked(loadSecret).mockClear();
+  const watch = transactionWallet({ account: 'alice', chainId: 'vaulta', hasAccount: true })!;
+  expect(watch.source).toBe('watch');
+  expect(await passwordSigner(watch, '')()).toEqual({ kind: 'external', account: 'alice', chainSlug: 'vaulta' });
+  expect(loadSecret).not.toHaveBeenCalled();
+  expect(transactionWallet({ account: '', chainId: 'vaulta', hasAccount: false })).toBeUndefined();
+  expect(transactionWallet({ currentWallet: wallet, account: 'alice', chainId: 'vaulta', hasAccount: true })).toBe(wallet);
 });

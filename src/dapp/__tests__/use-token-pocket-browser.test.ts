@@ -27,7 +27,7 @@ const send = async (method: string, params?: any) => {
 beforeEach(async () => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   jest.resetAllMocks();
-  options = { client: { getActions: jest.fn() }, account: 'alice',
+  options = { client: { getActions: jest.fn() }, account: 'alice', isConnected: () => true,
     url: 'https://alcor.exchange/', pageUrl: 'https://alcor.exchange/market', reply: jest.fn(),
     goBack: jest.fn(), close: jest.fn(), importWallet: jest.fn(async () => {}), onFavorited: jest.fn() };
   jest.mocked(dappDeviceId).mockResolvedValue('site-id');
@@ -126,3 +126,37 @@ test.each(['getIdentity', 'requestSignature', 'signTransaction', 'arbitrarySigna
     expect(await send(method)).toBe(false);
     expect(options.reply).not.toHaveBeenCalled();
   });
+
+
+test('unconnected pages cannot infer the current account through omitted/null history accounts', async () => {
+  options = { ...options, isConnected: () => false };
+  await act(async () => renderer.update(React.createElement(Harness)));
+  await send('getActions', {});
+  await send('getActions', { account: null });
+  expect(options.client.getActions).not.toHaveBeenCalled();
+  expect(options.reply).toHaveBeenLastCalledWith('doc:1', false, 'dappBrowser.connectionRequired');
+  jest.mocked(options.client.getActions).mockResolvedValue({ actions: [] } as any);
+  await send('getActions', { account: 'publicacct' });
+  expect(options.client.getActions).toHaveBeenCalledWith('publicacct', { limit: 10, skip: 0 });
+  options = { ...options, isConnected: () => true };
+  await act(async () => renderer.update(React.createElement(Harness)));
+  await send('getActions');
+  expect(options.client.getActions).toHaveBeenLastCalledWith('alice', { limit: 10, skip: 0 });
+});
+
+test('cancelled asynchronous TP replies cannot be delivered to a reused bridge request', async () => {
+  let resolve!: (value: string) => void;
+  jest.mocked(dappDeviceId).mockReturnValueOnce(new Promise(done => { resolve = done; }));
+  let current = true;
+  await act(async () => { browser.handleRequest({ id: 'doc:1', method: 'getDeviceId', isCurrent: () => current }); });
+  current = false;
+  await act(async () => { resolve('old-device-id'); });
+  expect(options.reply).not.toHaveBeenCalled();
+});
+test('cancelled scanning cannot return results after its original request is revoked', async () => {
+  let current = true;
+  await act(async () => { browser.handleRequest({ id: 'doc:1', method: 'scanQR', isCurrent: () => current }); });
+  current = false;
+  await act(async () => { browser.scanElement.props.onResult('stale-result'); });
+  expect(options.reply).not.toHaveBeenCalled(); expect(browser.scanElement.props.visible).toBe(false);
+});

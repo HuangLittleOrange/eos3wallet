@@ -21,7 +21,7 @@ function copyPublicSource(destination, paths = sourcePaths()) {
     // Local Expo modules contain reviewed native source. Generated platform
     // projects and module build output still never enter the public snapshot.
     if (/(^|\/)(?:android|ios)(?:\/|$)/i.test(name) &&
-      !/^modules\/[^/]+\/android\/(?:build\.gradle|src\/main\/(?:AndroidManifest\.xml|java\/.+\.kt))$/.test(name)) continue;
+      !/^modules\/[^/]+\/android\/(?:build\.gradle|src\/main\/(?:AndroidManifest\.xml|java\/.+\.(?:kt|java)))$/.test(name)) continue;
     const source = path.join(root, name);
     if (!fs.existsSync(source)) continue;
     if (!fs.lstatSync(source).isFile() || fs.realpathSync(source) !== source) throw new Error('Symlinks and non-file source entries are not allowed.');

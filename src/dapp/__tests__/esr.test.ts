@@ -145,9 +145,17 @@ describe('parseEsr 链 ID 校验', () => {
     expect(req.chainId).toBe(VAULTA);
   });
 
-  it('login proofs last five minutes from the node head time', async () => {
+  it('a future RPC head time cannot extend login proofs beyond five minutes from the device clock', async () => {
+    const before = Date.now();
     const { resolved } = await parseEsr(identityOn(VAULTA), parseOpts);
-    expect(String(resolved.transaction.expiration)).toBe('2099-01-01T00:05:00');
+    expect(resolved.transaction.expiration.toMilliseconds()).toBeGreaterThan(before + 299_000);
+    expect(resolved.transaction.expiration.toMilliseconds()).toBeLessThanOrEqual(Date.now() + 300_000);
+    const key = PrivateKey.generate('K1');
+    const proof = resolved.getIdentityProof(key.signDigest(resolved.signingDigest));
+    const auth = { threshold: 1, keys: [{ key: key.toPublic(), weight: 1 }], accounts: [], waits: [] };
+    expect(proof.verify(auth)).toBe(true);
+    expect(proof.verify(auth, new Date(before + 360_000))).toBe(false);
+    expect(proof.verify(auth, '2098-01-01T00:00:00')).toBe(false);
   });
 
   it('单链请求:给别的链的,拒掉并点名对方链和当前链——不能拿主网 TAPOS 去签测试网请求', async () => {
@@ -190,11 +198,52 @@ describe('identity expiration and callback delivery', () => {
   });
   afterEach(() => jest.useRealTimers());
 
+  it('rejects an excessively future proof before private-key/Passkey signing or callback', async () => {
+    const resolved = makeResolved();
+    resolved.transaction.expiration = Transaction.from({ ...resolved.transaction, expiration: '2099-01-01T00:00:00' }).expiration;
+    expect(() => assertIdentityNotExpired(resolved)).toThrow('esrError.identityInvalidExpiration');
+    await expect(signAndCallback(options(resolved))).rejects.toThrow('esrError.identityInvalidExpiration');
+    await expect(signAndCallback({ ...options(resolved), signer: {
+      kind: 'passkey', credentialIdHex: '00', chainPublicKey: String(key.toPublic()),
+    } })).rejects.toThrow('esrError.identityInvalidExpiration');
+    expect(signDigestWithPasskey).not.toHaveBeenCalled();
+    expect(fetch).not.toHaveBeenCalled();
+    expect(recordLinkSession).not.toHaveBeenCalled();
+  });
+
+  it('rejects a proof if the device clock moves backwards during system authentication', async () => {
+    const resolved = makeResolved();
+    const signature = key.signDigest(resolved.signingDigest);
+    jest.mocked(signDigestWithPasskey).mockImplementationOnce(async () => {
+      jest.setSystemTime(new Date(now.getTime() - 60_000)); return signature;
+    });
+    await expect(signAndCallback({ ...options(resolved), signer: {
+      kind: 'passkey', credentialIdHex: '00', chainPublicKey: String(key.toPublic()),
+    } })).rejects.toThrow('esrError.identityInvalidExpiration');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it('rejects at the exact expiration boundary without posting a callback', async () => {
     const resolved = makeResolved();
     jest.setSystemTime(expiration);
     expect(() => assertIdentityNotExpired(resolved)).toThrow(EsrIdentityExpiredError);
     await expect(signAndCallback(options(resolved))).rejects.toThrow('esrError.identityExpired');
+    expect(fetch).not.toHaveBeenCalled();
+    expect(recordLinkSession).not.toHaveBeenCalled();
+  });
+
+  it('does not deliver a signature if its originating Link authorization is revoked during signing', async () => {
+    for (const background of [true, false]) {
+      const resolved = makeResolved(background);
+      const controller = new AbortController();
+      jest.mocked(signDigestWithPasskey).mockImplementationOnce(async () => {
+        controller.abort();
+        return key.signDigest(resolved.signingDigest);
+      });
+      await expect(signAndCallback({ ...options(resolved), isCurrent: () => !controller.signal.aborted,
+        signer: { kind: 'passkey', credentialIdHex: '00', chainPublicKey: String(key.toPublic()) },
+      })).rejects.toThrow('dappBrowser.requestChanged');
+    }
     expect(fetch).not.toHaveBeenCalled();
     expect(recordLinkSession).not.toHaveBeenCalled();
   });

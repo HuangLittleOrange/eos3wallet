@@ -9,6 +9,7 @@ import DappOverlayHost from './src/components/DappOverlayHost';
 import EsrRequestHost from './src/dapp/EsrRequestHost';
 import LinkSessionProvider from './src/dapp/LinkSessionProvider';
 import ModalHost from './src/components/ModalHost';
+import ColdSigningHost from './src/components/ColdSigningHost';
 import { I18nProvider } from './src/i18n';
 import { AppContentProvider } from './src/content/AppContentContext';
 import { NodeCatalogProvider } from './src/chain/NodeCatalogContext';
@@ -40,6 +41,7 @@ export default function App() {
                     {/* 常驻监听 Anchor Link 接收频道——已建立会话的 dApp 推新的签名请求
                         过来不用再扫码,见文件内注释 */}
                     <LinkSessionProvider />
+                    <ColdSigningHost />
                   </AppUpdateProvider>
                 </ModalHost>
               </DappSessionProvider>

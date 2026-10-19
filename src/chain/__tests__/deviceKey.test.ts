@@ -2,7 +2,7 @@ jest.mock('../../crypto/vault', () => ({
   importStoredPendingDeviceKey: jest.fn(async (_pending, wallet) => wallet),
   discardStoredPendingDeviceKey: jest.fn(), loadPendingDeviceKey: jest.fn(),
   newWalletId: jest.fn(() => 'device-id'), removeSecret: jest.fn(),
-  savePendingDeviceKey: jest.fn(), saveSecret: jest.fn(), verifyMasterPassword: jest.fn(),
+  savePendingDeviceKey: jest.fn(), settlePendingDevicePublication: jest.fn(), saveSecret: jest.fn(), verifyMasterPassword: jest.fn(),
   WrongPasswordError: class WrongPasswordError extends Error {},
 }));
 jest.mock('../../crypto/keys', () => ({
@@ -10,6 +10,7 @@ jest.mock('../../crypto/keys', () => ({
   findAccountsByKey: jest.fn(),
 }));
 jest.mock('../../net/fetchRetry', () => ({ fetchWithRetry: jest.fn() }));
+jest.mock('expo/fetch', () => ({ fetch: (...args: any[]) => require('../../net/fetchRetry').fetchWithRetry(...args) }));
 jest.mock('../../i18n', () => ({ t: (key: string) => key }));
 
 import {
@@ -19,10 +20,11 @@ import {
 } from '../deviceKey';
 import {
   discardStoredPendingDeviceKey, importStoredPendingDeviceKey, loadPendingDeviceKey,
-  newWalletId, removeSecret, savePendingDeviceKey, saveSecret, verifyMasterPassword, WrongPasswordError,
+  newWalletId, removeSecret, savePendingDeviceKey, settlePendingDevicePublication, saveSecret, verifyMasterPassword, WrongPasswordError,
 } from '../../crypto/vault';
 import { findAccountsByKey, generateKey } from '../../crypto/keys';
 import { fetchWithRetry } from '../../net/fetchRetry';
+import { rpcResponse } from './rpcResponse';
 import { CHAINS } from '../config';
 
 const PUB = 'PUB_K1_6MRyAjQq8ud7hVNYcfnVPJqcVpscN5So8BhtHuGYqET5BoDq63';
@@ -30,12 +32,13 @@ const LEGACY = 'EOS6MRyAjQq8ud7hVNYcfnVPJqcVpscN5So8BhtHuGYqET5GDW5CV';
 const pending = { id: 'device-id', publicKey: PUB, legacyPublicKey: LEGACY,
   label: 'Android', createdAt: 1, chainId: 'vaulta' as const };
 const node = { url: 'https://node.test' };
-const response = (body: unknown) => ({ ok: true, json: async () => body }) as Response;
+const response = rpcResponse;
 
 beforeEach(() => {
   jest.resetAllMocks();
   jest.mocked(newWalletId).mockReturnValue('device-id');
   jest.mocked(removeSecret).mockResolvedValue(undefined);
+  jest.mocked(settlePendingDevicePublication).mockResolvedValue(false);
   jest.mocked(generateKey).mockReturnValue({
     privateKey: 'secret', publicKey: 'public', legacyPublicKey: 'legacy', path: '',
   });
@@ -73,10 +76,10 @@ it('wrong passwords and existing recovery records never replace a key', async ()
   expect(saveSecret).not.toHaveBeenCalled();
 });
 
-it('cleans up only the newly generated ciphertext when metadata publication fails', async () => {
+it('delegates failed publication to the serialized settlement before reporting failure', async () => {
   jest.mocked(savePendingDeviceKey).mockRejectedValueOnce(new Error('write failed'));
   await expect(createPendingDeviceKey('password', 'vaulta')).rejects.toThrow('write failed');
-  expect(removeSecret).toHaveBeenCalledWith('device-id');
+  expect(settlePendingDevicePublication).toHaveBeenCalledWith(expect.objectContaining({ id: 'device-id', chainId: 'vaulta' }));
 });
 
 it('rejects a different selected network before any query or write', async () => {
@@ -87,6 +90,12 @@ it('rejects a different selected network before any query or write', async () =>
 });
 
 it('verifies chain identity and equivalent legacy active keys before import', async () => {
+  const auth = { threshold: 1, keys: [{ key: LEGACY, weight: 1 }], accounts: [], waits: [] };
+  jest.mocked(fetchWithRetry).mockImplementation(async url => response(String(url).endsWith('/get_info')
+    ? { chain_id: CHAINS.vaulta.chainIdHash } : { account_name: 'alice', permissions: [
+      { perm_name: 'owner', parent: '', required_auth: auth },
+      { perm_name: 'active', parent: 'owner', required_auth: auth },
+    ] }));
   jest.mocked(fetchWithRetry).mockResolvedValueOnce(response({ chain_id: CHAINS.vaulta.chainIdHash }))
     .mockResolvedValueOnce(response({ account_name: 'alice', permissions: [
       { perm_name: 'active', required_auth: { threshold: 1, keys: [{ key: LEGACY, weight: 1 }] } },
@@ -95,6 +104,22 @@ it('verifies chain identity and equivalent legacy active keys before import', as
   expect(wallet).toEqual(expect.objectContaining({
     account: 'alice', source: 'privatekey', authPermissions: ['active'], publicKey: PUB,
   }));
+});
+
+it('a selected node cannot fake device-key enrollment and consume the recovery record', async () => {
+  const { PrivateKey } = require('@wharfkit/antelope');
+  const other = String(PrivateKey.generate('K1').toPublic());
+  jest.mocked(fetchWithRetry).mockImplementation(async url => {
+    const chosen = String(url).startsWith(node.url + '/');
+    const auth = { threshold: 1, keys: [{ key: chosen ? PUB : other, weight: 1 }], accounts: [], waits: [] };
+    return response(String(url).endsWith('/get_info') ? { chain_id: CHAINS.vaulta.chainIdHash }
+      : { account_name: 'alice', permissions: [
+        { perm_name: 'owner', parent: '', required_auth: auth },
+        { perm_name: 'active', parent: 'owner', required_auth: auth },
+      ] });
+  });
+  await expect(importPendingDeviceKey(pending, 'alice', 'vaulta', node)).rejects.toThrow('accountKeyMismatch');
+  expect(importStoredPendingDeviceKey).not.toHaveBeenCalled();
 });
 
 it('cancellation while authority verification is pending cannot write a wallet',async()=>{

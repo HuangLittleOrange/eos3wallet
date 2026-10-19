@@ -39,6 +39,7 @@ export default function ConfirmTxSheet({
   error,
   walletId,
   passkey,
+  external,
   origin,
   callbackOrigin,
   message,
@@ -61,6 +62,8 @@ export default function ConfirmTxSheet({
   walletId?: string;
   /** passkey 钱包:没有本机密码/生物识别可解,签名靠现场发起一次系统 passkey 认证 */
   passkey?: boolean;
+  /** Observation accounts sign on a separate device and have no local password. */
+  external?: boolean;
   /** 请求来源(dApp 页面的 host)——让用户知道是谁在要这个签名,不传就不显示 */
   origin?: string;
   callbackOrigin?: string;
@@ -98,7 +101,7 @@ export default function ConfirmTxSheet({
   useEffect(() => {
     let alive = true;
     setBio(false);
-    if (visible && walletId && !passkey) {
+    if (visible && walletId && !passkey && !external) {
       biometricEnabled().then((v) => alive && setBio(v));
     }
     if (!visible) {
@@ -108,13 +111,15 @@ export default function ConfirmTxSheet({
     return () => {
       alive = false;
     };
-  }, [visible, walletId, passkey]);
+  }, [visible, walletId, passkey, external]);
 
   // 主按钮的签名入口:开了生物识别就走生物识别,没开就直接弹密码——不管哪种,
   // 都必须是用户点了主按钮才触发,不能一开弹层就自己弹系统认证框
   // (那样交易详情等于形同虚设,用户没看内容手指一按就转出去了)。
   const startSigning = () => {
-    if (bio && onConfirmBiometric) {
+    if (external) {
+      onConfirm('');
+    } else if (bio && onConfirmBiometric) {
       onConfirmBiometric();
     } else {
       setPwdModal(true);
@@ -259,7 +264,7 @@ export default function ConfirmTxSheet({
             onPress={startSigning}
             activeOpacity={0.85}
           >
-            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.ctaTxt}>{t('confirmTx.submit')}</Text>}
+            {busy ? <ActivityIndicator color="#fff" /> : <Text style={styles.ctaTxt}>{t(external ? 'coldSigning.title' : 'confirmTx.submit')}</Text>}
           </TouchableOpacity>
         )}
       </View>

@@ -74,7 +74,9 @@ export function useResourceRepair(w: RepairWallet, opts: { onCancel?: (message: 
   }, [request]);
 
   const offer = useCallback((err: unknown, signer: Signer | null | undefined, permission: string): boolean => {
-    if (!signer) return false;
+    // Sponsor requests have a separate, short-lived signing protocol. Do not
+    // offer an unsupported local-unlock repair flow to an observation account.
+    if (!signer || signer.kind === 'external') return false;
     const error = toBroadcastError(err);
     const message = error.message;
     if (error instanceof RamExhaustedError) {

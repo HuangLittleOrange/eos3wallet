@@ -26,14 +26,16 @@ jest.mock('../../chain/deviceKey', () => ({
   createPendingDeviceKey: jest.fn(), discardPendingDeviceKey: jest.fn(),
   findAccountsForDeviceKey: jest.fn(), importPendingDeviceKey: jest.fn(),
 }));
-jest.mock('../../crypto/vault', () => ({ loadPendingDeviceKey: jest.fn(), hasMasterPassword: jest.fn(), updatePendingDeviceKeyLabel: jest.fn() }));
+jest.mock('../../crypto/vault', () => ({ loadPendingDeviceKey: jest.fn(), hasMasterPassword: jest.fn(), updatePendingDeviceKeyLabel: jest.fn(),
+  listRecoverableDeviceKeys: jest.fn(), restoreRecoverableDeviceKey: jest.fn(),
+  WrongPasswordError: class WrongPasswordError extends Error {} }));
 jest.mock('../../i18n', () => ({ t: (key: string) => key, useI18n: () => ({ t: (key: string) => key }) }));
 
 import React from 'react';
 import { openAuthSessionAsync, WebBrowserResultType } from 'expo-web-browser';
 import { useWalletSession } from '../../chain/WalletContext';
-import { loadPendingDeviceKey, updatePendingDeviceKeyLabel } from '../../crypto/vault';
-import { deviceKeyAuthorizeUrl, findAccountsForDeviceKey, importPendingDeviceKey } from '../../chain/deviceKey';
+import { loadPendingDeviceKey, updatePendingDeviceKeyLabel, listRecoverableDeviceKeys, restoreRecoverableDeviceKey } from '../../crypto/vault';
+import { createPendingDeviceKey, deviceKeyAuthorizeUrl, findAccountsForDeviceKey, importPendingDeviceKey } from '../../chain/deviceKey';
 import DeviceKeyImportScreen from '../DeviceKeyImportScreen';
 
 const { create, act } = require('react-test-renderer');
@@ -55,6 +57,7 @@ beforeEach(() => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   jest.resetAllMocks();
   jest.mocked(loadPendingDeviceKey).mockResolvedValue(pending);
+  jest.mocked(listRecoverableDeviceKeys).mockResolvedValue([]);
   jest.mocked(deviceKeyAuthorizeUrl).mockReturnValue('https://eos3.app/account?deviceKey=public');
   jest.mocked(updatePendingDeviceKeyLabel).mockImplementation(async (value, name) => ({ ...value, label: name.trim() }));
   jest.mocked(findAccountsForDeviceKey).mockResolvedValue([]);
@@ -368,4 +371,48 @@ it('closing the Anchor import screen aborts preparation and cannot import its la
  expect(signal?.aborted).toBe(true);
  await act(async()=>{resolve(null);await completion;});
  expect(importPendingDeviceKey).not.toHaveBeenCalled();expect(setAccount).not.toHaveBeenCalled();
+});
+
+it('shows retained public metadata and restores the selected encrypted device key', async () => {
+  jest.mocked(loadPendingDeviceKey).mockResolvedValue(null);
+  jest.mocked(listRecoverableDeviceKeys).mockResolvedValue([pending]);
+  jest.mocked(restoreRecoverableDeviceKey).mockImplementation(async () => {
+    jest.mocked(loadPendingDeviceKey).mockResolvedValue(pending);
+    jest.mocked(listRecoverableDeviceKeys).mockResolvedValue([]);
+    return pending;
+  });
+  await mount();
+  expect(hasText('deviceKey.recoveryTitle')).toBe(true);
+  expect(hasText(pending.publicKey)).toBe(true);
+  await act(async () => { await button('deviceKey.restore').props.onPress(); });
+  expect(restoreRecoverableDeviceKey).toHaveBeenCalledWith(pending.id);
+  expect(button('deviceKey.openWeb')).toBeDefined();
+  expect(button('deviceKey.restore')).toBeUndefined();
+});
+
+it('a restore error keeps the recoverable key visible for retry', async () => {
+  jest.mocked(loadPendingDeviceKey).mockResolvedValue(null);
+  jest.mocked(listRecoverableDeviceKeys).mockResolvedValue([pending]);
+  jest.mocked(restoreRecoverableDeviceKey).mockRejectedValue(new Error('restore failed'));
+  await mount();
+  await act(async () => { await button('deviceKey.restore').props.onPress(); });
+  expect(hasText('restore failed')).toBe(true);
+  expect(button('deviceKey.restore')).toBeDefined();
+});
+
+
+it.each(['pending', 'recovery'] as const)('a generation error refreshes the persisted %s instead of hiding the retained key', async state => {
+  jest.mocked(loadPendingDeviceKey).mockResolvedValue(null);
+  await mount();
+  await act(async () => { button('deviceKey.generate').props.onPress(); });
+  jest.mocked(createPendingDeviceKey).mockRejectedValue(new Error('publication uncertain'));
+  jest.mocked(loadPendingDeviceKey).mockResolvedValue(state === 'pending' ? pending : null);
+  jest.mocked(listRecoverableDeviceKeys).mockResolvedValue(state === 'recovery' ? [pending] : []);
+  await act(async () => { await renderer.root.findByType('PasswordDialog').props.onSubmit('test-only-password'); });
+  expect(renderer.root.findByType('PasswordDialog').props.error).toBe('publication uncertain');
+  if (state === 'pending') expect(button('deviceKey.openWeb')).toBeDefined();
+  else expect(iconButton('deviceKey.restore: public')).toBeDefined();
+  expect(loadPendingDeviceKey).toHaveBeenCalledTimes(2);
+  expect(listRecoverableDeviceKeys).toHaveBeenCalledTimes(2);
+  expect(setAccount).not.toHaveBeenCalled(); expect(mockReset).not.toHaveBeenCalled();
 });

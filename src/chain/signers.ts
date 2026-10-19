@@ -11,6 +11,7 @@ import { loadSecret, loadSecretWithBiometric, type StoredWallet } from '../crypt
 import type { Signer } from './transact';
 import { PrivateKey, PublicKey } from '@wharfkit/antelope';
 import { t } from '../i18n';
+import { DEFAULT_CHAIN } from './config';
 
 export type SignerGetter = () => Promise<Signer>;
 
@@ -26,6 +27,8 @@ function localSigner(wallet: StoredWallet, privateKey: string): Signer {
 
 /** 用户输入的密码解 vault 取私钥 */
 export function passwordSigner(wallet: StoredWallet, password: string): SignerGetter {
+  if (wallet.source === 'watch') return async () => ({ kind: 'external', account: wallet.account,
+    chainSlug: wallet.chainId ?? DEFAULT_CHAIN });
   return async () => localSigner(wallet, await loadSecret(wallet.id, password));
 }
 

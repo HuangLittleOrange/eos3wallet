@@ -269,11 +269,14 @@ async function decryptSecretAtSlot(slot: string, password: string): Promise<stri
 }
 
 export function removeSecret(id: string): Promise<void> {
-  return withSecretStorage(async () => {
-    await SecureStore.deleteItemAsync(await activeSecretSlot(id));
-    const ids = await storedSecretIds();
-    if (ids.includes(id)) await SecureStore.setItemAsync(SECRET_IDS_KEY, JSON.stringify(ids.filter(value => value !== id)));
-  });
+  return withSecretStorage(() => removeSecretFromStorage(id));
+}
+
+// Caller must own secretWriteQueue; never enqueue again from a transaction.
+async function removeSecretFromStorage(id: string): Promise<void> {
+  await SecureStore.deleteItemAsync(await activeSecretSlot(id));
+  const ids = await storedSecretIds();
+  if (ids.includes(id)) await SecureStore.setItemAsync(SECRET_IDS_KEY, JSON.stringify(ids.filter(value => value !== id)));
 }
 
 // ---------- 待激活账户的临时密钥 ----------
@@ -323,6 +326,8 @@ export async function clearPendingKey(publicKey: string): Promise<void> {
 }
 
 const PENDING_DEVICE_KEY = 'aurora.deviceKey.pending';
+const RECOVERABLE_DEVICE_IDS = 'aurora.deviceKey.recoveryIds';
+const RECOVERABLE_DEVICE_PREFIX = 'aurora.deviceKey.recovery.';
 
 export type PendingDeviceKey = DeviceKeyMeta & {
   id: string;
@@ -341,6 +346,10 @@ function withDeviceImportStorage<T>(operation: () => Promise<T>): Promise<T> {
 export async function loadPendingDeviceKey(): Promise<PendingDeviceKey | null> {
   const raw = await getItemWithRetry(PENDING_DEVICE_KEY);
   if (raw === null) return null;
+  return parsePendingDeviceKey(raw);
+}
+
+function parsePendingDeviceKey(raw: string): PendingDeviceKey {
   try {
     const pending = JSON.parse(raw) as PendingDeviceKey;
     if (!pending || typeof pending.id !== 'string' || !pending.id ||
@@ -356,13 +365,99 @@ export async function loadPendingDeviceKey(): Promise<PendingDeviceKey | null> {
   }
 }
 
+async function recoverableDeviceIds(): Promise<string[]> {
+  const raw = await getItemWithRetry(RECOVERABLE_DEVICE_IDS);
+  try {
+    const ids: unknown = raw === null ? [] : JSON.parse(raw);
+    if (!Array.isArray(ids) || ids.some(id => typeof id !== 'string' || !id) || new Set(ids).size !== ids.length) throw new Error();
+    return ids;
+  } catch { throw new WalletReadError(); }
+}
+
+export async function listRecoverableDeviceKeys(): Promise<PendingDeviceKey[]> {
+  return Promise.all((await recoverableDeviceIds()).map(async id => {
+    const raw = await getItemWithRetry(RECOVERABLE_DEVICE_PREFIX + id);
+    if (!raw) throw new WalletReadError();
+    const pending = parsePendingDeviceKey(raw);
+    if (pending.id !== id) throw new WalletReadError();
+    return pending;
+  }));
+}
+
+async function removeDeviceRecoveryRecord(id: string): Promise<void> {
+  const ids = await recoverableDeviceIds();
+  if (!ids.includes(id)) return;
+  await SecureStore.setItemAsync(RECOVERABLE_DEVICE_IDS, JSON.stringify(ids.filter(value => value !== id)), {
+    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+  });
+  await SecureStore.deleteItemAsync(RECOVERABLE_DEVICE_PREFIX + id);
+}
+
+/** Re-activate an encrypted local key without replacing another pending key. */
+export function restoreRecoverableDeviceKey(id: string): Promise<PendingDeviceKey> {
+  return withDeviceImportStorage(() => withSecretStorage(async () => {
+    const saved = (await listRecoverableDeviceKeys()).find(value => value.id === id);
+    if (!saved) throw new Error(t('signupError.pendingChanged'));
+    const current = await loadPendingDeviceKey();
+    if (current && !samePendingDeviceKey(current, saved)) throw new Error(t('vaultError.pendingKeyExists'));
+    if ((await readStoredWalletIndex()).some(wallet => wallet.id === id)) throw new Error(t('signupError.pendingChanged'));
+    if (!await getItemWithRetry(await activeSecretSlot(id))) throw new Error(t('vaultError.keyNotFound'));
+    // Publish first. Even a native commit-then-reject leaves one recoverable copy.
+    await SecureStore.setItemAsync(PENDING_DEVICE_KEY, JSON.stringify(saved), {
+      keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+    });
+    await removeDeviceRecoveryRecord(id);
+    return saved;
+  }));
+}
+
 export function savePendingDeviceKey(pending: PendingDeviceKey): Promise<void> {
   return withDeviceImportStorage(async () => {
     const current = await loadPendingDeviceKey();
     if (current && !samePendingDeviceKey(current, pending)) throw new Error(t('vaultError.pendingKeyExists'));
-    await SecureStore.setItemAsync(PENDING_DEVICE_KEY, JSON.stringify(pending), {
-      keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-    });
+    try {
+      await SecureStore.setItemAsync(PENDING_DEVICE_KEY, JSON.stringify(pending), {
+        keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+      });
+    } catch (error) {
+      const saved = await loadPendingDeviceKey().catch(() => null);
+      if (!saved || !samePendingDeviceKey(saved, pending)) throw error;
+    }
+  });
+}
+
+/** Resolve failed publication while both metadata and secret writers are held.
+ * Never erase a key if publication/consumption cannot be ruled out. */
+export function settlePendingDevicePublication(pending: PendingDeviceKey): Promise<boolean> {
+  return withDeviceImportStorage(() => withSecretStorage(async () => {
+    try {
+      const current = await loadPendingDeviceKey();
+      if (current && samePendingDeviceKey(current, pending)) {
+        return !!await getItemWithRetry(await activeSecretSlot(pending.id));
+      }
+      if (current?.id === pending.id || (await readStoredWalletIndex()).some(wallet => wallet.id === pending.id) ||
+          (await listRecoverableDeviceKeys()).some(saved => saved.id === pending.id)) return false;
+    } catch {
+      // The secret-id registry already tracks the ciphertext. Also retain a
+      // discoverable recovery record whenever the metadata store permits it.
+      await archiveDeviceKeyRecovery(pending).catch(() => {});
+      return false;
+    }
+    await removeSecretFromStorage(pending.id).catch(() => {});
+    return false;
+  }));
+}
+
+// Caller owns deviceImportQueue and secretWriteQueue.
+async function archiveDeviceKeyRecovery(pending: PendingDeviceKey): Promise<void> {
+  const saved = await listRecoverableDeviceKeys();
+  const existing = saved.find(value => value.id === pending.id);
+  if (existing && !samePendingDeviceKey(existing, pending)) throw new Error(t('signupError.pendingChanged'));
+  await SecureStore.setItemAsync(RECOVERABLE_DEVICE_PREFIX + pending.id, JSON.stringify(pending), {
+    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
+  });
+  if (!existing) await SecureStore.setItemAsync(RECOVERABLE_DEVICE_IDS, JSON.stringify([...saved.map(value => value.id), pending.id]), {
+    keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
   });
 }
 
@@ -390,7 +485,7 @@ export function updatePendingDeviceKeyLabel(pending: PendingDeviceKey, label: st
 }
 
 export function importStoredPendingDeviceKey(pending: PendingDeviceKey, wallet: StoredWallet): Promise<StoredWallet> {
-  return withDeviceImportStorage(async () => {
+  return withDeviceImportStorage(() => withSecretStorage(async () => {
     const current = await loadPendingDeviceKey();
     if (!current || !samePendingDeviceKey(current, pending) || wallet.id !== current.id ||
       wallet.publicKey !== current.publicKey || wallet.source !== 'privatekey' ||
@@ -398,40 +493,36 @@ export function importStoredPendingDeviceKey(pending: PendingDeviceKey, wallet: 
       throw new Error(t('signupError.pendingChanged'));
     }
     if (!await getItemWithRetry(await activeSecretSlot(current.id))) throw new Error(t('vaultError.keyNotFound'));
-    const all = await listWallets();
-    const duplicate = all.find((entry) => entry.id !== wallet.id && entry.account === wallet.account &&
+    const all = await readStoredWalletIndex();
+    const matches = (entry: StoredWallet) => entry.account === wallet.account &&
       entry.publicKey === wallet.publicKey &&
-      (entry.chainId ?? DEFAULT_CHAIN) === (wallet.chainId ?? DEFAULT_CHAIN));
-    const stored = duplicate
-      ? { ...wallet, id: duplicate.id, createdAt: duplicate.createdAt,
-          authPermissions: mergePermissions(duplicate.authPermissions, wallet.authPermissions) }
-      : wallet;
-    if (duplicate && !await getItemWithRetry(await activeSecretSlot(duplicate.id))) throw new Error(t('vaultError.keyNotFound'));
-    // Publish the wallet before removing the recovery record or redundant ciphertext.
-    await SecureStore.setItemAsync(INDEX_KEY, JSON.stringify([...all.filter((entry) => entry.id !== stored.id), stored]));
-    await SecureStore.deleteItemAsync(PENDING_DEVICE_KEY);
-    if (stored.id !== pending.id) await removeSecret(pending.id).catch(() => {});
+      (entry.chainId ?? DEFAULT_CHAIN) === (wallet.chainId ?? DEFAULT_CHAIN);
+    if (all.some(entry => entry.id === wallet.id && !matches(entry))) throw new Error(t('signupError.pendingChanged'));
+    const stored = { ...wallet, authPermissions: mergePermissions(all.filter(matches).reduce<string[] | undefined>(
+      (permissions, entry) => mergePermissions(permissions, entry.authPermissions), undefined), wallet.authPermissions) };
+    // No password is available here to prove an older slot is usable. Keep
+    // every old copy and publish the current device key under its own id first.
+    await writeStoredWalletIndex([stored, ...all.filter(entry => entry.id !== stored.id)]);
+    try { await SecureStore.deleteItemAsync(PENDING_DEVICE_KEY); }
+    catch (error) { if (await loadPendingDeviceKey().catch(() => undefined) !== null) throw error; }
+    await removeDeviceRecoveryRecord(pending.id).catch(() => {});
     return stored;
-  });
+  }));
 }
 
 export function discardStoredPendingDeviceKey(pending: PendingDeviceKey): Promise<void> {
-  return withDeviceImportStorage(async () => {
+  return withDeviceImportStorage(() => withSecretStorage(async () => {
     const current = await loadPendingDeviceKey();
-    const all = await listWallets();
+    const all = await readStoredWalletIndex();
     if (!current || !samePendingDeviceKey(current, pending) || all.some((entry) => entry.id === pending.id)) {
       throw new Error(t('signupError.pendingChanged'));
     }
+    if (!await getItemWithRetry(await activeSecretSlot(current.id))) throw new Error(t('vaultError.keyNotFound'));
+    // An RPC's empty reverse index cannot prove a key is unused. Preserve both
+    // ciphertext and discoverable recovery metadata before clearing the slot.
+    await archiveDeviceKeyRecovery(current);
     await SecureStore.deleteItemAsync(PENDING_DEVICE_KEY);
-    try {
-      await removeSecret(pending.id);
-    } catch (error) {
-      await SecureStore.setItemAsync(PENDING_DEVICE_KEY, JSON.stringify(current), {
-        keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-      });
-      throw error;
-    }
-  });
+  }));
 }
 
 // ---------- 钱包索引(不含任何密钥材料) ----------
@@ -450,6 +541,11 @@ export class WalletReadError extends Error {
 }
 
 export async function listWallets(): Promise<StoredWallet[]> {
+  return dedupeStoredWallets(await readStoredWalletIndex());
+}
+
+/** Transactions use the complete authoritative index, never the filtered display view. */
+async function readStoredWalletIndex(): Promise<StoredWallet[]> {
   let raw: string | null;
   try {
     raw = await getItemWithRetry(INDEX_KEY);
@@ -463,49 +559,51 @@ export async function listWallets(): Promise<StoredWallet[]> {
   } catch {
     throw new WalletReadError();
   }
-  return dedupeStoredWallets(list);
+  if (!Array.isArray(list)) throw new WalletReadError();
+  return list;
 }
 
-/**
- * 清掉索引里已经存在的重复记录(同链 + 同账户 + 同公钥出现了不止一条)。
- *
- * addWallet() 只能防住"以后"再导入同一把钥匙时不会新增重复行,但这个字段
- * 上线前、或者这个去重逻辑本身上线前就已经存进索引里的重复数据,不会因为
- * 以后不再产生新重复就自己消失——每次 listWallets() 都得看一眼、顺手清一次,
- * 不然界面上永远是那两张一模一样的卡片,哪怕它们其实是同一把钥匙。
- */
+/** List loading is a non-destructive view, not an authenticated cleanup.
+ * Multiple local envelopes remain separately selectable until a password-backed
+ * addWallet transaction can establish which copies are safe to consolidate. */
 async function dedupeStoredWallets(list: StoredWallet[]): Promise<StoredWallet[]> {
   const groups = new Map<string, StoredWallet[]>();
-  for (const w of list) {
-    const key = `${w.chainId ?? DEFAULT_CHAIN}\x00${w.account}\x00${w.publicKey}`;
-    const arr = groups.get(key);
-    if (arr) arr.push(w);
-    else groups.set(key, [w]);
+  for (const wallet of list) {
+    const key = `${wallet.chainId ?? DEFAULT_CHAIN}\x00${wallet.account}\x00${wallet.publicKey}`;
+    const group = groups.get(key);
+    if (group) group.push(wallet); else groups.set(key, [wallet]);
   }
-
-  let changed = false;
-  const merged: StoredWallet[] = [];
-  for (const arr of groups.values()) {
-    if (arr.length === 1) {
-      merged.push(arr[0]);
-      continue;
-    }
-    changed = true;
-    // 留最早的一条(最初那次导入),权限标记取并集——几条重复记录里
-    // 只要有一条标过权限,合并后就不该把这份信息丢掉
-    const survivor = arr.reduce((a, b) => (a.createdAt <= b.createdAt ? a : b));
-    const authPermissions = Array.from(new Set(arr.flatMap((x) => x.authPermissions ?? [])));
-    merged.push({ ...survivor, authPermissions: authPermissions.length ? authPermissions : undefined });
-    // 被合并掉的那几条,密文和生物识别槽位都是废弃 id 下的孤儿数据,一并清掉
-    for (const dup of arr) {
-      if (dup.id === survivor.id) continue;
-      await removeSecret(dup.id).catch(() => {});
-      await clearLegacyBiometric(dup.id).catch(() => {});
+  const generation = Array.from(groups.values()).some(group => group.length > 1)
+    ? await getItemWithRetry(SECRET_GENERATION_KEY) : null;
+  const view: StoredWallet[] = [];
+  for (const group of groups.values()) {
+    if (group.length === 1) { view.push(group[0]); continue; }
+    const authPermissions = Array.from(new Set(group.flatMap(wallet => wallet.authPermissions ?? [])));
+    let present: boolean[];
+    try {
+      present = await Promise.all(group.map(async wallet => !!await getItemWithRetry(secretSlot(wallet.id, generation))));
+    } catch { throw new WalletReadError(); }
+    // Presence is a selection hint only. It never authorizes deleting or
+    // rewriting either copy; the signer still verifies the decrypted public key.
+    const candidates = group.filter((wallet, index) => present[index] || wallet.source === 'passkey');
+    const rows = candidates.length ? candidates : [group.reduce((a, b) => a.createdAt <= b.createdAt ? a : b)];
+    const seen = new Set<string>();
+    for (const wallet of rows) {
+      if (seen.has(wallet.id)) continue;
+      seen.add(wallet.id);
+      view.push({ ...wallet, authPermissions: authPermissions.length ? authPermissions : undefined });
     }
   }
+  return view;
+}
 
-  if (changed) await SecureStore.setItemAsync(INDEX_KEY, JSON.stringify(merged)).catch(() => {});
-  return merged;
+// Caller owns secretWriteQueue. Uncertain commits must not permit key cleanup.
+async function writeStoredWalletIndex(wallets: StoredWallet[]): Promise<void> {
+  const serialized = JSON.stringify(wallets);
+  try { await SecureStore.setItemAsync(INDEX_KEY, serialized); }
+  catch (error) {
+    if (await getItemWithRetry(INDEX_KEY).catch(() => null) !== serialized) throw error;
+  }
 }
 
 /**
@@ -517,19 +615,78 @@ async function dedupeStoredWallets(list: StoredWallet[]): Promise<StoredWallet[]
  * (chainId, account, publicKey) 这三者,公钥不同就是确实不同的钥匙
  * (比如 active/owner 分开用了两把私钥),各自保留一条记录。
  */
-export async function addWallet(w: StoredWallet): Promise<void> {
-  const all = await listWallets();
-  const sameChain = (x: StoredWallet) => (x.chainId ?? DEFAULT_CHAIN) === (w.chainId ?? DEFAULT_CHAIN);
-  const dup = all.find(
-    (x) => x.id !== w.id && sameChain(x) && x.account === w.account && x.publicKey === w.publicKey
-  );
-  const merged: StoredWallet = dup
-    ? { ...w, id: dup.id, createdAt: dup.createdAt, authPermissions: mergePermissions(dup.authPermissions, w.authPermissions) }
-    : w;
-  const next = [...all.filter((x) => x.id !== merged.id), merged];
-  await SecureStore.setItemAsync(INDEX_KEY, JSON.stringify(next));
-  // 旧记录换了 id 才需要清掉密文;merged.id === dup.id 时是同一份密钥,原密文还留着即可
-  if (dup && dup.id !== w.id) await removeSecret(w.id).catch(() => {});
+export function addWallet(w: StoredWallet, password?: string): Promise<void> {
+  return withSecretStorage(async () => {
+    // A pure read avoids cleanup re-entering this queue. Also prevents dedupe
+    // from erasing a usable import before its surviving slot has been verified.
+    const all = await readStoredWalletIndex();
+    const matches = (x: StoredWallet) => (x.chainId ?? DEFAULT_CHAIN) === (w.chainId ?? DEFAULT_CHAIN) &&
+      x.account === w.account && x.publicKey === w.publicKey;
+    const previous = all.filter(matches);
+    const dup = previous.filter(x => x.id !== w.id).sort((a, b) => a.createdAt - b.createdAt)[0];
+    const merged: StoredWallet = dup ? { ...w, id: dup.id, createdAt: dup.createdAt } : { ...w };
+    merged.authPermissions = mergePermissions(previous.reduce<string[] | undefined>((permissions, entry) =>
+      mergePermissions(permissions, entry.authPermissions), undefined), w.authPermissions);
+    const generation = await getItemWithRetry(SECRET_GENERATION_KEY);
+    const incomingSlot = secretSlot(w.id, generation);
+    const incoming = await getItemWithRetry(incomingSlot);
+    let verified = false;
+    if (password !== undefined) {
+      if (!incoming) throw new Error(t('vaultError.keyNotFound'));
+      if (w.source !== 'privatekey' && w.source !== 'mnemonic') throw new Error(t('vaultError.saveVerifyFailed'));
+      await decryptSecretAtSlot(secretSlot(MASTER_ID, generation), password);
+      const secret = await decryptSecretAtSlot(incomingSlot, password);
+      if (!PrivateKey.from(secret).toPublic().equals(PublicKey.from(w.publicKey))) {
+        throw new Error(t('vaultError.saveVerifyFailed'));
+      }
+      if (all.some(entry => (entry.id === w.id || entry.id === merged.id) && !matches(entry))) {
+        throw new Error(t('vaultError.saveVerifyFailed'));
+      }
+      // Existing envelopes can contain recovery material even when their
+      // metadata is inconsistent. Never overwrite or delete an unreadable or
+      // mismatched old key merely because a new import has the expected key.
+      let targetMissing = true;
+      for (const entry of previous) {
+        if (entry.id === w.id) continue;
+        const oldSlot = secretSlot(entry.id, generation);
+        if (!await getItemWithRetry(oldSlot)) continue;
+        try {
+          const oldSecret = await decryptSecretAtSlot(oldSlot, password);
+          if (!PrivateKey.from(oldSecret).toPublic().equals(PublicKey.from(w.publicKey))) throw new Error();
+        } catch { throw new Error(t('vaultError.saveVerifyFailed')); }
+        if (entry.id === merged.id) targetMissing = false;
+      }
+      if (dup) {
+        const ids = await storedSecretIds();
+        if (!ids.includes(merged.id)) await SecureStore.setItemAsync(SECRET_IDS_KEY, JSON.stringify([...ids, merged.id]));
+        const target = secretSlot(merged.id, generation);
+        // Envelopes use the password-derived key, with no id-specific AAD. Both
+        // slots are in the same generation, held stable by secretWriteQueue.
+        if (targetMissing) {
+          try {
+            await SecureStore.setItemAsync(target, incoming, { keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY });
+          } catch (error) {
+            if (await getItemWithRetry(target).catch(() => null) !== incoming) throw error;
+          }
+          if (await decryptSecretAtSlot(target, password) !== secret) throw new Error(t('vaultError.saveVerifyFailed'));
+        }
+      }
+      verified = true;
+    } else if (dup && incoming) {
+      // Metadata alone cannot establish that the older ciphertext is usable.
+      // Encrypted import callers must pass their password before any cleanup.
+      throw new Error(t('vaultError.saveVerifyFailed'));
+    }
+    const next = [...all.filter(x => x.id !== merged.id && !matches(x)), merged];
+    await writeStoredWalletIndex(next);
+    if (verified && dup) {
+      for (const id of new Set([w.id, ...previous.map(entry => entry.id)])) {
+        if (next.some(entry => entry.id === id)) continue;
+        await removeSecretFromStorage(id).catch(() => {});
+        await clearLegacyBiometric(id).catch(() => {});
+      }
+    }
+  });
 }
 
 function mergePermissions(a?: string[], b?: string[]): string[] | undefined {
@@ -537,11 +694,13 @@ function mergePermissions(a?: string[], b?: string[]): string[] | undefined {
   return Array.from(new Set([...(a ?? []), ...(b ?? [])]));
 }
 
-export async function removeWallet(id: string): Promise<void> {
-  const all = await listWallets();
-  await SecureStore.setItemAsync(INDEX_KEY, JSON.stringify(all.filter((x) => x.id !== id)));
-  await removeSecret(id).catch(() => {});
-  await clearLegacyBiometric(id).catch(() => {});
+export function removeWallet(id: string): Promise<void> {
+  return withSecretStorage(async () => {
+    const all = await readStoredWalletIndex();
+    await writeStoredWalletIndex(all.filter(wallet => wallet.id !== id));
+    await removeSecretFromStorage(id).catch(() => {});
+    await clearLegacyBiometric(id).catch(() => {});
+  });
 }
 
 export function newWalletId(): string {
@@ -616,8 +775,10 @@ export function changeMasterPassword(currentPassword: string, newPassword: strin
     if (!Array.isArray(wallets)) throw new WalletReadError();
     const pending = await loadPendingDeviceKey();
     const pendingRaw = await getItemWithRetry(PENDING_DEVICE_KEY);
+    const recoverable = await listRecoverableDeviceKeys();
+    const recoveryRaw = await getItemWithRetry(RECOVERABLE_DEVICE_IDS);
     const required = new Set([MASTER_ID, ...wallets.filter(w => w.source === 'privatekey' || w.source === 'mnemonic' || w.deviceKey)
-      .map(w => w.id), ...(pending ? [pending.id] : [])]);
+      .map(w => w.id), ...(pending ? [pending.id] : []), ...recoverable.map(value => value.id)]);
     const ids = Array.from(new Set([...required, ...await storedSecretIds()]));
     const next = newWalletId();
     const staged: string[] = [];
@@ -632,7 +793,8 @@ export function changeMasterPassword(currentPassword: string, newPassword: strin
         staged.push(id);
         await saveSecretAtSlot(secretSlot(id, next), secret, newPassword);
       }
-      if (await getItemWithRetry(INDEX_KEY) !== index || await getItemWithRetry(PENDING_DEVICE_KEY) !== pendingRaw) {
+      if (await getItemWithRetry(INDEX_KEY) !== index || await getItemWithRetry(PENDING_DEVICE_KEY) !== pendingRaw ||
+          await getItemWithRetry(RECOVERABLE_DEVICE_IDS) !== recoveryRaw) {
         throw new Error(t('changePwd.walletsChanged'));
       }
       await SecureStore.setItemAsync(SECRET_IDS_KEY, JSON.stringify(staged));

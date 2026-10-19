@@ -7,6 +7,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '../theme';
 import { useSigningGuard } from '../chain/useSigningGuard';
 import { useWallet } from '../chain/WalletContext';
+import { transactionWallet } from '../chain/transactionWallet';
 import { TokenBalance } from '../chain/client';
 import { fmtAmount, sanitizeAmountInput } from '../chain/format';
 import TokenPickerSheet from '../components/TokenPickerSheet';
@@ -76,7 +77,7 @@ export default function SendScreen() {
     ?? { ...token, amount: 0 };
   const amt = parseFloat(amount) || 0;
   const ok = amt > 0 && amt <= liveToken.amount && isAccount(to);
-  const wallet = w.currentWallet;
+  const wallet = transactionWallet(w);
   const isPasskey = wallet?.source === 'passkey';
   // 本机密钥(明文私钥/助记词或 passkey)均可在任意网络签名广播,含主网
   const canSign = !!wallet;
@@ -243,7 +244,7 @@ export default function SendScreen() {
           <Text style={styles.ctaTxt}>{t('send.confirm')}</Text>
         </TouchableOpacity>
         <Text style={styles.demoNote}>
-          {!wallet
+          {wallet?.source === 'watch' ? t('coldSigning.tpHint') : !wallet
             ? t('send.readOnlyHint')
             : isPasskey
             ? t('send.passkeyBroadcastHint', { chain: w.client.config.name })
@@ -263,6 +264,7 @@ export default function SendScreen() {
         error={txErr}
         walletId={wallet?.id}
         passkey={isPasskey}
+        external={wallet?.source === 'watch'}
         onConfirm={submit}
         onConfirmBiometric={submitBiometric}
         onConfirmPasskey={submitPasskey}

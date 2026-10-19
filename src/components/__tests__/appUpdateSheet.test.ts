@@ -4,11 +4,11 @@ jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons' }));
 jest.mock('../BottomSheet', () => 'BottomSheet');
 jest.mock('../../i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));
-jest.mock('../../update/appUpdate', () => ({ canSelfUpdate: true, downloadRelease: jest.fn(), installRelease: jest.fn(), AppUpdateError: class extends Error {} }));
+jest.mock('../../update/appUpdate', () => ({ canSelfUpdate: true, downloadRelease: jest.fn(), installRelease: jest.fn(), AppUpdateError: class extends Error { code: string; constructor(code: string) { super(code); this.code = code; } } }));
 import React from 'react';
 import { Linking } from 'react-native';
 import AppUpdateSheet from '../AppUpdateSheet';
-import { downloadRelease, installRelease, type AppRelease } from '../../update/appUpdate';
+import { downloadRelease, installRelease, type AppRelease, AppUpdateError } from '../../update/appUpdate';
 const { act, create } = require('react-test-renderer');
 let renderer: any;
 const onClose = jest.fn();
@@ -45,7 +45,7 @@ test('Android downloads only after confirmation, then calls the installer and su
   jest.mocked(downloadRelease).mockResolvedValue('file:///5.apk'); await render();
   expect(downloadRelease).not.toHaveBeenCalled();
   await act(async () => button('update.updateNow').props.onPress());
-  expect(installRelease).toHaveBeenCalledWith('file:///5.apk');
+  expect(installRelease).toHaveBeenCalledWith('file:///5.apk', 5);
   expect(button('update.install')).toBeDefined();
   await act(async () => button('update.install').props.onPress());
   expect(downloadRelease).toHaveBeenCalledTimes(1); expect(installRelease).toHaveBeenCalledTimes(2);
@@ -85,4 +85,17 @@ test('an iOS link failure remains retryable without dismissing the mandatory pro
   await act(async () => button('update.updateNow').props.onPress());
   expect(texts()).toContain('update.openFailed'); expect(button('update.updateNow')).toBeDefined();
   expect(onClose).not.toHaveBeenCalled();
+});
+
+
+test('an unverified package never traps the user on Install and can be downloaded again', async () => {
+  jest.mocked(downloadRelease).mockResolvedValue('file:///unverified.apk');
+  jest.mocked(installRelease).mockRejectedValueOnce(new AppUpdateError('verify'));
+  await render(true);
+  await act(async () => button('update.updateNow').props.onPress());
+  expect(texts()).toContain('update.verifyFailed');
+  expect(button('update.install')).toBeUndefined();
+  expect(button('update.updateNow')).toBeDefined();
+  await act(async () => button('update.updateNow').props.onPress());
+  expect(downloadRelease).toHaveBeenCalledTimes(2);
 });
