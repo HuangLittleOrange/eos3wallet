@@ -106,6 +106,20 @@ class IosReleasePolicy(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "Unsafe"):
                 ios.extract_archive(file, folder / "duplicate")
 
+    def test_extraction_never_uses_extractall_or_restores_special_file_modes(self):
+        with tempfile.TemporaryDirectory(prefix="eos3-ios-extract-") as temp:
+            folder = Path(temp)
+            file = folder / "archive.tar.gz"
+            with tarfile.open(file, "w:gz") as archive:
+                member = tarfile.TarInfo("Wallet.xcarchive/executable")
+                member.mode, member.size = 0o6777, 4
+                archive.addfile(member, io.BytesIO(b"test"))
+            with patch.object(tarfile.TarFile, "extractall", side_effect=AssertionError("must not use extractall")):
+                result = ios.extract_archive(file, folder / "out")
+            self.assertEqual((result / "executable").stat().st_mode & 0o7777, 0o755)
+            with self.assertRaises(FileExistsError):
+                ios.extract_archive(file, folder / "out")
+
     def test_ipa_version_is_checked_again_before_upload(self):
         with tempfile.TemporaryDirectory(prefix="eos3-ios-ipa-") as temp:
             file = Path(temp) / "app.ipa"

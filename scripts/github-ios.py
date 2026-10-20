@@ -176,13 +176,27 @@ def build():
 def extract_archive(file, destination):
     with tarfile.open(file) as archive:
         names = set()
-        for member in archive.getmembers():
+        members = archive.getmembers()
+        for member in members:
             path = Path(member.name)
             require(not path.is_absolute() and ".." not in path.parts and path.parts and
                     path.parts[0] == "Wallet.xcarchive" and (member.isfile() or member.isdir()) and
                     path.as_posix() not in names, "Unsafe archive entry.")
             names.add(path.as_posix())
-        archive.extractall(destination, filter="data")
+        # The pinned Linux test image predates tarfile's extraction filters.
+        # Extract only the validated regular files/directories, without archive
+        # ownership, special permission bits, links or overwrites on any Python.
+        destination = destination.resolve()
+        for member in members:
+            target = destination / member.name
+            require(target.resolve().is_relative_to(destination), "Unsafe extraction destination.")
+            if member.isdir():
+                target.mkdir(parents=True, exist_ok=True)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with archive.extractfile(member) as source, target.open("xb") as output:
+                    shutil.copyfileobj(source, output)
+                target.chmod(0o755 if member.mode & 0o111 else 0o644)
     return destination / "Wallet.xcarchive"
 
 
