@@ -2,6 +2,7 @@
 import { t } from '../i18n';
 
 export type ChainId = 'vaulta' | 'jungle4';
+export type NetworkKind = 'mainnet' | 'testnet';
 
 export type NodeInfo = {
   id: string;
@@ -128,3 +129,11 @@ export function legacyLabel(id: ChainId): string {
 }
 
 export const DEFAULT_CHAIN: ChainId = 'vaulta';
+
+/** Registry-backed selectors can add networks without hard-coded UI branches. */
+export function networksFor(kind: NetworkKind): ChainConfig[] {
+  return Object.values(CHAINS).filter(network => network.testnet === (kind === 'testnet'));
+}
+export function isChainId(value: unknown): value is ChainId {
+  return typeof value === 'string' && Object.prototype.hasOwnProperty.call(CHAINS, value);
+}

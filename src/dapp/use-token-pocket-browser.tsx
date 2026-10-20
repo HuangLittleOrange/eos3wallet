@@ -2,6 +2,7 @@ import React, { useCallback, useRef, useState } from 'react';
 import { Alert, Share } from 'react-native';
 
 import type { ChainClient } from '../chain/client';
+import { DEFAULT_CHAIN, type ChainId } from '../chain/config';
 import DappScanModal from '../components/DappScanModal';
 import { useI18n } from '../i18n';
 import { dappDeviceId } from './dappDeviceId';
@@ -10,6 +11,7 @@ import { SaveImageError, saveRemoteImage } from './saveRemoteImage';
 
 type Request = { id: string; method: string; params?: any; isCurrent?: () => boolean };
 type Options = {
+  networkId?: ChainId;
   client: Pick<ChainClient, 'getActions'>;
   account: string;
   isConnected: () => boolean;
@@ -111,7 +113,8 @@ export function useTokenPocketBrowser(options: Options) {
         return true;
       case 'addFavorite': {
         const target = String(p.url ?? opts.url);
-        isDappFavorite(target).then((already) => already ? true : toggleDappFavorite(target, String(p.name ?? host)))
+        isDappFavorite(target, opts.networkId ?? DEFAULT_CHAIN).then((already) => already ? true
+          : toggleDappFavorite(target, String(p.name ?? host), opts.networkId ?? DEFAULT_CHAIN))
           .then(() => {
             if (target === opts.url) opts.onFavorited();
             reply(true, true);

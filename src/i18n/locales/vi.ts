@@ -1,6 +1,9 @@
 import type zh from './zh';
 
 const vi: Record<keyof typeof zh, string> = {
+  "network.settingsError": "Không thể tải hoặc lưu cài đặt mạng. Vui lòng thử lại.",
+  "network.unassigned": "Bản ghi cũ · chưa phân loại mạng",
+  "network.assign": "Gán cho {network}",
   "analytics.title": "Thống kê sử dụng",
   "analytics.description": "Gửi thống kê sử dụng cơ bản tới Google Firebase để đo người dùng hoạt động, kích hoạt mới và tỷ lệ quay lại. Không gửi tài khoản ví, khóa công khai, số dư hoặc nội dung giao dịch; không dùng cho quảng cáo. Tắt sẽ dừng thu thập và đặt lại mã thống kê của bản cài đặt này.",
   "analytics.unavailable": "Bản dựng chưa cấu hình thống kê hoặc đang tắt trong môi trường phát triển.",
@@ -355,6 +358,11 @@ const vi: Record<keyof typeof zh, string> = {
   'tokenDetail.noRecords': 'Chưa có giao dịch nào cho token này',
 
   'walletList.title': 'Danh sách ví',
+  'walletList.manage': 'Quản lý',
+  'walletList.addWallet': 'Thêm ví',
+  'walletList.selectNetwork': 'Chọn mạng',
+  'walletList.search': 'Tìm kiếm ví',
+  'walletList.noResults': 'Không tìm thấy ví phù hợp',
   'walletList.mnemonic': 'Cụm từ khôi phục',
   'walletList.privateKey': 'Nhập bằng private key',
   'walletList.watchLabel': 'Ví theo dõi',

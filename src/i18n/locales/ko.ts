@@ -1,6 +1,9 @@
 import type zh from './zh';
 
 const ko: Record<keyof typeof zh, string> = {
+  "network.settingsError": "네트워크 설정을 불러오거나 저장하지 못했습니다. 다시 시도해 주세요.",
+  "network.unassigned": "이전 기록 · 네트워크 미분류",
+  "network.assign": "{network}에 할당",
   "analytics.title": "사용 통계",
   "analytics.description": "활성 사용자, 신규 활성화 및 유지율을 집계하기 위해 Google Firebase에 기본 사용 통계를 보냅니다. 지갑 계정, 공개 키, 잔액과 거래 내용은 제외하며 광고에 사용하지 않습니다. 끄면 수집을 중단하고 이 설치의 통계 ID를 초기화합니다.",
   "analytics.unavailable": "이 빌드에 통계가 설정되지 않았거나 개발 환경에서 비활성화되었습니다.",
@@ -355,6 +358,11 @@ const ko: Record<keyof typeof zh, string> = {
   'tokenDetail.noRecords': '이 토큰의 거래 내역이 없습니다',
 
   'walletList.title': '지갑 목록',
+  'walletList.manage': '관리',
+  'walletList.addWallet': '지갑 추가',
+  'walletList.selectNetwork': '네트워크 선택',
+  'walletList.search': '지갑 검색',
+  'walletList.noResults': '일치하는 지갑이 없습니다',
   'walletList.mnemonic': '니모닉',
   'walletList.privateKey': '개인키 가져오기',
   'walletList.watchLabel': '워치 지갑',

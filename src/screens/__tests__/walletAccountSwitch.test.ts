@@ -73,3 +73,4 @@ test('authorized apps clear immediately and late previous-account results stay i
   await act(async () => finishNew({ eosAccount: 'wallet-switch-bob', permissions: [{ permission: 'new.permission', managedByPayLimit: true, parent: 'active', active: true, assets: [] }] }));
   expect(tokenRows().map((row: any) => row.permission)).toEqual(['new.permission']);
 });
+jest.mock('../../components/NetworkSelector', () => 'NetworkSelector');

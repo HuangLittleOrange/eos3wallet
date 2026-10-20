@@ -7,14 +7,9 @@ import { Ionicons } from '@expo/vector-icons';
 
 import { colors, spacing } from '../theme';
 import { useOpenDapp } from '../dapp/useOpenDapp';
-import { useDappSession } from '../dapp/DappSessionContext';
 import DappRiskSheet from '../components/DappRiskSheet';
 import {
-  DappFavorite,
-  DappHistoryItem,
   clearDappHistory,
-  listDappFavorites,
-  listDappHistory,
   removeDappFavorite,
   toggleDappFavorite,
 } from '../dapp/dappGate';
@@ -22,6 +17,11 @@ import { useI18n } from '../i18n';
 import { useFocusedAppContent } from '../content/useFocusedAppContent';
 import { localizedText, visibleItems } from '../content/types';
 import { discoveryModules } from '../content/modules';
+import { discoveryForNetwork } from '../content/networkDiscovery';
+import { useWalletSession } from '../chain/WalletContext';
+import NetworkSelector from '../components/NetworkSelector';
+import UnassignedDappRecords from '../components/UnassignedDappRecords';
+import { useDappRecords } from '../dapp/useDappRecords';
 
 const BANNER_AUTOPLAY_MS = 4000;
 const GRID_GAP = 10;
@@ -34,10 +34,13 @@ export default function DiscoverScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<any>();
   const { open, pending, cancel, confirm } = useOpenDapp();
-  const { session, minimized } = useDappSession();
   const { t, locale } = useI18n();
   const [tab, setTab] = useState(0);
-  const { content, projects, loading, refreshing, error, source, refresh } = useFocusedAppContent(tab === 0);
+  const { chainId } = useWalletSession();
+  const rawContent = useFocusedAppContent(tab === 0);
+  const { loading, refreshing, error, source, refresh } = rawContent;
+  const { content, projects } = useMemo(() => discoveryForNetwork(rawContent.content, rawContent.projects, chainId),
+    [rawContent.content, rawContent.projects, chainId]);
 
   const TABS = [t('discover.tabTrending'), t('discover.tabBrowser'), t('discover.tabFavorites')];
 
@@ -54,24 +57,12 @@ export default function DiscoverScreen() {
   const bannerRevision = JSON.stringify(BANNERS);
 
   const [bannerIndex, setBannerIndex] = useState(0);
-  const [history, setHistory] = useState<DappHistoryItem[]>([]);
-  const [favorites, setFavorites] = useState<DappFavorite[]>([]);
+  const { history, favorites, unassignedHistory, unassignedFavorites } = useDappRecords(chainId);
   const bannerScrollRef = useRef<ScrollView>(null);
   const bannerIndexRef = useRef(0);
   const tabScrollRef = useRef<ScrollView>(null);
   const tabIndexRef = useRef(0);
 
-  useFocusEffect(
-    useCallback(() => {
-      listDappHistory().then(setHistory);
-      listDappFavorites().then(setFavorites);
-    }, [])
-  );
-
-  // 浮层状态变化不触发页面聚焦，需单独刷新标签信息。
-  useEffect(() => {
-    listDappHistory().then(setHistory);
-  }, [session, minimized]);
 
   useEffect(() => {
     bannerIndexRef.current = 0;
@@ -119,23 +110,23 @@ export default function DiscoverScreen() {
   const isFavorited = (url: string) => favorites.some((f) => f.url === url);
 
   const longPressFavorite = async (url: string, name: string) => {
-    const nowOn = await toggleDappFavorite(url, name);
-    setFavorites(await listDappFavorites());
-    Alert.alert(nowOn ? t('discover.favorited') : t('discover.unfavorited'), name);
+    try {
+      const nowOn = await toggleDappFavorite(url, name, chainId);
+      Alert.alert(nowOn ? t('discover.favorited') : t('discover.unfavorited'), name);
+    } catch { Alert.alert(t('content.refreshFailed')); }
   };
 
   const removeFavorite = async (url: string) => {
-    await removeDappFavorite(url);
-    setFavorites(await listDappFavorites());
+    await removeDappFavorite(url, chainId);
   };
 
   const clearHistory = async () => {
-    await clearDappHistory();
-    setHistory([]);
+    await clearDappHistory(chainId);
   };
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
+      <View style={{ paddingHorizontal: spacing.lg }}><NetworkSelector /></View>
       <View style={styles.searchRow}>
         <View style={styles.searchBox}>
           <TouchableOpacity style={styles.searchTap} activeOpacity={0.7} onPress={() => nav.navigate('Search')}>
@@ -333,6 +324,7 @@ export default function DiscoverScreen() {
                   <Text style={styles.emptySub}>{t('discover.noHistorySub')}</Text>
                 </View>
               )}
+              <UnassignedDappRecords kind="history" entries={unassignedHistory} networkId={chainId} existingUrls={history.map(item => item.url)} />
             </View>
           </ScrollView>
         </View>
@@ -366,6 +358,7 @@ export default function DiscoverScreen() {
                   <Text style={styles.emptySub}>{t('discover.noFavoritesSub')}</Text>
                 </View>
               )}
+              <UnassignedDappRecords kind="favorite" entries={unassignedFavorites} networkId={chainId} existingUrls={favorites.map(item => item.url)} />
             </View>
           </ScrollView>
         </View>

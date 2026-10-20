@@ -15,6 +15,7 @@ import { AppContentProvider } from './src/content/AppContentContext';
 import { NodeCatalogProvider } from './src/chain/NodeCatalogContext';
 import { AppUpdateProvider } from './src/update/AppUpdateProvider';
 import { UsageAnalyticsProvider } from './src/analytics/UsageAnalyticsContext';
+import NetworkVisibilityGuard from './src/components/NetworkVisibilityGuard';
 
 export default function App() {
   return (
@@ -25,6 +26,7 @@ export default function App() {
         <AppContentProvider>
           <NodeCatalogProvider>
           <WalletProvider>
+            <NetworkVisibilityGuard />
             <MessagesProvider>
               <DappSessionProvider>
                 {/* 弹层宿主:包住整个 App 内容,所有 BottomSheet/CenterDialog 都叠在这层上面

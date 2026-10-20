@@ -1,6 +1,9 @@
 import type zh from './zh';
 
 const en: Record<keyof typeof zh, string> = {
+  "network.unassigned": "Older records · network unassigned",
+  "network.assign": "Assign to {network}",
+  "network.settingsError": "Could not load or save network settings. Please try again.",
   "analytics.title": "Usage statistics",
   "analytics.description": "Send basic usage statistics to Google Firebase for active users, new activations and retention. Wallet accounts, public keys, balances and transactions are excluded; no advertising use. Turning this off stops collection and resets this installation’s analytics ID.",
   "analytics.unavailable": "Analytics is not configured in this build or is disabled in development.",
@@ -354,7 +357,12 @@ const en: Record<keyof typeof zh, string> = {
   'tokenDetail.noHistoryApi': 'The current node has no history API, so records are unavailable',
   'tokenDetail.noRecords': 'No transactions for this token yet',
 
-  'walletList.title': 'Wallets',
+  'walletList.title': 'Wallet List',
+  'walletList.manage': 'Manage',
+  'walletList.addWallet': 'Add wallet',
+  'walletList.selectNetwork': 'Select a network',
+  'walletList.search': 'Search wallets',
+  'walletList.noResults': 'No matching wallets',
   'walletList.mnemonic': 'Mnemonic',
   'walletList.privateKey': 'Private key import',
   'walletList.watchLabel': 'Watch Wallet',

@@ -2,6 +2,9 @@
 // 都用 `Record<keyof typeof zh, string>` 强制类型对齐,漏翻一个 key 编译期就报错,
 // 不会出现"某个语言切过去后某几行还是别的语言"这种半吊子状态。
 const zh = {
+  "network.unassigned": "旧版记录 · 尚未归类网络",
+  "network.assign": "归入 {network}",
+  "network.settingsError": "网络显示设置读取或保存失败，请重试。",
   "analytics.title": "使用统计",
   "analytics.description": "开启后向 Google Firebase 发送基础使用统计，用于日活、新增激活和留存。不发送钱包账号、公钥、余额或交易内容；不用于广告。关闭后停止采集并重置本机统计标识。",
   "analytics.unavailable": "当前版本未配置统计，或正在开发环境运行。",
@@ -356,6 +359,11 @@ const zh = {
   'tokenDetail.noRecords': '暂无该代币的交易记录',
 
   'walletList.title': '钱包列表',
+  'walletList.manage': '管理',
+  'walletList.addWallet': '添加钱包',
+  'walletList.selectNetwork': '选择网络',
+  'walletList.search': '搜索钱包',
+  'walletList.noResults': '没有匹配的钱包',
   'walletList.mnemonic': '助记词',
   'walletList.privateKey': '私钥导入',
   'walletList.watchLabel': '观察钱包',

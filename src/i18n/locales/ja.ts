@@ -1,6 +1,9 @@
 import type zh from './zh';
 
 const ja: Record<keyof typeof zh, string> = {
+  "network.settingsError": "ネットワーク設定を読み込みまたは保存できませんでした。再試行してください。",
+  "network.unassigned": "以前の記録 · ネットワーク未分類",
+  "network.assign": "{network} に分類",
   "analytics.title": "利用状況の統計",
   "analytics.description": "アクティブ数、新規利用開始、継続率の集計に必要な基本統計を Google Firebase に送信します。ウォレットのアカウント、公開鍵、残高、取引内容は送信せず、広告には使用しません。オフにすると収集を停止し、このインストールの統計 ID をリセットします。",
   "analytics.unavailable": "このビルドでは統計が未設定、または開発環境で無効になっています。",
@@ -355,6 +358,11 @@ const ja: Record<keyof typeof zh, string> = {
   'tokenDetail.noRecords': 'このトークンの取引記録はまだありません',
 
   'walletList.title': 'ウォレット一覧',
+  'walletList.manage': '管理',
+  'walletList.addWallet': 'ウォレットを追加',
+  'walletList.selectNetwork': 'ネットワークを選択',
+  'walletList.search': 'ウォレットを検索',
+  'walletList.noResults': '一致するウォレットがありません',
   'walletList.mnemonic': 'ニーモニック',
   'walletList.privateKey': '秘密鍵インポート',
   'walletList.watchLabel': 'ウォッチウォレット',

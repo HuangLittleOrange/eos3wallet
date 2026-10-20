@@ -1,6 +1,9 @@
 import type zh from './zh';
 
 const ru: Record<keyof typeof zh, string> = {
+  "network.settingsError": "Не удалось загрузить или сохранить настройки сетей. Повторите попытку.",
+  "network.unassigned": "Старые записи · сеть не указана",
+  "network.assign": "Назначить {network}",
   "analytics.title": "Статистика использования",
   "analytics.description": "Отправлять базовую статистику в Google Firebase для оценки активности, новых активаций и удержания. Аккаунты кошелька, публичные ключи, балансы и транзакции не отправляются; реклама не используется. Отключение останавливает сбор и сбрасывает идентификатор этой установки.",
   "analytics.unavailable": "Статистика не настроена в этой сборке или отключена в среде разработки.",
@@ -355,6 +358,11 @@ const ru: Record<keyof typeof zh, string> = {
   'tokenDetail.noRecords': 'Пока нет транзакций по этому токену',
 
   'walletList.title': 'Список кошельков',
+  'walletList.manage': 'Управление',
+  'walletList.addWallet': 'Добавить кошелёк',
+  'walletList.selectNetwork': 'Выберите сеть',
+  'walletList.search': 'Поиск кошельков',
+  'walletList.noResults': 'Кошельки не найдены',
   'walletList.mnemonic': 'Мнемоническая фраза',
   'walletList.privateKey': 'Импорт приватного ключа',
   'walletList.watchLabel': 'Кошелёк для наблюдения',

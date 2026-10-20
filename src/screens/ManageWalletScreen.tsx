@@ -7,7 +7,8 @@ import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
 import { colors, spacing } from '../theme';
 import { useWallet } from '../chain/WalletContext';
 import { legacyLabel } from '../chain/config';
-import { CHAINS, ChainId } from '../chain/config';
+import { CHAINS } from '../chain/config';
+import { useNetworkVisibility } from '../chain/networkVisibility';
 import { fmtUSD } from '../chain/format';
 import { priceIn } from '../chain/prices';
 import PageHeader from '../components/PageHeader';
@@ -15,39 +16,12 @@ import { useI18n } from '../i18n';
 
 const BLUE = '#3B47D6';
 
-// 左侧链导轨:目前只有 Vaulta/Jungle4(同属 Antelope 协议,图标都是 "A")可切换,
-// 其余公链是留给未来多链支持的占位,点击只做提示。
-const RAIL_HEAD = [
-  { key: 'btc', letter: '₿' },
-  { key: 'eth', letter: 'E' },
-];
-const RAIL_TAIL = [
-  { key: 'bsc', letter: 'B' },
-  { key: 'ltc', letter: 'L' },
-  { key: 'ada', letter: '₳' },
-  { key: 'dot', letter: 'D' },
-  { key: 'sol', letter: 'S' },
-];
-
-function PlaceholderRailItem({ letter, t }: { letter: string; t: (key: any) => string }) {
-  return (
-    <TouchableOpacity
-      style={styles.railItem}
-      activeOpacity={0.6}
-      onPress={() => Alert.alert(t('manageWallet.comingSoonTitle'), t('manageWallet.comingSoonBody'))}
-    >
-      <View style={[styles.railIcon, styles.railIconIdle]}>
-        <Text style={styles.railTxt}>{letter}</Text>
-      </View>
-    </TouchableOpacity>
-  );
-}
-
 export default function ManageWalletScreen() {
   const insets = useSafeAreaInsets();
   const nav = useNavigation<any>();
   const w = useWallet();
   const { t } = useI18n();
+  const { enabled: visibleNetworks } = useNetworkVisibility();
   const total = w.tokens.reduce((s, tk) => s + tk.amount * priceIn(w.prices, tk.contract, tk.symbol), 0);
 
   return (
@@ -60,10 +34,7 @@ export default function ManageWalletScreen() {
         {/* 左侧链导轨 —— 网络(主网/测试网)切换在这里,和 TP 一致 */}
         <View style={styles.railWrap}>
           <ScrollView contentContainerStyle={{ paddingVertical: 12 }} showsVerticalScrollIndicator={false}>
-            {RAIL_HEAD.map((r) => (
-              <PlaceholderRailItem key={r.key} letter={r.letter} t={t} />
-            ))}
-            {(Object.keys(CHAINS) as ChainId[]).map((id) => {
+            {visibleNetworks.map((id) => {
               const active = w.chainId === id;
               const testnet = CHAINS[id].testnet;
               return (
@@ -87,9 +58,6 @@ export default function ManageWalletScreen() {
                 </TouchableOpacity>
               );
             })}
-            {RAIL_TAIL.map((r) => (
-              <PlaceholderRailItem key={r.key} letter={r.letter} t={t} />
-            ))}
           </ScrollView>
         </View>
 
@@ -138,7 +106,7 @@ export default function ManageWalletScreen() {
           <Text style={styles.footTxt}>{t('manageWallet.hardwareWallet')}</Text>
         </TouchableOpacity>
         <View style={styles.footLine} />
-        <TouchableOpacity style={styles.footItem} activeOpacity={0.6} onPress={() => nav.navigate('Node')}>
+        <TouchableOpacity style={styles.footItem} activeOpacity={0.6} onPress={() => nav.navigate('Networks', { manageVisibility: true })}>
           <MaterialCommunityIcons name="view-grid-outline" size={22} color={colors.text} />
           <Text style={styles.footTxt}>{t('manageWallet.manageNetwork')}</Text>
         </TouchableOpacity>

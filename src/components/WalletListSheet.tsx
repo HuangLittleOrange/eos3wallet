@@ -7,6 +7,7 @@ import {
   ScrollView,
   ActivityIndicator,
   Pressable,
+  TextInput,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -15,10 +16,12 @@ import { PublicKey } from '@wharfkit/antelope';
 import Animated, { Easing, runOnJS, useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 
 import BottomSheet from './BottomSheet';
+import { NetworkIcon } from './NetworkSelector';
 import { colors, spacing } from '../theme';
 import { useWallet } from '../chain/WalletContext';
 import { useWalletPermissionBadges } from '../chain/useWalletPermissionBadges';
-import { DEFAULT_CHAIN, legacyLabel } from '../chain/config';
+import { CHAINS, DEFAULT_CHAIN } from '../chain/config';
+import { useNetworkVisibility } from '../chain/networkVisibility';
 import { fmtUSD } from '../chain/format';
 import { priceIn } from '../chain/prices';
 import { navigationRef } from '../navigation/navigationRef';
@@ -26,26 +29,14 @@ import { useDappSession } from '../dapp/DappSessionContext';
 import type { StoredWallet } from '../crypto/vault';
 import { useI18n, TranslationKey } from '../i18n';
 
-const BLUE = '#3B47D6';
+const BLUE = '#3032FF';
 
 const OVERLAY_IN_MS = 220;
 const OVERLAY_OUT_MS = 180;
 const EASE_OUT = Easing.out(Easing.cubic);
 const EASE_IN = Easing.in(Easing.cubic);
 
-/**
- * 「添加方式」/「添加网络」浮层 —— 参考 TP:点 + 号之后,钱包列表那张大卡片
- * 留在原地压暗,小浮卡叠在它上面滑入,不是把列表卡片整个换掉。之前是拿
- * `panel` 直接在同一个 Modal 里三选一切 children——列表卡片(72% 屏高)瞬间
- * 被换成内容撑高的矮浮卡,遮罩露出的背景面积一帧之内暴涨一大截,看着像
- * "点了 + 号,整个列表窗口凭空消失了"。
- *
- * 这里改成叠一层浮层而不是再开一个新 Modal——BottomSheet 那边注释过,RN
- * 两层原生 Modal 同时开着不可靠,新的那层有时渲染不出内容,退出后还留着
- * 一层没关掉的 Modal,吃光后续所有触摸事件,同一个坑不能再踩一遍。这层
- * 浮层是 Modal 内部的普通绝对定位 View,自己管一份进出场动画(遮罩淡入淡
- * 出 + 卡片上滑),跟 BottomSheet/CenterDialog 是同一套手法。
- */
+/** 添加方式和管理菜单叠在同一个 Modal 内，保留底下的钱包列表，避免嵌套原生 Modal。 */
 function AddPanelOverlay({
   visible,
   onClose,
@@ -155,7 +146,6 @@ function WatchPill({ label, onActiveCard }: { label: string; onActiveCard: boole
   const color = onActiveCard ? 'rgba(255,255,255,0.9)' : colors.textSub;
   return (
     <View style={[styles.watchPill, { borderColor: color }]}>
-      <Ionicons name="eye-outline" size={9} color={color} style={{ marginRight: 2 }} />
       <Text style={[styles.watchPillTxt, { color }]}>{label}</Text>
     </View>
   );
@@ -166,50 +156,37 @@ export default function WalletListSheet({ visible, onClose }: { visible: boolean
   const w = useWallet();
   const { t } = useI18n();
   const { minimize } = useDappSession();
+  const { enabled: visibleNetworks } = useNetworkVisibility();
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [searching, setSearching] = useState(false);
+  const [query, setQuery] = useState('');
 
-  // 「选择添加方式」「添加网络」之前各自是独立的 BottomSheet——每个都自带
-  // 一层原生 Modal,在这份钱包列表本来就开着的 Modal 之上再叠一层。RN 的
-  // Modal 同时开两层并不可靠:新的那层有时候渲染不出内容(用户看到的是
-  // "点了没反应"),但它依然占着一层原生层级、吃掉全部触摸事件——退出外层
-  // 这个列表 Modal 之后,那层没能正常关掉的 Modal 还留在原地,首页所有按钮
-  // 就再也点不动,只有杀掉 App 重开才能恢复。改成同一个 Modal 内部切换要
-  // 显示哪个面板,任何时候只有一层 Modal,不会再出现这种"幽灵遮罩"。
-  const [panel, setPanel] = useState<'list' | 'method'>('list');
+  // 子菜单留在当前 Modal；网络设置关闭列表后进入独立页面。
+  const [panel, setPanel] = useState<'list' | 'method' | 'manage'>('list');
   // 整个钱包列表关掉后,下次重新打开应该回到列表面板,不该停留在上次
   // 打开到一半的子面板上
   useEffect(() => {
-    if (!visible) setPanel('list');
+    if (!visible) { setPanel('list'); setSearching(false); setQuery(''); }
   }, [visible]);
+  useEffect(() => { setQuery(''); }, [w.chainId]);
   const goPanel = () => setPanel('method');
   /** 子面板(添加方式)自己的关闭动作——退回列表面板,不整个收起 */
-  const closePanel = () => setPanel('list');
+  const closePanel = () => panel === 'manage' ? onClose() : setPanel('list');
   /** 整个 Modal 唯一的 onClose:停在子面板时先退回列表,列表本身再点一次才真正关掉 */
   const handleSheetClose = () => (panel === 'list' ? onClose() : closePanel());
 
-  // 用顶层 navigationRef 而不是 useNavigation() —— 这个组件现在也会在
-  // DappBrowserScreen 里被渲染,而 DappBrowserScreen 挂在 App 根部的
-  // 常驻宿主里(见 DappOverlayHost),不在导航树里,那里拿不到 useNavigation()。
-  // 顺手 minimize() 一下:如果是从全屏 DApp 里点进来的,不 minimize 的话
-  // 新页面会被盖在 DApp 全屏浮层下面看不见;没有会话时这一步是空操作。
-  const goCreate = () => {
+  // DApp 宿主不在导航树中，用根导航跳转，并最小化 DApp 以显示目标页面。
+  const leaveSheet = (navigate: () => void) => {
     setPanel('list');
     onClose();
     minimize();
-    // 挑合约创建还是 Google Passkey 创建在下一页选,这里不再直接假设走哪条
-    if (navigationRef.isReady()) navigationRef.navigate('CreateWalletMethod');
+    if (navigationRef.isReady()) navigate();
   };
-  const goImport = () => {
-    setPanel('list');
-    onClose();
-    minimize();
-    if (navigationRef.isReady()) navigationRef.navigate('Import');
-  };
-  const goNetworks = () => {
-    onClose();
-    minimize();
-    if (navigationRef.isReady()) navigationRef.navigate('ManageWallet');
-  };
+  const goCreate = () => leaveSheet(() => navigationRef.navigate('CreateWalletMethod'));
+  const goImport = () => leaveSheet(() => navigationRef.navigate('Import'));
+  const goSelectNetwork = () => leaveSheet(() => navigationRef.navigate('Networks', { addWallet: true }));
+  const goNetworkSettings = () => leaveSheet(() => navigationRef.navigate('Networks', { manageVisibility: true }));
+  const goManageWallets = () => leaveSheet(() => navigationRef.navigate('ManageWallet'));
 
   const total = w.tokens.reduce((s, t) => s + t.amount * priceIn(w.prices, t.contract, t.symbol), 0);
 
@@ -237,6 +214,8 @@ export default function WalletListSheet({ visible, onClose }: { visible: boolean
 
   const livePermissions = useWalletPermissionBadges(walletList, w.client, visible);
   const permsFor = (x: (typeof walletList)[number]): string[] => livePermissions[x.id] ?? [];
+  const filteredWallets = walletList.filter(wallet => !query.trim() ||
+    [wallet.account, wallet.publicKey ?? ''].some(value => value.toLowerCase().includes(query.trim().toLowerCase())));
 
   /**
    * 点已保存的钱包卡片 —— 直接切过去,不需要先删掉再重新导入。
@@ -266,26 +245,44 @@ export default function WalletListSheet({ visible, onClose }: { visible: boolean
     <BottomSheet visible={visible} onClose={handleSheetClose}>
       <View style={[styles.sheet, { paddingBottom: insets.bottom }]}>
         <View style={styles.head}>
-          <View style={styles.headSide} />
-          <Text style={styles.headTitle}>{t('walletList.title')}</Text>
-          <TouchableOpacity hitSlop={8} style={[styles.headSide, { alignItems: 'flex-end' }]} onPress={onClose}>
-            <Ionicons name="close" size={24} color={colors.text} />
+          <TouchableOpacity accessibilityLabel={t('walletList.search')} style={styles.headSide}
+            onPress={() => { setSearching(value => !value); setQuery(''); }}>
+            <Ionicons name="search-outline" size={23} color={colors.text} />
+          </TouchableOpacity>
+          {searching ? <TextInput autoFocus value={query} onChangeText={setQuery} placeholder={t('walletList.search')}
+            accessibilityLabel={t('walletList.search')} autoCapitalize="none" autoCorrect={false} style={styles.searchInput} />
+            : <Text style={styles.headTitle}>{t('walletList.title')}</Text>}
+          <TouchableOpacity accessibilityLabel={t('walletList.close')} style={[styles.headSide, { alignItems: 'flex-end' }]} onPress={onClose}>
+            <Ionicons name="close-outline" size={24} color="#555555" />
           </TouchableOpacity>
         </View>
         <View style={styles.headLine} />
 
         <View style={styles.body}>
+          <View style={styles.rail}>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {Object.values(CHAINS).filter(network => visibleNetworks.includes(network.id)).map(network => <TouchableOpacity key={network.id}
+                accessibilityRole="button" accessibilityLabel={`${network.name} · ${t(network.testnet ? 'manageWallet.testnet' : 'manageWallet.mainnet')}`}
+                accessibilityState={{ selected: network.id === w.chainId }}
+                style={[styles.railItem, network.id === w.chainId && styles.railItemActive]}
+                onPress={() => w.setChain(network.id)}>
+                <NetworkIcon networkId={network.id} />
+              </TouchableOpacity>)}
+              <TouchableOpacity accessibilityLabel={t('manageWallet.manageNetwork')} style={styles.railItem} onPress={goNetworkSettings}>
+                <View style={styles.railAdd}><Ionicons name="add" size={29} color="#B7BCC4" /></View>
+              </TouchableOpacity>
+            </ScrollView>
+            <TouchableOpacity accessibilityLabel={t('walletList.manage')} style={styles.railManage} onPress={() => setPanel('manage')}>
+              <Ionicons name="grid-outline" size={24} color="#2980FF" />
+            </TouchableOpacity>
+          </View>
           <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.right} showsVerticalScrollIndicator={false}>
             <View style={styles.netRow}>
-              <TouchableOpacity accessibilityRole="button" accessibilityLabel={t('manageWallet.manageNetwork')}
-                style={styles.networkButton} onPress={goNetworks}>
-                <Text style={styles.netName}>
-                  {w.client.config.name}({legacyLabel(w.chainId)})
-                </Text>
-                <Ionicons name="chevron-down" size={18} color={colors.textSub} />
-              </TouchableOpacity>
-              <TouchableOpacity hitSlop={8} onPress={goPanel}>
-                <Ionicons name="add-circle-outline" size={25} color={colors.text} />
+              <Text numberOfLines={1} style={[styles.netName, CHAINS[w.chainId].testnet && styles.testnetName]}>
+                {CHAINS[w.chainId].name} · {t(CHAINS[w.chainId].testnet ? 'manageWallet.testnet' : 'manageWallet.mainnet')}
+              </Text>
+              <TouchableOpacity accessibilityLabel={t('walletList.selectAddMethod')} style={styles.addWallet} onPress={goPanel}>
+                <Ionicons name="add-circle-outline" size={21} color={colors.text} />
               </TouchableOpacity>
             </View>
 
@@ -293,12 +290,10 @@ export default function WalletListSheet({ visible, onClose }: { visible: boolean
                 同账户可能有好几张卡(active/owner 分开导入),高亮的必须是具体
                 正被当作签名钥匙用的那一张(按 id 精确匹配 currentWallet),
                 不能只看账户名相不相等,不然会把同账户的另一把钥匙也一起点亮。 */}
-            {walletList.map((x) => {
+            {filteredWallets.map((x) => {
               const active = x.id === '__adhoc__' ? x.account === w.account : x.id === w.currentWallet?.id;
               const perms = permsFor(x);
-              // 'adhoc' 是当前唯一会走到的观察态(临时浏览、没存),'watch' 是
-              // 预留给"存一个纯观察钱包"这个还没做的功能——本机都没有这把钥匙,
-              // 跟资产页顶部大卡片的 w.readOnly(= !currentWallet)是同一件事。
+              // Both saved watch wallets and temporary browsing accounts have no local signing key.
               const isWatch = x.source === 'adhoc' || x.source === 'watch';
               return (
                 <TouchableOpacity
@@ -359,7 +354,7 @@ export default function WalletListSheet({ visible, onClose }: { visible: boolean
                     ) : null}
                   </View>
                   <View style={styles.walletCardRight}>
-                    {active ? <Ionicons name="checkmark" size={18} color="#fff" /> : null}
+                    {active ? <Ionicons name="checkmark" size={22} color="#fff" /> : null}
                     {active ? (
                       w.status === 'loading' ? (
                         <ActivityIndicator size="small" color="#fff" />
@@ -373,6 +368,7 @@ export default function WalletListSheet({ visible, onClose }: { visible: boolean
                 </TouchableOpacity>
               );
             })}
+            {query.trim() && !filteredWallets.length ? <Text style={styles.emptyText}>{t('walletList.noResults')}</Text> : null}
           </ScrollView>
         </View>
       </View>
@@ -381,29 +377,35 @@ export default function WalletListSheet({ visible, onClose }: { visible: boolean
           见 AddPanelOverlay 顶上的注释 */}
       <AddPanelOverlay visible={panel !== 'list'} onClose={closePanel}>
         {/* 选择添加方式:创建钱包 / 导入钱包 */}
-        <View style={[styles.methodWrap, { paddingBottom: insets.bottom + 12 }]}>
+        <View style={[styles.methodWrap, panel === 'manage' && styles.manageWrap, { paddingBottom: insets.bottom + 12 }]}>
+          {panel === 'manage' ? <View style={styles.manageHead}>
+            <Text style={styles.manageTitle}>{t('walletList.manage')}</Text>
+            <TouchableOpacity accessibilityLabel={t('walletList.close')} style={styles.manageCloseIcon} onPress={closePanel}>
+              <Ionicons name="close-outline" size={20} color="#B7BCC4" />
+            </TouchableOpacity>
+          </View> : null}
           <View style={styles.methodCard}>
-            <View style={styles.methodHead}>
+            {panel !== 'manage' ? <><View style={styles.methodHead}>
               <View style={{ width: 24 }} />
               <Text style={styles.methodTitle}>{t('walletList.selectAddMethod')}</Text>
               <TouchableOpacity hitSlop={8} onPress={closePanel}>
                 <Ionicons name="close" size={20} color={colors.textFaint} />
               </TouchableOpacity>
             </View>
-            <View style={styles.methodLine} />
-            <TouchableOpacity style={styles.methodRow} activeOpacity={0.6} onPress={goCreate}>
-              <Text style={styles.methodRowTxt}>{t('walletList.createWallet')}</Text>
+            <View style={styles.methodLine} /></> : null}
+            <TouchableOpacity style={[styles.methodRow, panel === 'manage' && styles.manageRow]} activeOpacity={0.6} onPress={panel === 'manage' ? goManageWallets : goCreate}>
+              <Text style={styles.methodRowTxt}>{t(panel === 'manage' ? 'manageWallet.title' : 'walletList.createWallet')}</Text>
             </TouchableOpacity>
             <View style={styles.methodLine} />
             {/* Passkey 登录已收进「创建钱包」页,那里和邮箱注册这类 passkey 相关的
                 入口放在一起更好找,这个二选一的小菜单也不用堆三行 */}
-            <TouchableOpacity style={styles.methodRow} activeOpacity={0.6} onPress={goImport}>
-              <Text style={styles.methodRowTxt}>{t('walletList.importWallet')}</Text>
+            <TouchableOpacity style={[styles.methodRow, panel === 'manage' && styles.manageRow]} activeOpacity={0.6} onPress={panel === 'manage' ? goSelectNetwork : goImport}>
+              <Text style={styles.methodRowTxt}>{t(panel === 'manage' ? 'walletList.addWallet' : 'walletList.importWallet')}</Text>
             </TouchableOpacity>
           </View>
 
-          <TouchableOpacity style={styles.methodClose} activeOpacity={0.6} onPress={closePanel}>
-            <Text style={styles.methodCloseTxt}>{t('walletList.close')}</Text>
+          <TouchableOpacity style={[styles.methodClose, panel === 'manage' && styles.manageRow]} activeOpacity={0.6} onPress={closePanel}>
+            <Text style={[styles.methodCloseTxt, panel === 'manage' && styles.manageCloseText]}>{t('walletList.close')}</Text>
           </TouchableOpacity>
         </View>
       </AddPanelOverlay>
@@ -412,27 +414,35 @@ export default function WalletListSheet({ visible, onClose }: { visible: boolean
 }
 
 const styles = StyleSheet.create({
-  sheet: { backgroundColor: colors.white, borderTopLeftRadius: 16, borderTopRightRadius: 16, height: '72%' },
+  sheet: { backgroundColor: colors.white, borderTopLeftRadius: 12, borderTopRightRadius: 12, height: '66%', overflow: 'hidden' },
 
-  head: { flexDirection: 'row', alignItems: 'center', height: 58, paddingHorizontal: 16 },
-  headSide: { width: 40 },
-  headTitle: { flex: 1, textAlign: 'center', fontSize: 19, fontWeight: '600', color: colors.text },
+  head: { flexDirection: 'row', alignItems: 'center', height: 48, paddingHorizontal: 16 },
+  headSide: { width: 32, height: 44, justifyContent: 'center' },
+  headTitle: { flex: 1, textAlign: 'center', fontSize: 17, fontWeight: '400', color: colors.text },
+  searchInput: { flex: 1, height: 40, marginHorizontal: 8, fontSize: 15, color: colors.text },
   headLine: { height: StyleSheet.hairlineWidth, backgroundColor: '#E6E8EC' },
 
-  body: { flex: 1 },
+  body: { flex: 1, flexDirection: 'row' },
+  rail: { width: 64, backgroundColor: '#F3F4F7' },
+  railItem: { height: 64, alignItems: 'center', justifyContent: 'center' },
+  railItemActive: { backgroundColor: '#fff' },
+  railAdd: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#E6E8EC', alignItems: 'center', justifyContent: 'center' },
+  railManage: { height: 54, backgroundColor: '#fff', borderTopLeftRadius: 9, borderTopRightRadius: 9, alignItems: 'center', justifyContent: 'center' },
 
-  right: { padding: 16 },
-  netRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
-  netName: { fontSize: 17, color: colors.text },
-  networkButton: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 },
+  right: { paddingHorizontal: 16, paddingTop: 0, paddingBottom: 16 },
+  netRow: { flexDirection: 'row', alignItems: 'center', minHeight: 44 },
+  netName: { flex: 1, fontSize: 16, color: colors.text },
+  testnetName: { color: '#A15C00' },
+  addWallet: { width: 28, height: 44, alignItems: 'flex-end', justifyContent: 'center' },
+  emptyText: { fontSize: 13, color: colors.textSub, textAlign: 'center', marginTop: 28 },
 
   walletCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderRadius: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    minHeight: 64,
+    borderRadius: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 10,
+    minHeight: 58,
     marginBottom: 8,
   },
   walletCardOn: { backgroundColor: BLUE },
@@ -448,10 +458,11 @@ const styles = StyleSheet.create({
   // 余额这一列都不会被文字怼到贴边甚至压到一起。
   walletCardRight: {
     alignItems: 'flex-end',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     alignSelf: 'stretch',
     marginLeft: 10,
-    minWidth: 84,
+    minWidth: 30,
+    maxWidth: '38%',
   },
   walletBal: { color: '#fff', fontSize: 13, fontWeight: '600' },
   permPill: {
@@ -466,9 +477,9 @@ const styles = StyleSheet.create({
   watchPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 1.5,
-    borderRadius: 999,
+    paddingHorizontal: 5,
+    paddingVertical: 1,
+    borderRadius: 3,
     borderWidth: 1,
     flexShrink: 0,
   },
@@ -480,6 +491,12 @@ const styles = StyleSheet.create({
   overlayScrim: { backgroundColor: 'rgba(0,0,0,0.35)' },
   overlayCard: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   methodWrap: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, gap: 10 },
+  manageWrap: { backgroundColor: '#F3F4F7', borderTopLeftRadius: 12, borderTopRightRadius: 12 },
+  manageHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 40 },
+  manageTitle: { fontSize: 16, fontWeight: '400', color: '#333333' },
+  manageCloseIcon: { width: 28, height: 28, borderRadius: 14, backgroundColor: '#E6E8EC', justifyContent: 'center', alignItems: 'center' },
+  manageRow: { height: 58 },
+  manageCloseText: { fontWeight: '400' },
   methodCard: { backgroundColor: colors.white, borderRadius: 14, overflow: 'hidden' },
   methodHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', height: 52, paddingHorizontal: 16 },
   methodTitle: { fontSize: 15.5, fontWeight: '600', color: colors.textSub },

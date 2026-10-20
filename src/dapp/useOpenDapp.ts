@@ -1,7 +1,9 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { addDappHistory, getRiskAck, setRiskAck } from './dappGate';
 import { useDappSession } from './DappSessionContext';
+import { useWalletSession } from '../chain/WalletContext';
+import type { ChainId } from '../chain/config';
 
 /**
  * 打开 DApp 的统一入口 —— 首次跳转(或未勾选「不再提示」)先弹风险确认,
@@ -14,12 +16,20 @@ import { useDappSession } from './DappSessionContext';
  */
 export function useOpenDapp(onOpened?: () => void) {
   const { openDapp } = useDappSession();
-  const [pending, setPending] = useState<string | null>(null);
+  const { chainId } = useWalletSession();
+  const network = useRef(chainId), sequence = useRef(0);
+  network.current = chainId;
+  type Request = { url: string; networkId: ChainId; id: number };
+  const [request, setRequest] = useState<Request | null>(null);
+  const currentRequest = useRef(request);
+  currentRequest.current = request;
+  useEffect(() => { sequence.current++; setRequest(null); return () => { sequence.current++; }; }, [chainId]);
 
   const goto = useCallback(
-    (url: string) => {
-      addDappHistory(url);
-      openDapp(url);
+    (url: string, networkId: ChainId) => {
+      if (network.current !== networkId) return;
+      void addDappHistory(url, undefined, networkId);
+      openDapp(url, networkId);
       onOpened?.();
     },
     [openDapp, onOpened]
@@ -27,26 +37,33 @@ export function useOpenDapp(onOpened?: () => void) {
 
   const open = useCallback(
     async (url: string) => {
-      if (await getRiskAck()) {
-        goto(url);
+      const networkId = network.current, id = ++sequence.current;
+      setRequest(null);
+      const acknowledged = await getRiskAck();
+      if (network.current !== networkId || sequence.current !== id) return;
+      if (acknowledged) {
+        goto(url, networkId);
       } else {
-        setPending(url);
+        setRequest({ url, networkId, id });
       }
     },
     [goto]
   );
 
-  const cancel = useCallback(() => setPending(null), []);
+  const cancel = useCallback(() => {
+    if (currentRequest.current === request) { sequence.current++; setRequest(null); }
+  }, [request]);
 
   const confirm = useCallback(
     (dontShowAgain: boolean) => {
-      if (!pending) return;
-      if (dontShowAgain) setRiskAck();
-      goto(pending);
-      setPending(null);
+      if (!request || currentRequest.current !== request || sequence.current !== request.id || network.current !== request.networkId) return;
+      sequence.current++;
+      if (dontShowAgain) void setRiskAck();
+      goto(request.url, request.networkId);
+      setRequest(null);
     },
-    [pending, goto]
+    [request, goto]
   );
 
-  return { open, pending, cancel, confirm };
+  return { open, pending: request?.networkId === chainId && request.id === sequence.current ? request.url : null, cancel, confirm };
 }

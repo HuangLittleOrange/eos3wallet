@@ -210,7 +210,7 @@ export default function DappBrowserScreen() {
   }, []);
 
   const tokenPocket = useTokenPocketBrowser({
-    client: w.client, account: w.account, url, pageUrl: navUrl, reply,
+    client: w.client, account: w.account, networkId: w.chainId, url, pageUrl: navUrl, reply,
     isConnected: () => access.current.connected(),
     goBack: () => webRef.current?.goBack(),
     close: () => { void close(); },
@@ -494,11 +494,13 @@ export default function DappBrowserScreen() {
   // 不然从「+新建标签」打开的页面找不到入口再回来。siteName 是异步拿到的
   // 页面标题,拿到后再记一遍把标题补上,标签卡片才能显示网站名而不是光秃秃的网址
   React.useEffect(() => {
-    addDappHistory(url, siteName || undefined)
-      .then(listDappHistory)
-      .then((list) => setTabCount(list.length))
+    let active = true;
+    addDappHistory(url, siteName || undefined, w.chainId)
+      .then(() => listDappHistory(w.chainId))
+      .then((list) => { if (active) setTabCount(list.length); })
       .catch(() => {});
-  }, [url, siteName]);
+    return () => { active = false; };
+  }, [url, siteName, w.chainId]);
 
   const submit = (password: string) =>
     broadcast(passwordSigner(wallet!, password));
@@ -532,8 +534,11 @@ export default function DappBrowserScreen() {
   const secure = /^https:/i.test(navUrl);
 
   useEffect(() => {
-    isDappFavorite(url).then(setFavorited);
-  }, [url]);
+    let active = true;
+    setFavorited(false);
+    isDappFavorite(url, w.chainId).then(value => { if (active) setFavorited(value); });
+    return () => { active = false; };
+  }, [url, w.chainId]);
 
   /** 「更多」面板里各功能的实际动作 */
   const handleMoreAction = async (key: string) => {
@@ -549,7 +554,7 @@ export default function DappBrowserScreen() {
         Share.share({ message: url, url }).catch(() => {});
         return;
       case 'favorite': {
-        const nowOn = await toggleDappFavorite(url, host);
+        const nowOn = await toggleDappFavorite(url, host, w.chainId);
         setFavorited(nowOn);
         return;
       }
@@ -586,7 +591,7 @@ export default function DappBrowserScreen() {
     if (!webWrapRef.current) return;
     try {
       const uri = await captureRef(webWrapRef, { format: 'jpg', quality: 0.5, result: 'data-uri' });
-      await setDappThumbnail(url, uri);
+      await setDappThumbnail(url, uri, w.chainId);
     } catch {
       // 截不出来就用占位图标,不影响关闭/最小化
     }

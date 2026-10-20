@@ -34,6 +34,8 @@ import SearchScreen from '../screens/SearchScreen';
 import AddTokenScreen from '../screens/AddTokenScreen';
 import TotalAssetScreen from '../screens/TotalAssetScreen';
 import ManageWalletScreen from '../screens/ManageWalletScreen';
+import NetworksScreen from '../screens/NetworksScreen';
+import type { ChainId } from '../chain/config';
 import SecurityScreen from '../screens/SecurityScreen';
 import ChangePasswordScreen from '../screens/ChangePasswordScreen';
 import LanguageScreen from '../screens/LanguageScreen';
@@ -73,6 +75,7 @@ export type RootStackParamList = {
   AddToken: undefined;
   TotalAsset: undefined;
   ManageWallet: undefined;
+  Networks: { addWallet?: boolean; selectedNetwork?: ChainId; manageVisibility?: boolean } | undefined;
   Security: undefined;
   ChangePassword: undefined;
   Language: undefined;
@@ -224,6 +227,7 @@ export default function RootNavigator() {
         <Stack.Screen name="AddToken" component={AddTokenScreen} />
         <Stack.Screen name="TotalAsset" component={TotalAssetScreen} />
         <Stack.Screen name="ManageWallet" component={ManageWalletScreen} />
+        <Stack.Screen name="Networks" component={NetworksScreen} />
         <Stack.Screen name="Security" component={SecurityScreen} />
         <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
         <Stack.Screen name="Language" component={LanguageScreen} />
