@@ -39,7 +39,7 @@ npm run web
 
 网页预览不支持全部原生密钥存储、Passkey 和生物识别能力。
 
-iOS 发行改用在 `main` 上手动触发的 **iOS TestFlight** GitHub Actions：云端 Mac 编译，独立作业导出签名 IPA，再上传 App Store Connect，全程不使用 EAS。本机无需安装 Xcode 或升级 macOS。首次使用请配置 [iOS 签名 Secrets、构建号和 TestFlight 环境](docs/github-ios-testflight.md)。
+iOS 发行通过 `main` 上手动触发的 **iOS IPA** GitHub Actions：云端 Mac 编译，独立作业默认导出 **Ad Hoc IPA**，供已登记设备安装；全程不使用 EAS。本机无需安装 Xcode 或升级 macOS。见 [Ad Hoc 凭据、构建号和安装说明](docs/github-ios-ad-hoc.md)。TestFlight 保留为可选分发方式，默认关闭上传。
 
 可选环境配置：
 

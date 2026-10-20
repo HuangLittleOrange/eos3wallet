@@ -1,8 +1,10 @@
-# GitHub Actions iOS 打包与 TestFlight
+# GitHub Actions iOS TestFlight（可选）
 
-[iOS TestFlight 工作流](../.github/workflows/ios-testflight.yml)在 GitHub 托管的 `macos-26` 上使用 Xcode 26.4.1 / iOS SDK 26.4 编译。开发电脑不需要升级 macOS，也不需要安装 Xcode。流程不调用 EAS Build、EAS Submit 或 EAS Update，不需要 Expo 账号、Token 或远程凭据。
+[iOS IPA 工作流](../.github/workflows/ios-build.yml)在 GitHub 托管的 `macos-26` 上使用 Xcode 26.4.1 / iOS SDK 26.4 编译。开发电脑不需要升级 macOS，也不需要安装 Xcode。流程不调用 EAS Build、EAS Submit 或 EAS Update，不需要 Expo 账号、Token 或远程凭据。
 
 项目保留 Expo SDK 57 和原生模块，使用锁定依赖中的本地模板执行 Prebuild；这是生成 Xcode 工程的本地工具，不是 Expo 云构建。应用标识保持 `com.eos3.wallet`。
+
+默认分发方式现为 Ad Hoc，见 [Ad Hoc 操作说明](github-ios-ad-hoc.md)。启用本文的 TestFlight 路径时，显式选择 `distribution=app-store-connect` 并开启 `upload_to_testflight`。
 
 ## 一次性配置
 
@@ -55,16 +57,16 @@ base64 -i /absolute/path/AuthKey_XXXXXXXXXX.p8 | gh secret set APP_STORE_CONNECT
 
 ## 触发打包
 
-将工作流和相关修改合入 `main` 后，在 **Actions → iOS TestFlight → Run workflow**：
+将工作流和相关修改合入 `main` 后，在 **Actions → iOS IPA → Run workflow**：
 
 1. 分支选择 `main`。其他分支、PR、标签推送不会触发发行。
 2. `build_number` 填写比此前所有 iOS 包更大的正整数，最多九位。先在 App Store Connect 确认最高构建号；不要只依赖旧文档或 GitHub 运行次数。来自 EAS 的旧包同样占用构建号，重跑已上传构建时也必须换新号。
-3. 默认勾选 `upload_to_testflight`，签名后自动上传。取消勾选则仅生成签名 IPA，不需要上传 API Key，但仍需要签名环境。
+3. 选择 `distribution=app-store-connect` 并勾选 `upload_to_testflight`，签名后自动上传。默认不勾选上传；关闭时仅生成签名 IPA，不需要上传 API Key，但仍需要签名环境。
 
 命令行触发示例（`27` 只是格式示例，执行前确认它高于已有构建号）：
 
 ```bash
-gh workflow run ios-testflight.yml --ref main -f build_number=27 -f upload_to_testflight=true
+gh workflow run ios-build.yml --ref main -f distribution=app-store-connect -f build_number=27 -f upload_to_testflight=true
 ```
 
 版本名取自 `app.json` 的 `expo.version`；构建号通过 `IOS_BUILD_NUMBER` 注入 iOS 配置。流程不使用 `eas.json` 的远程版本号，不改写源文件，也不改变 Android `versionCode`。需要发布新版本名时，先更新 `app.json` 并合入 main。并发运行排队，显式构建号仍由操作者确保递增。

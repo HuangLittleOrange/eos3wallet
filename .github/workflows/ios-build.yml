@@ -1,23 +1,29 @@
-name: iOS TestFlight
-run-name: iOS build ${{ inputs.build_number }} @ ${{ github.sha }}
+name: iOS IPA
+run-name: iOS ${{ inputs.distribution }} build ${{ inputs.build_number }} @ ${{ github.sha }}
 
 on:
   workflow_dispatch:
     inputs:
+      distribution:
+        description: 'Ad Hoc for registered devices; App Store Connect for TestFlight'
+        required: true
+        type: choice
+        default: ad-hoc
+        options: [ad-hoc, app-store-connect]
       build_number:
         description: 'Integer greater than every previous iOS build (including EAS builds)'
         required: true
         type: string
       upload_to_testflight:
-        description: 'Upload the signed IPA to App Store Connect for TestFlight'
-        default: true
+        description: 'Upload to TestFlight (App Store Connect distribution only)'
+        default: false
         type: boolean
 
 permissions:
   contents: read
 
 concurrency:
-  group: ios-testflight
+  group: ios-ipa
   cancel-in-progress: false
 
 defaults:
@@ -27,6 +33,7 @@ defaults:
 env:
   DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
   IOS_BUILD_NUMBER: ${{ inputs.build_number }}
+  IOS_DISTRIBUTION: ${{ inputs.distribution }}
   CI: '1'
   EXPO_NO_DOTENV: '1'
   EXPO_NO_TELEMETRY: '1'
@@ -105,6 +112,7 @@ jobs:
           IOS_DISTRIBUTION_P12_BASE64: ${{ secrets.IOS_DISTRIBUTION_P12_BASE64 }}
           IOS_DISTRIBUTION_P12_PASSWORD: ${{ secrets.IOS_DISTRIBUTION_P12_PASSWORD }}
           IOS_APP_STORE_PROFILE_BASE64: ${{ secrets.IOS_APP_STORE_PROFILE_BASE64 }}
+          IOS_AD_HOC_PROFILE_BASE64: ${{ secrets.IOS_AD_HOC_PROFILE_BASE64 }}
           APPLE_TEAM_ID: ${{ vars.APPLE_TEAM_ID }}
         run: python3 scripts/github-ios.py sign
       - name: Preserve signed IPA, dSYMs and checksums
@@ -121,7 +129,7 @@ jobs:
 
   upload:
     needs: sign
-    if: inputs.upload_to_testflight
+    if: inputs.distribution == 'app-store-connect' && inputs.upload_to_testflight
     environment: ios-testflight
     runs-on: macos-26
     timeout-minutes: 30

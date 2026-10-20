@@ -18,7 +18,8 @@ spec.loader.exec_module(ios)
 
 ENV = {"GITHUB_ACTIONS": "true", "GITHUB_EVENT_NAME": "workflow_dispatch", "GITHUB_REF": "refs/heads/main",
        "GITHUB_SERVER_URL": "https://github.com", "GITHUB_SHA": "a" * 40, "GITHUB_REPOSITORY": "example/wallet",
-       "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "1", "IOS_BUILD_NUMBER": "27"}
+       "GITHUB_RUN_ID": "123", "GITHUB_RUN_ATTEMPT": "1", "IOS_BUILD_NUMBER": "27",
+       "IOS_DISTRIBUTION": "app-store-connect"}
 NOW = datetime.datetime(2026, 10, 20, tzinfo=datetime.timezone.utc)
 TEAM = "ABCD123456"
 
@@ -58,6 +59,25 @@ class IosReleasePolicy(unittest.TestCase):
             with self.subTest(entitlement=field), self.assertRaises(ValueError):
                 ios.validate_profile(changed, TEAM, NOW)
 
+    def test_ad_hoc_requires_registered_devices_and_cannot_be_uploaded(self):
+        adhoc = profile()
+        adhoc["ProvisionedDevices"] = ["a" * 40]
+        adhoc["Entitlements"].pop("beta-reports-active")
+        ios.validate_profile(adhoc, TEAM, NOW, distribution="ad-hoc")
+        with self.assertRaises(ValueError):
+            ios.validate_profile(adhoc, TEAM, NOW)
+        with self.assertRaises(ValueError):
+            ios.validate_profile(profile(), TEAM, NOW, distribution="ad-hoc")
+        for devices in [[], ["invalid"], "a" * 40]:
+            with self.subTest(devices=devices), self.assertRaises(ValueError):
+                ios.validate_profile({**adhoc, "ProvisionedDevices": devices}, TEAM, NOW, distribution="ad-hoc")
+        with patch.object(ios, "metadata", return_value={"distribution": "ad-hoc", "signing": "ad-hoc"}), \
+                patch.object(ios, "ipa_identity", side_effect=AssertionError("must reject before uploading")), \
+                self.assertRaisesRegex(ValueError, "Ad Hoc"):
+            ios.upload()
+        with self.assertRaises(ValueError):
+            ios.distribution({"IOS_DISTRIBUTION": "enterprise"})
+
     def test_artifact_tampering_and_cross_run_replay_are_rejected(self):
         with tempfile.TemporaryDirectory(prefix="eos3-ios-policy-") as temp, patch.dict(os.environ, ENV):
             folder = Path(temp)
@@ -73,6 +93,8 @@ class IosReleasePolicy(unittest.TestCase):
                 ios.metadata(folder, names)
             ios.checksums(folder, names)
             with patch.dict(os.environ, {"GITHUB_RUN_ATTEMPT": "2"}), self.assertRaisesRegex(ValueError, "another"):
+                ios.metadata(folder, names)
+            with patch.dict(os.environ, {"IOS_DISTRIBUTION": "ad-hoc"}), self.assertRaisesRegex(ValueError, "another"):
                 ios.metadata(folder, names)
             payload.unlink()
             payload.symlink_to(folder / "build-info.json")

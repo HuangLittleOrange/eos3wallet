@@ -40,7 +40,7 @@ Android Passkey 和已验证 App Links 依赖服务端对应用包名、签名�
 
 ## iOS 与隔离边界
 
-iOS 原生编译需要完整 Xcode；命令行工具不等于完整 Xcode。iOS 发行现有独立的 [GitHub Actions / TestFlight 流程](github-ios-testflight.md)，将 npm、CocoaPods / 配置插件和无 Apple 凭据的编译，与另一台托管 VM 上的受控签名及第三台 VM 的上传分开。构建阶段可联网，依赖托管 VM 和作业分离隔离发行秘密，并非 Android 入口的离线 macOS 沙箱。描述文件和证书只在签名步骤注入，上传 API Key 只在上传步骤注入。首次配置仍需验证完整原生构建和真机功能，不据静态检查声称已归档、签名或上传成功。
+iOS 原生编译需要完整 Xcode；命令行工具不等于完整 Xcode。iOS 发行现有独立的 [GitHub Actions iOS 流程](github-ios-ad-hoc.md)，将 npm、CocoaPods / 配置插件和无 Apple 凭据的编译，与另一台托管 VM 上的受控签名分开；默认导出 Ad Hoc IPA，只有显式选择 App Store Connect 分发并开启上传时，才在第三台 VM 上传。构建阶段可联网，依赖托管 VM 和作业分离隔离发行秘密，并非 Android 入口的离线 macOS 沙箱。描述文件和证书只在签名步骤注入，上传 API Key 只在上传步骤注入。首次配置仍需验证完整原生构建和真机功能，不据静态检查声称已归档、签名或上传成功。
 
 macOS `sandbox-exec` 属于系统已有的隔离能力，后续系统可能改变支持情况；缺失时脚本停止。它限制文件、服务和网络访问，但不是完整虚拟机：允许系统运行时读取，Gradle 的本地通信仍可连接回环地址；系统或工具链漏洞、资源耗尽，以及不符合常见存放方式的秘密仍需要进一步防护。对不可信代码或正式发行，优先使用无秘密的独立构建机器 / 虚拟机，再单独签名。
 

@@ -27,6 +27,13 @@ def require(condition, message):
         raise ValueError(message)
 
 
+def distribution(env=None):
+    env = os.environ if env is None else env
+    mode = env.get("IOS_DISTRIBUTION", "app-store-connect")
+    require(mode in {"ad-hoc", "app-store-connect"}, "Unsupported iOS distribution method.")
+    return mode
+
+
 def context(env=None):
     env = os.environ if env is None else env
     require(env.get("GITHUB_ACTIONS") == "true" and
@@ -39,7 +46,7 @@ def context(env=None):
              "IOS_BUILD_NUMBER": r"[1-9][0-9]{0,8}"}
     for name, pattern in rules.items():
         require(re.fullmatch(pattern, env.get(name, "")), f"Invalid or missing {name}.")
-    return {name: env[name] for name in rules}
+    return {**{name: env[name] for name in rules}, "distribution": distribution(env)}
 
 
 def run(args, *, cwd=ROOT, log=None, quiet=False, env=None):
@@ -200,16 +207,24 @@ def extract_archive(file, destination):
     return destination / "Wallet.xcarchive"
 
 
-def validate_profile(profile, team, now=None):
+def validate_profile(profile, team, now=None, distribution="app-store-connect"):
     require(re.fullmatch(r"[A-Z0-9]{10}", team), "Set APPLE_TEAM_ID to your 10-character Apple team ID.")
     entitlements = profile.get("Entitlements", {})
     require(profile.get("TeamIdentifier") == [team] and
             entitlements.get("application-identifier") == f"{team}.{BUNDLE_ID}" and
             entitlements.get("com.apple.developer.team-identifier") == team and
-            entitlements.get("beta-reports-active") is True and
             entitlements.get("get-task-allow") is not True and
-            "ProvisionedDevices" not in profile and not profile.get("ProvisionsAllDevices"),
-            "Use an App Store distribution profile matching this app and Apple team; Ad Hoc is not supported.")
+            not profile.get("ProvisionsAllDevices"),
+            "Use a distribution profile matching this app and Apple team; development/enterprise profiles are not supported.")
+    if distribution == "ad-hoc":
+        devices = profile.get("ProvisionedDevices")
+        require(isinstance(devices, list) and devices and
+                all(isinstance(device, str) and re.fullmatch(r"[A-Fa-f0-9-]{20,64}", device) for device in devices) and
+                entitlements.get("beta-reports-active") is not True,
+                "Ad Hoc requires a distribution profile with registered devices.")
+    else:
+        require(distribution == "app-store-connect" and entitlements.get("beta-reports-active") is True and
+                "ProvisionedDevices" not in profile, "TestFlight requires an App Store Connect distribution profile.")
     now = now or datetime.datetime.now(datetime.timezone.utc)
     expiration = profile.get("ExpirationDate")
     require(isinstance(expiration, datetime.datetime) and expiration.replace(tzinfo=datetime.timezone.utc) > now,
@@ -236,6 +251,7 @@ def sign():
     temporary = work()
     source = ROOT / "exports/github-ios-input"
     info = metadata(source, ["Wallet.xcarchive.tar.gz", "build-info.json"])
+    mode = distribution()
     require(info.get("signing") == "ad-hoc-without-identity", "Expected an archive without an Apple signing identity.")
     archive = extract_archive(source / "Wallet.xcarchive.tar.gz", temporary)
     apps = list((archive / "Products/Applications").glob("*.app"))
@@ -243,10 +259,11 @@ def sign():
     verify_identity(plistlib.loads((apps[0] / "Info.plist").read_bytes()), info)
     certificate, profile_file = temporary / "distribution.p12", temporary / "app.mobileprovision"
     secret_file("IOS_DISTRIBUTION_P12_BASE64", certificate)
-    secret_file("IOS_APP_STORE_PROFILE_BASE64", profile_file)
+    profile_secret = "IOS_AD_HOC_PROFILE_BASE64" if mode == "ad-hoc" else "IOS_APP_STORE_PROFILE_BASE64"
+    secret_file(profile_secret, profile_file)
     profile = plistlib.loads(subprocess.check_output(["security", "cms", "-D", "-i", str(profile_file)], stderr=subprocess.DEVNULL))
     team = os.environ.get("APPLE_TEAM_ID", "")
-    validate_profile(profile, team)
+    validate_profile(profile, team, distribution=mode)
     keychain = temporary / "signing.keychain-db"
     password = secrets.token_urlsafe(32)
     original = shlex.split(run(["security", "list-keychains", "-d", "user"], quiet=True))
@@ -274,7 +291,8 @@ def sign():
         with (temporary / "profiles.jsonl").open("a") as journal:
             journal.write(json.dumps(str(installed)) + "\n")
         shutil.copyfile(profile_file, installed)
-    options = {"method": "app-store-connect", "destination": "export", "signingStyle": "manual",
+    options = {"method": "release-testing" if mode == "ad-hoc" else "app-store-connect",
+               "destination": "export", "signingStyle": "manual",
                "teamID": team, "signingCertificate": matches[0], "manageAppVersionAndBuildNumber": False,
                "provisioningProfiles": {BUNDLE_ID: profile["UUID"]}, "stripSwiftSymbols": True,
                "uploadSymbols": True}
@@ -290,6 +308,12 @@ def sign():
     run(["ditto", "-x", "-k", str(ipas[0]), str(verify)])
     signed_apps = list((verify / "Payload").glob("*.app"))
     require(len(signed_apps) == 1, "Expected one signed app.")
+    embedded = plistlib.loads(subprocess.check_output(
+        ["security", "cms", "-D", "-i", str(signed_apps[0] / "embedded.mobileprovision")], stderr=subprocess.DEVNULL))
+    validate_profile(embedded, team, distribution=mode)
+    require(embedded["UUID"] == profile["UUID"] and
+            embedded.get("ProvisionedDevices") == profile.get("ProvisionedDevices"),
+            "Exported IPA uses a different profile or device list.")
     run(["codesign", "--verify", "--deep", "--strict", str(signed_apps[0])])
     entitlement_output = run(["codesign", "--display", "--entitlements", ":-", str(signed_apps[0])])
     signed_entitlements = plistlib.loads(entitlement_output.encode())
@@ -304,15 +328,23 @@ def sign():
     symbols = archive / "dSYMs"
     require(symbols.is_dir(), "Missing archive dSYMs.")
     run(["ditto", "-c", "-k", "--keepParent", str(symbols), str(SIGNED / "dSYMs.zip")])
-    info.update(signing="app-store-connect", teamId=team, unsignedSha256=digest(source / "Wallet.xcarchive.tar.gz"))
+    info.update(signing=mode, teamId=team, unsignedSha256=digest(source / "Wallet.xcarchive.tar.gz"),
+                registeredDeviceCount=len(profile.get("ProvisionedDevices", [])),
+                profileExpiration=profile["ExpirationDate"].isoformat())
     (SIGNED / "build-info.json").write_text(json.dumps(info, indent=2) + "\n")
     checksums(SIGNED, ["wallet.ipa", "dSYMs.zip", "build-info.json"])
-    print("Signature-verified App Store IPA and dSYMs saved.")
+    print(f"Signature-verified {mode} IPA and dSYMs saved.")
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as summary:
+            summary.write(f"### iOS IPA exported\n\n{BUNDLE_ID} {info['version']} ({info['IOS_BUILD_NUMBER']})\n\n"
+                          f"Distribution: {mode}. Registered devices: {info['registeredDeviceCount']}. "
+                          f"Profile expiration: {info['profileExpiration']}.\n\nDownload the signed IPA artifact from this run.\n")
 
 
 def upload():
     info = metadata(SIGNED, ["wallet.ipa", "dSYMs.zip", "build-info.json"])
-    require(info.get("signing") == "app-store-connect", "Only an App Store-signed IPA can be uploaded.")
+    require(info.get("distribution") == "app-store-connect" and info.get("signing") == "app-store-connect",
+            "Only an App Store-signed IPA can be uploaded; Ad Hoc must not be sent to TestFlight.")
     ipa_identity(SIGNED / "wallet.ipa", info)
     key_id, issuer = os.environ.get("APP_STORE_CONNECT_KEY_ID", ""), os.environ.get("APP_STORE_CONNECT_ISSUER_ID", "")
     require(re.fullmatch(r"[A-Z0-9]{10}", key_id), "Missing or invalid App Store Connect API key ID.")

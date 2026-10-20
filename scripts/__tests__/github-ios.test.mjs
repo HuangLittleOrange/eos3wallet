@@ -5,7 +5,7 @@ import { spawnSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const root = new URL('../../', import.meta.url);
-const workflow = require('yaml').parse(fs.readFileSync(new URL('.github/workflows/ios-testflight.yml', root), 'utf8'));
+const workflow = require('yaml').parse(fs.readFileSync(new URL('.github/workflows/ios-build.yml', root), 'utf8'));
 
 test('iOS signing and upload use fresh hosted VMs without dependency execution or shared credentials', () => {
   assert.deepEqual(Object.keys(workflow.on), ['workflow_dispatch']);
@@ -16,6 +16,10 @@ test('iOS signing and upload use fresh hosted VMs without dependency execution o
   assert.equal(workflow.jobs.sign.environment, 'ios-production-signing');
   assert.equal(workflow.jobs.upload.environment, 'ios-testflight');
   assert.equal(workflow.concurrency['cancel-in-progress'], false);
+  assert.equal(workflow.on.workflow_dispatch.inputs.distribution.default, 'ad-hoc');
+  assert.equal(workflow.on.workflow_dispatch.inputs.upload_to_testflight.default, false);
+  assert.equal(workflow.env.IOS_DISTRIBUTION, '${{ inputs.distribution }}');
+  assert.equal(workflow.jobs.upload.if, "inputs.distribution == 'app-store-connect' && inputs.upload_to_testflight");
   for (const [name, job] of Object.entries(workflow.jobs)) {
     assert.equal(job['runs-on'], 'macos-26');
     for (const step of job.steps) {
@@ -29,7 +33,7 @@ test('iOS signing and upload use fresh hosted VMs without dependency execution o
       const secretNames = Object.values(step.env ?? {}).filter(value => /secrets\./.test(value));
       if (secretNames.length) {
         assert.notEqual(name, 'build');
-        assert.equal(secretNames.length, 3);
+        assert.equal(secretNames.length, name === 'sign' ? 4 : 3);
         assert.equal(step.run, `python3 scripts/github-ios.py ${name}`);
         assert.ok(!JSON.stringify(step.env).includes(name === 'sign' ? 'APP_STORE_CONNECT' : 'IOS_DISTRIBUTION'));
       }

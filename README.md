@@ -39,7 +39,7 @@ npm run web
 
 The web preview does not provide every native secure storage, Passkey, or biometric capability.
 
-iOS releases use the manually triggered **iOS TestFlight** GitHub Actions workflow on `main`: a hosted Mac builds the archive, a separate job exports a signed IPA, and another job uploads it to App Store Connect. EAS is not used. See [iOS signing secrets, build numbers, and TestFlight setup](docs/github-ios-testflight.md). Your development Mac does not need Xcode or a macOS upgrade for this workflow.
+iOS releases use the manually triggered **iOS IPA** GitHub Actions workflow on `main`: a hosted Mac builds the archive and a separate job exports an **Ad Hoc IPA** for registered devices by default. EAS is not used. See [Ad Hoc credentials, build numbers, and installation](docs/github-ios-ad-hoc.md). TestFlight remains optional with uploads disabled by default. Your development Mac does not need Xcode or a macOS upgrade for this workflow.
 
 Optional environment configuration:
 
