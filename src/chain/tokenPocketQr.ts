@@ -2,7 +2,11 @@ import { t } from '../i18n';
 
 const PREFIX = 'tp:multiFragment-version=1.0&protocol=TokenPocket&data=';
 const MAX_BYTES = 65_536;
-const MAX_FRAGMENTS = 128;
+// Keep the URI/JSON-heavy first frame readable at the 280dp display size too.
+// 600-byte chunks made it much denser than the mostly-hex following frames:
+// TP could collect the latter while repeatedly missing the first one.
+const FRAGMENT_BYTES = 300;
+const MAX_FRAGMENTS = 256; // enough for the existing 64 KiB bound at 300 bytes/frame
 const invalid = () => new Error(t('coldSigning.invalidResponse'));
 
 /** TP v1 uses unsigned IEEE CRC32 over the complete UTF-8 payload. */
@@ -25,7 +29,7 @@ export function tokenPocketQrFrames(payload: string): string[] {
   let part = '', size = 0;
   for (const char of payload) {
     const length = new TextEncoder().encode(char).length;
-    if (size + length > 600) { parts.push(part); part = ''; size = 0; }
+    if (size + length > FRAGMENT_BYTES) { parts.push(part); part = ''; size = 0; }
     part += char; size += length;
   }
   if (part) parts.push(part);

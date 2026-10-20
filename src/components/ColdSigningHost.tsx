@@ -5,7 +5,8 @@ import * as Clipboard from 'expo-clipboard';
 import QRCode from 'react-native-qrcode-svg';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import BottomSheet from './BottomSheet';
-import { acceptColdSignature, cancelColdSigning, chooseColdSigningKey, coldSigningSnapshot, subscribeColdSigning } from '../chain/coldSigning';
+import { acceptColdSignature, cancelColdSigning, chooseColdSigningKey, coldSigningSnapshot, subscribeColdSigning, withColdSigningSystemPrompt } from '../chain/coldSigning';
+import { shouldInvalidateBackground, withSystemAuthentication } from '../crypto/systemAuthentication';
 import { useWalletSession } from '../chain/WalletContext';
 import { useI18n } from '../i18n';
 import { colors } from '../theme';
@@ -25,6 +26,7 @@ export default function ColdSigningHost() {
   const [frame, setFrame] = useState(0);
   const [progress, setProgress] = useState<{ received: number; total: number } | null>(null);
   const handled = useRef(false);
+  const requestingCamera = useRef(false);
   const collector = useRef(new TokenPocketQrCollector());
   const frames = useMemo(() => {
     try { return request?.qr ? tokenPocketQrFrames(request.qr) : []; } catch { return []; }
@@ -32,11 +34,13 @@ export default function ColdSigningHost() {
   const context = JSON.stringify([w.account, w.chainId, w.node.url, w.currentWallet?.id]);
   useEffect(() => () => cancelColdSigning(), [context]);
   useEffect(() => {
-    const sub = AppState.addEventListener('change', state => { if (state === 'background') cancelColdSigning(); });
+    const sub = AppState.addEventListener('change', state => {
+      if (state === 'background' && shouldInvalidateBackground()) cancelColdSigning();
+    });
     return () => sub.remove();
   }, []);
   useEffect(() => {
-    setScanning(false); setLocalError(''); handled.current = false;
+    setScanning(false); setLocalError(''); handled.current = false; setNow(Date.now());
     if (!request) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
@@ -49,20 +53,39 @@ export default function ColdSigningHost() {
   }, [frames]);
   if (!request) return null;
   const receive = async (data: string) => {
-    if (handled.current) return;
+    if (handled.current || coldSigningSnapshot()?.id !== request.id) return;
     handled.current = true;
     setLocalError('');
     await acceptColdSignature(data, request.id);
-    setScanning(false); handled.current = false;
+    if (coldSigningSnapshot()?.id === request.id) {
+      setScanning(false); handled.current = false;
+    }
   };
   const scan = async () => {
+    if (requestingCamera.current) return;
+    requestingCamera.current = true;
     setLocalError('');
+    let timeout: ReturnType<typeof setTimeout> | undefined;
     try {
-      const permission = camera?.granted ? camera : await requestCamera();
+      // Android's permission activity reports background. Use the same bounded
+      // foreground-restoring scope as credential prompts, tied to this request.
+      const permission = camera?.granted ? camera : await withColdSigningSystemPrompt(request.id,
+        () => withSystemAuthentication(() => Promise.race([
+          requestCamera(),
+          new Promise<never>((_, reject) => {
+            timeout = setTimeout(() => reject(new Error(t('scan.cameraPermDesc'))), 60_000);
+          }),
+        ])));
+      if (coldSigningSnapshot()?.id !== request.id) return;
       if (!permission.granted) { setLocalError(t('scan.cameraPermDesc')); return; }
       collector.current = new TokenPocketQrCollector(); setProgress(null);
       handled.current = false; setScanning(true);
-    } catch { setLocalError(t('scan.cameraPermDesc')); }
+    } catch { if (coldSigningSnapshot()?.id === request.id) setLocalError(t('scan.cameraPermDesc')); }
+    finally {
+      if (timeout) clearTimeout(timeout);
+      requestingCamera.current = false;
+      if (AppState.currentState === 'background' && coldSigningSnapshot()?.id === request.id) cancelColdSigning();
+    }
   };
   const error = localError || request.error;
   return <BottomSheet visible onClose={cancelColdSigning} priority={20}>
@@ -86,7 +109,7 @@ export default function ColdSigningHost() {
         {scanning ? <>
           <CameraView style={styles.camera} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }}
             onBarcodeScanned={({ data }) => {
-              if (handled.current) return;
+              if (handled.current || coldSigningSnapshot()?.id !== request.id) return;
               try {
                 const result = collector.current.accept(data); setProgress(result);
                 if (result.text !== undefined) void receive(result.text);

@@ -205,6 +205,11 @@ export default function WalletListSheet({ visible, onClose }: { visible: boolean
     minimize();
     if (navigationRef.isReady()) navigationRef.navigate('Import');
   };
+  const goNetworks = () => {
+    onClose();
+    minimize();
+    if (navigationRef.isReady()) navigationRef.navigate('ManageWallet');
+  };
 
   const total = w.tokens.reduce((s, t) => s + t.amount * priceIn(w.prices, t.contract, t.symbol), 0);
 
@@ -272,9 +277,13 @@ export default function WalletListSheet({ visible, onClose }: { visible: boolean
         <View style={styles.body}>
           <ScrollView style={{ flex: 1 }} contentContainerStyle={styles.right} showsVerticalScrollIndicator={false}>
             <View style={styles.netRow}>
-              <Text style={styles.netName}>
-                {w.client.config.name}({legacyLabel(w.chainId)})
-              </Text>
+              <TouchableOpacity accessibilityRole="button" accessibilityLabel={t('manageWallet.manageNetwork')}
+                style={styles.networkButton} onPress={goNetworks}>
+                <Text style={styles.netName}>
+                  {w.client.config.name}({legacyLabel(w.chainId)})
+                </Text>
+                <Ionicons name="chevron-down" size={18} color={colors.textSub} />
+              </TouchableOpacity>
               <TouchableOpacity hitSlop={8} onPress={goPanel}>
                 <Ionicons name="add-circle-outline" size={25} color={colors.text} />
               </TouchableOpacity>
@@ -415,6 +424,7 @@ const styles = StyleSheet.create({
   right: { padding: 16 },
   netRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 },
   netName: { fontSize: 17, color: colors.text },
+  networkButton: { flexDirection: 'row', alignItems: 'center', gap: 6, minHeight: 44 },
 
   walletCard: {
     flexDirection: 'row',

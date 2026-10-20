@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { Name } from '@wharfkit/antelope';
 
 import { colors, spacing } from '../theme';
 import PageHeader from '../components/PageHeader';
@@ -11,7 +12,12 @@ import { useI18n } from '../i18n';
 
 const BLUE = '#1E88FF';
 
-const isAccount = (s: string) => /^[a-z1-5.]{1,12}$/.test(s.trim());
+const canonicalAccount = (s: string) => {
+  const trimmed = s.trim();
+  if (!/^[a-z1-5.]{1,12}$/.test(trimmed)) return '';
+  // Antelope ignores trailing dots; an all-dot name is the zero/empty name.
+  return String(Name.from(trimmed));
+};
 
 /** 观察钱包 —— 只读, 不涉及任何密钥/主密码, 拆自原 ImportScreen 的 watch 分支 */
 export default function ImportWatchScreen() {
@@ -21,10 +27,12 @@ export default function ImportWatchScreen() {
   const { t } = useI18n();
   const [accountName, setAccountName] = useState('');
 
-  const ready = isAccount(accountName);
+  const account = canonicalAccount(accountName);
+  const ready = !!account;
 
   const watchOnly = () => {
-    w.setAccount(accountName.trim());
+    if (!account) return;
+    w.setAccount(account);
     // reset 而不是 navigate——导入这个动作是一次性的,不该留在返回栈里,
     // 不然「返回」键还能翻回这个已经完成的表单
     nav.reset({ index: 0, routes: [{ name: 'Tabs' }] });

@@ -1,8 +1,9 @@
 jest.mock('../../i18n', () => ({ t: (key: string) => key }));
-import { Action, PrivateKey, Serializer, Transaction } from '@wharfkit/antelope';
+import { Action, PrivateKey, PublicKey, Serializer, Transaction } from '@wharfkit/antelope';
 import { CHAINS } from '../config';
 import { coreActionAbi } from '../coreTokenAbi';
 import { tokenPocketResult, tokenPocketSigningQr, verifyColdResult } from '../coldSigningProtocol';
+import { TokenPocketQrCollector, tokenPocketQrFrames } from '../tokenPocketQr';
 
 const key = PrivateKey.generate('K1');
 const chainId = CHAINS.vaulta.chainIdHash;
@@ -50,4 +51,21 @@ test('a signature for different content or a different key cannot authorize the 
   for (const signature of [key.signDigest(other.transaction.signingDigest(chainId)), PrivateKey.generate('K1').signDigest(r.transaction.signingDigest(chainId))]) {
     expect(() => verifyColdResult(r, String(key.toPublic()), { signatures: [String(signature)] })).toThrow();
   }
+});
+test('real TP 2.29.0 large-transaction response reassembles and verifies the original request', () => {
+  const fixture = require('./fixtures/tokenPocket-tp229-large.json');
+  const r = { ...fixture.request, transaction: Transaction.from(fixture.request.transaction) };
+  expect(tokenPocketQrFrames(tokenPocketSigningQr(r, fixture.publicKey))).toHaveLength(7);
+  const collector = new TokenPocketQrCollector();
+  const frames: string[] = [...fixture.signedFrames].reverse();
+  expect(frames).toHaveLength(22);
+  collector.accept(frames[0]);
+  let result;
+  for (const frame of frames) result = collector.accept(frame);
+  const parsed = tokenPocketResult(result!.text!);
+  expect(verifyColdResult(r, fixture.publicKey, parsed).verifyDigest(
+    r.transaction.signingDigest(r.chainId), PublicKey.from(fixture.publicKey),
+  )).toBe(true);
+  r.transaction.ref_block_num = r.transaction.ref_block_num.adding(1);
+  expect(() => verifyColdResult(r, fixture.publicKey, parsed)).toThrow();
 });

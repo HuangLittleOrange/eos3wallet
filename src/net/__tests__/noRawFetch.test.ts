@@ -42,7 +42,7 @@ describe('没有裸 fetch() 漏网', () => {
   it('src 下的 fetch 调用都经过 net/fetchRetry.ts,或者在白名单里说明了原因', () => {
     const offenders: string[] = [];
     for (const file of listSourceFiles(SRC_ROOT)) {
-      const rel = file.slice(SRC_ROOT.length + 1);
+      const rel = file.slice(SRC_ROOT.length + 1).replace(/\\/g, '/');
       if (ALLOWLIST.has(rel)) continue;
       const content = readFileSync(file, 'utf8');
       if (RAW_FETCH_CALL.test(content)) offenders.push(rel);

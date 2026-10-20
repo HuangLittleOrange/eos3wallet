@@ -6,7 +6,7 @@ import { CHAINS } from '../config';
 import { coreActionAbi } from '../coreTokenAbi';
 import { readDirectSigningKeys } from '../importAccount';
 import { listenLinkChannel } from '../../dapp/linkSocket';
-import { acceptColdSignature, cancelColdSigning, coldSigningSnapshot, requestColdSignature } from '../coldSigning';
+import { acceptColdSignature, cancelColdSigning, chooseColdSigningKey, coldSigningSnapshot, requestColdSignature, withColdSigningSystemPrompt } from '../coldSigning';
 
 const key = PrivateKey.generate('K1'), publicKey = String(key.toPublic());
 function options(isCurrent = () => true) {
@@ -68,4 +68,61 @@ test('concurrent requests are rejected and cancellation cannot leak a response i
   const second = requestColdSignature(o); await tick();
   expect(await acceptColdSignature(result(o), old)).toBe(false);
   expect(await acceptColdSignature(result(o), coldSigningSnapshot()!.id)).toBe(true); await second;
+});
+test('native permission prompts pause liveness checks but cannot accept signatures until foreground', async () => {
+  let current = true, release!: () => void;
+  const o = options(() => current), signed = requestColdSignature(o); await tick();
+  const id = coldSigningSnapshot()!.id;
+  const prompt = withColdSigningSystemPrompt(id, () => new Promise<void>(resolve => { release = resolve; }));
+  current = false;
+  await jest.advanceTimersByTimeAsync(1000);
+  expect(coldSigningSnapshot()!.id).toBe(id);
+  expect(await acceptColdSignature(result(o), id)).toBe(false);
+  current = true; release(); await prompt;
+  expect(await acceptColdSignature(result(o), id)).toBe(true); await signed;
+});
+test('expiry still cancels a request while a native prompt is open', async () => {
+  let release!: () => void;
+  const o = options(), signed = requestColdSignature(o), rejected = expect(signed).rejects.toThrow('expired'); await tick();
+  const prompt = withColdSigningSystemPrompt(coldSigningSnapshot()!.id, () => new Promise<void>(resolve => { release = resolve; }));
+  await jest.advanceTimersByTimeAsync(120001); await rejected;
+  release(); await prompt;
+  expect(coldSigningSnapshot()).toBeNull();
+});
+test('a context change during a native prompt is rejected when foreground returns', async () => {
+  let current = true, release!: () => void;
+  const o = options(() => current), signed = requestColdSignature(o), rejected = expect(signed).rejects.toThrow('requestChanged'); await tick();
+  const prompt = withColdSigningSystemPrompt(coldSigningSnapshot()!.id, () => new Promise<void>(resolve => { release = resolve; }));
+  current = false; release(); await prompt; await rejected;
+  expect(coldSigningSnapshot()).toBeNull();
+});
+test('a late permission result cannot revive a cancelled request or alter its replacement', async () => {
+  let release!: () => void;
+  const first = requestColdSignature(options()), rejected = expect(first).rejects.toThrow('cancelled'); await tick();
+  const old = coldSigningSnapshot()!.id;
+  const prompt = withColdSigningSystemPrompt(old, () => new Promise<void>(resolve => { release = resolve; }));
+  cancelColdSigning(); await rejected;
+  const o = options(), second = requestColdSignature(o); await tick(); const id = coldSigningSnapshot()!.id;
+  release(); await prompt;
+  expect(coldSigningSnapshot()!.id).toBe(id);
+  expect(await acceptColdSignature(result(o), id)).toBe(true); await second;
+});
+test('switching a trusted key rejects the previous key signature and accepts the newly selected key', async () => {
+  const other = PrivateKey.generate('K1'), otherPublic = String(other.toPublic());
+  jest.mocked(readDirectSigningKeys).mockResolvedValue([publicKey, otherPublic]);
+  const o = options(), signed = requestColdSignature(o); await tick(); const id = coldSigningSnapshot()!.id;
+  const originalQr = coldSigningSnapshot()!.qr;
+  chooseColdSigningKey('not-a-trusted-key'); expect(coldSigningSnapshot()!.qr).toBe(originalQr);
+  chooseColdSigningKey(otherPublic); expect(coldSigningSnapshot()!.qr).not.toBe(originalQr);
+  expect(await acceptColdSignature(result(o), id)).toBe(false);
+  expect(await acceptColdSignature(JSON.stringify({ ...Serializer.objectify(o.transaction),
+    signatures: [String(other.signDigest(o.transaction.signingDigest(o.chainId)))] }), id)).toBe(true);
+  expect((await signed).verifyDigest(o.transaction.signingDigest(o.chainId), other.toPublic())).toBe(true);
+});
+test('a transient authority read failure can be retried without releasing an unverified result', async () => {
+  const o = options(), signed = requestColdSignature(o); await tick(); const id = coldSigningSnapshot()!.id;
+  jest.mocked(readDirectSigningKeys).mockRejectedValueOnce(new Error('temporary RPC failure'));
+  expect(await acceptColdSignature(result(o), id)).toBe(false);
+  expect(coldSigningSnapshot()!.validating).toBe(false);
+  expect(await acceptColdSignature(result(o), id)).toBe(true); await signed;
 });

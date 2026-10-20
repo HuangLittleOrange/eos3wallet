@@ -55,7 +55,7 @@ function listSourceFiles(dir: string): string[] {
 }
 
 const FILES: { rel: string; content: string }[] = [...listSourceFiles(SRC_ROOT), join(APP_ROOT, 'App.tsx')].map((file) => ({
-  rel: file.slice(APP_ROOT.length + 1),
+  rel: file.slice(APP_ROOT.length + 1).replace(/\\/g, '/'),
   content: readFileSync(file, 'utf8'),
 }));
 

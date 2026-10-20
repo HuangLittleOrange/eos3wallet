@@ -1,0 +1,78 @@
+{
+  "description": "TP Android 2.29.0 offline signature; synthetic unfunded eos3coldtest, zero TAPOS, never broadcast. Public transaction/signature only.",
+  "publicKey": "EOS5ZZ6bcFUbxiGqJ2ZMyM2U16P4RxvwKc8JNZRaGeqLzD2f7EHi3",
+  "request": {
+    "transaction": {
+      "expiration": "2026-10-19T09:30:12",
+      "ref_block_num": 0,
+      "ref_block_prefix": 0,
+      "max_net_usage_words": 0,
+      "max_cpu_usage_ms": 0,
+      "delay_sec": 0,
+      "context_free_actions": [],
+      "actions": [
+        {
+          "account": "core.vaulta",
+          "name": "transfer",
+          "authorization": [
+            {
+              "actor": "eos3coldtest",
+              "permission": "active"
+            }
+          ],
+          "data": "90b1ca29523430550000000000ea3055010000000000000004410000000000009401454f5333206f66666c696e6520636f6d7061746962696c6974792074657374202d206e6f2062726f616463617374203078787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878"
+        },
+        {
+          "account": "core.vaulta",
+          "name": "transfer",
+          "authorization": [
+            {
+              "actor": "eos3coldtest",
+              "permission": "active"
+            }
+          ],
+          "data": "90b1ca29523430550000000000ea3055010000000000000004410000000000009401454f5333206f66666c696e6520636f6d7061746962696c6974792074657374202d206e6f2062726f616463617374203178787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878"
+        },
+        {
+          "account": "core.vaulta",
+          "name": "transfer",
+          "authorization": [
+            {
+              "actor": "eos3coldtest",
+              "permission": "active"
+            }
+          ],
+          "data": "90b1ca29523430550000000000ea3055010000000000000004410000000000009401454f5333206f66666c696e6520636f6d7061746962696c6974792074657374202d206e6f2062726f616463617374203278787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878"
+        }
+      ],
+      "transaction_extensions": []
+    },
+    "chainId": "aca376f206b8fc25a6ed44dbdc66547c36c6c33e3a119ffbeaef943642f0e906",
+    "actor": "eos3coldtest",
+    "permission": "active"
+  },
+  "signedFrames": [
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"376f206b8fc25a6ed44dbdc66547c36c6c33e3a119ffbeaef943642f0e906&data={\\\"expiration\\\":\\\"2026-10-_1905913534\",\"index\":\"1\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"19T09:30:12\\\",\\\"ref_block_num\\\":0,\\\"ref_block_prefix\\\":0,\\\"max_net_usage_words\\\":0,\\\"max_cpu_usage_1905913534\",\"index\":\"2\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"\\\"transfer\\\",\\\"authorization\\\":[{\\\"actor\\\":\\\"eos3coldtest\\\",\\\"permission\\\":\\\"active\\\"}],\\\"data\\\":\\\"90b1ca_1905913534\",\"index\":\"4\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"6f6d7061746962696c6974792074657374202d206e6f2062726f61646361737420307878787878787878787878_1905913534\",\"index\":\"6\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878_1905913534\",\"index\":\"7\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"7878787878787878787878787878787878787878787878787878787878787878787878787878787878787878\\\"}_1905913534\",\"index\":\"8\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"ission\\\":\\\"active\\\"}],\\\"data\\\":\\\"90b1ca29523430550000000000ea30550100000000000000044100000000000_1905913534\",\"index\":\"10\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"09401454f5333206f66666c696e6520636f6d7061746962696c6974792074657374202d206e6f2062726f61646_1905913534\",\"index\":\"11\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"878787878787878787878787878787878787878787878787878787878787878787878787878787878787878787_1905913534\",\"index\":\"13\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"8787878787878787878787878787878\\\"},{\\\"account\\\":\\\"core.vaulta\\\",\\\"name\\\":\\\"transfer\\\",\\\"authorizatio_1905913534\",\"index\":\"14\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"n\\\":[{\\\"actor\\\":\\\"eos3coldtest\\\",\\\"permission\\\":\\\"active\\\"}],\\\"data\\\":\\\"90b1ca29523430550000000000ea30_1905913534\",\"index\":\"15\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"2074657374202d206e6f2062726f61646361737420327878787878787878787878787878787878787878787878_1905913534\",\"index\":\"17\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"787878787878787878787878787878787878787878787878787878787878787878787878787878787878787878_1905913534\",\"index\":\"18\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"s\\\":[],\\\"signatures\\\":[\\\"SIG_K1_KgiFcbUjSjRfJmX2tjXF2AeSVbuRqHGtAo9aXRws5LqFEPfRTPHsmLGSbbaei8_1905913534\",\"index\":\"20\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"rQLHvEeReXAcWTmNw6dSoQmTPn9VDP8a\\\"]}_1905913534\",\"index\":\"21\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"29523430550000000000ea3055010000000000000004410000000000009401454f5333206f66666c696e652063_1905913534\",\"index\":\"5\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\",{\\\"account\\\":\\\"core.vaulta\\\",\\\"name\\\":\\\"transfer\\\",\\\"authorization\\\":[{\\\"actor\\\":\\\"eos3coldtest\\\",\\\"perm_1905913534\",\"index\":\"9\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"361737420317878787878787878787878787878787878787878787878787878787878787878787878787878787_1905913534\",\"index\":\"12\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"eosio:signTransactionSignature-version=1.0&protocol=TokenPocket&network=eosio&chain_id=aca_1905913534\",\"index\":\"0\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"_ms\\\":0,\\\"delay_sec\\\":0,\\\"context_free_actions\\\":[],\\\"actions\\\":[{\\\"account\\\":\\\"core.vaulta\\\",\\\"name\\\":_1905913534\",\"index\":\"3\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"55010000000000000004410000000000009401454f5333206f66666c696e6520636f6d7061746962696c697479_1905913534\",\"index\":\"16\\/22\"}",
+    "tp:multiFragment-version=1.0&protocol=TokenPocket&data={\"content\":\"7878787878787878787878787878787878787878787878787878787878787878\\\"}],\\\"transaction_extension_1905913534\",\"index\":\"19\\/22\"}"
+  ]
+}

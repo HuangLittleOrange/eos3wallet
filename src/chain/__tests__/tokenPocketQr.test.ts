@@ -22,10 +22,39 @@ test('mixed streams, conflicting duplicates, invalid indices and bad checksums a
   const prefix = 'tp:multiFragment-version=1.0&protocol=TokenPocket&data=';
   const payload = JSON.parse(frames[0].slice(prefix.length));
   expect(() => collector.accept(prefix + JSON.stringify({ ...payload, content: 'bad_' + tokenPocketCrc32('A'.repeat(1800)) }))).toThrow();
-  for (const index of ['-1/2', '2/2', '0/129', '0/0', '1e0/2']) {
+  for (const index of ['-1/2', '2/2', '0/257', '0/0', '1e0/2']) {
     expect(() => new TokenPocketQrCollector().accept(prefix + JSON.stringify({ ...payload, index }))).toThrow();
   }
   expect(() => new TokenPocketQrCollector().accept(prefix + JSON.stringify({ content: 'bad_0', index: '0/1' }))).toThrow();
+});
+test('URI-heavy request frames stay small enough for TP camera scanning', () => {
+  const prefix = 'tp:multiFragment-version=1.0&protocol=TokenPocket&data=';
+  const request = 'eosio:signTransaction-version=1.0&protocol=TokenPocket&network=eosio&chain_id=' +
+    'a'.repeat(64) + '&data=' + JSON.stringify({
+      tx: { actions: Array.from({ length: 3 }, () => ({ account: 'core.vaulta', name: 'transfer', data: 'ab'.repeat(180) })) },
+      account: 'eos3coldtest', publicKey: 'EOS' + 'a'.repeat(50),
+    });
+  const frames = tokenPocketQrFrames(request);
+  expect(frames.length).toBeGreaterThan(4);
+  for (const frame of frames) {
+    const { content } = JSON.parse(frame.slice(prefix.length));
+    const part = content.slice(0, content.lastIndexOf('_'));
+    expect(new TextEncoder().encode(part).length).toBeLessThanOrEqual(300);
+  }
+  const collector = new TokenPocketQrCollector();
+  let result;
+  for (const frame of frames.slice(1)) result = collector.accept(frame);
+  expect(result?.text).toBeUndefined();
+  expect(collector.accept(frames[0]).text).toBe(request);
+});
+test('smaller frames preserve the 64 KiB payload limit, including UTF-8 boundaries', () => {
+  for (const text of ['x'.repeat(65536), '中'.repeat(21845) + 'x']) {
+    const frames = tokenPocketQrFrames(text), collector = new TokenPocketQrCollector();
+    expect(frames.length).toBeLessThanOrEqual(256);
+    let result;
+    for (const frame of frames) result = collector.accept(frame);
+    expect(result?.text).toBe(text);
+  }
 });
 test('oversized payloads are bounded and an unrelated scan cannot navigate or execute anything', () => {
   expect(() => tokenPocketQrFrames('x'.repeat(65537))).toThrow('tooLarge');

@@ -1,7 +1,7 @@
 jest.mock('react-native-get-random-values', () => ({}));
 jest.mock('react-native', () => ({ View: 'View', Text: 'Text', TouchableOpacity: 'TouchableOpacity', ScrollView: 'ScrollView',
   ActivityIndicator: 'ActivityIndicator', StyleSheet: { create: (v: any) => v },
-  AppState: { addEventListener: jest.fn(() => ({ remove() {} })) }, Linking: { openSettings: jest.fn() },
+  AppState: { currentState: 'active', addEventListener: jest.fn(() => ({ remove() {} })) }, Linking: { openSettings: jest.fn() },
   useWindowDimensions: () => ({ width: 390, height: 844 }) }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 44, bottom: 34 }) }));
 jest.mock('expo-camera', () => ({ CameraView: 'CameraView', useCameraPermissions: jest.fn() }));
@@ -11,10 +11,13 @@ jest.mock('../BottomSheet', () => ({ children, ...props }: any) => require('reac
 jest.mock('../../chain/WalletContext', () => ({ useWalletSession: jest.fn() }));
 jest.mock('../../chain/importAccount', () => ({ readDirectSigningKeys: jest.fn() }));
 jest.mock('../../dapp/linkSocket', () => ({ listenLinkChannel: jest.fn(() => ({ stop() {} })) }));
-jest.mock('../../i18n', () => ({ t: (key: string) => key, useI18n: () => ({ t: (key: string) => key }) }));
+jest.mock('../../i18n', () => ({ t: (key: string) => key, useI18n: () => ({
+  t: (key: string, params?: any) => key === 'coldSigning.remaining' ? `${key}:${params.seconds}` : key,
+}) }));
 import React from 'react';
 import { AppState } from 'react-native';
 import { useCameraPermissions } from 'expo-camera';
+import * as Clipboard from 'expo-clipboard';
 import { Action, PrivateKey, Serializer, Transaction } from '@wharfkit/antelope';
 import { useWalletSession } from '../../chain/WalletContext';
 import { readDirectSigningKeys } from '../../chain/importAccount';
@@ -44,6 +47,7 @@ async function open() {
 const rawResult = (tx: Transaction) => JSON.stringify({ ...Serializer.objectify(tx), signatures: [String(key.signDigest(tx.signingDigest(CHAINS.vaulta.chainIdHash)))] });
 beforeEach(async () => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true; jest.clearAllMocks();
+  AppState.currentState = 'active';
   session = { account: 'alice', chainId: 'vaulta', node: { url: 'https://rpc.invalid' } };
   jest.mocked(useWalletSession).mockImplementation(() => session);
   jest.mocked(readDirectSigningKeys).mockResolvedValue([String(key.toPublic())]);
@@ -51,7 +55,7 @@ beforeEach(async () => {
   requestCamera.mockResolvedValue({ granted: true });
   await act(async () => { renderer = create(React.createElement(ColdSigningHost)); });
 });
-afterEach(async () => { await act(async () => { cancelColdSigning(); renderer.unmount(); }); });
+afterEach(async () => { await act(async () => { cancelColdSigning(); renderer.unmount(); }); jest.useRealTimers(); });
 test('camera is requested only on user action; a bad scan can be retried successfully', async () => {
   const { tx, signed } = await open();
   expect(requestCamera).not.toHaveBeenCalled();
@@ -102,4 +106,96 @@ test('wallet context changes and backgrounding cancel pending signatures', async
   const callback = jest.mocked(AppState.addEventListener).mock.calls[0][1];
   await act(async () => { callback('background'); }); await backgrounded;
   expect(coldSigningSnapshot()).toBeNull();
+});
+test('first camera grant survives the Android permission activity and waits for foreground', async () => {
+  const { tx, signed } = await open();
+  let release!: (value: any) => void;
+  const state = (value: 'background' | 'active') => {
+    AppState.currentState = value;
+    for (const [event, callback] of [...jest.mocked(AppState.addEventListener).mock.calls]) {
+      if (event === 'change') callback(value);
+    }
+  };
+  requestCamera.mockImplementationOnce(() => {
+    state('background');
+    return new Promise(resolve => { release = resolve; });
+  });
+  await act(async () => { button('coldSigning.scanResult').props.onPress(); });
+  expect(coldSigningSnapshot()).not.toBeNull();
+  expect(renderer.root.findAllByType('CameraView')).toHaveLength(0);
+  await act(async () => { release({ granted: true }); });
+  expect(renderer.root.findAllByType('CameraView')).toHaveLength(0);
+  await act(async () => { state('active'); });
+  expect(renderer.root.findAllByType('CameraView')).toHaveLength(1);
+  await act(async () => { renderer.root.findByType('CameraView').props.onBarcodeScanned({ data: rawResult(tx) }); });
+  await signed;
+  expect(renderer.toJSON()).toBeNull();
+});
+test('a permission result for a cancelled request does not open the replacement camera', async () => {
+  const first = await open(), rejected = expect(first.signed).rejects.toThrow('cancelled');
+  let release!: (value: any) => void;
+  requestCamera.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+  await act(async () => { button('coldSigning.scanResult').props.onPress(); });
+  await act(async () => { cancelColdSigning(); }); await rejected;
+  await open();
+  await act(async () => { release({ granted: true }); });
+  expect(renderer.root.findAllByType('CameraView')).toHaveLength(0);
+});
+test('a permission operation that times out in background cancels rather than opening the camera', async () => {
+  jest.useFakeTimers();
+  const { signed } = await open(), rejected = expect(signed).rejects.toThrow('cancelled');
+  requestCamera.mockImplementationOnce(() => {
+    AppState.currentState = 'background'; return new Promise(() => {});
+  });
+  await act(async () => { button('coldSigning.scanResult').props.onPress(); });
+  await act(async () => { await jest.advanceTimersByTimeAsync(60001); }); await rejected;
+  expect(renderer.toJSON()).toBeNull();
+});
+test('opening a request after idle resets the displayed countdown immediately', async () => {
+  jest.useFakeTimers(); jest.setSystemTime(Date.now() + 60_000);
+  await open();
+  expect(text()).toContain('coldSigning.remaining:120');
+});
+test('a cancelled request finishing its authority read cannot close the replacement scanner', async () => {
+  const first = await open(), rejected = expect(first.signed).rejects.toThrow('cancelled');
+  await act(async () => { button('coldSigning.scanResult').props.onPress(); });
+  let release!: (keys: string[]) => void;
+  jest.mocked(readDirectSigningKeys).mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+  await act(async () => { renderer.root.findByType('CameraView').props.onBarcodeScanned({ data: rawResult(first.tx) }); });
+  expect(coldSigningSnapshot()!.validating).toBe(true);
+  await act(async () => { cancelColdSigning(); }); await rejected;
+  const next = await open();
+  await act(async () => { button('coldSigning.scanResult').props.onPress(); });
+  const id = coldSigningSnapshot()!.id;
+  await act(async () => { release([String(key.toPublic())]); });
+  expect(coldSigningSnapshot()!.id).toBe(id);
+  expect(renderer.root.findAllByType('CameraView')).toHaveLength(1);
+  await act(async () => { renderer.root.findByType('CameraView').props.onBarcodeScanned({ data: rawResult(next.tx) }); });
+  await next.signed;
+});
+test('a queued barcode event from the previous camera cannot consume the replacement request', async () => {
+  const first = await open(), rejected = expect(first.signed).rejects.toThrow('cancelled');
+  await act(async () => { button('coldSigning.scanResult').props.onPress(); });
+  const oldScan = renderer.root.findByType('CameraView').props.onBarcodeScanned;
+  await act(async () => { cancelColdSigning(); }); await rejected;
+  const next = await open();
+  await act(async () => { button('coldSigning.scanResult').props.onPress(); });
+  await act(async () => { oldScan({ data: 'https://untrusted.invalid/' }); });
+  expect(renderer.root.findAllByType('CameraView')).toHaveLength(1);
+  expect(text()).not.toContain('coldSigning.invalidResponse');
+  await act(async () => { renderer.root.findByType('CameraView').props.onBarcodeScanned({ data: rawResult(next.tx) }); });
+  await next.signed;
+});
+test('a late clipboard read for a cancelled request cannot block the new scanner', async () => {
+  const first = await open(), rejected = expect(first.signed).rejects.toThrow('cancelled');
+  let release!: (value: string) => void;
+  jest.mocked(Clipboard.getStringAsync).mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+  await act(async () => { button('coldSigning.paste').props.onPress(); });
+  await act(async () => { cancelColdSigning(); }); await rejected;
+  const next = await open();
+  await act(async () => { button('coldSigning.scanResult').props.onPress(); });
+  await act(async () => { release(rawResult(first.tx)); });
+  expect(renderer.root.findAllByType('CameraView')).toHaveLength(1);
+  await act(async () => { renderer.root.findByType('CameraView').props.onBarcodeScanned({ data: rawResult(next.tx) }); });
+  await next.signed;
 });

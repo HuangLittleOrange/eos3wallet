@@ -12,6 +12,7 @@ export type ColdSigningState = {
   keys: string[]; publicKey: string; qr: string; error: string | null;
 };
 type Pending = { options: Options; state: ColdSigningState; controller: AbortController;
+  systemPrompt: boolean;
   resolve: (signature: Signature) => void; reject: (error: Error) => void;
   timer: ReturnType<typeof setInterval> };
 let pending: Pending | null = null;
@@ -36,6 +37,22 @@ export function cancelColdSigning() {
   if (pending) finish(pending, new Error(t('coldSigning.cancelled')));
 }
 
+/** Pause only the liveness poll while a bounded native prompt restores foreground.
+ * Expiry and explicit cancellation still apply; no response can complete here.
+ */
+export async function withColdSigningSystemPrompt<T>(id: number, operation: () => Promise<T>): Promise<T> {
+  const p = pending;
+  if (!p || p.state.id !== id || !current(p) || p.systemPrompt || p.state.loading || p.state.validating) {
+    throw new Error(t('coldSigning.cancelled'));
+  }
+  p.systemPrompt = true;
+  try { return await operation(); }
+  finally {
+    p.systemPrompt = false;
+    if (pending === p && !current(p)) finish(p, new Error(t(p.state.expiration <= Date.now() ? 'coldSigning.expired' : 'dappBrowser.requestChanged')));
+  }
+}
+
 export function requestColdSignature(options: Options): Promise<Signature> {
   if (pending) return Promise.reject(new Error(t('coldSigning.busy')));
   try {
@@ -48,13 +65,15 @@ export function requestColdSignature(options: Options): Promise<Signature> {
     options = { ...options, transaction };
   } catch (error) { return Promise.reject(error); }
   return new Promise((resolve, reject) => {
-    const p: Pending = { options, resolve, reject, controller: new AbortController(),
+    const p: Pending = { options, resolve, reject, controller: new AbortController(), systemPrompt: false,
       state: { id: ++sequence, actor: options.actor, permission: options.permission, chainSlug: options.chainSlug,
         expiration: options.transaction.expiration.toMilliseconds(), loading: true, validating: false,
         keys: [], publicKey: '', qr: '', error: null }, timer: undefined! };
     pending = p;
     p.timer = setInterval(() => {
-      if (!current(p)) finish(p, new Error(t(p.state.expiration <= Date.now() ? 'coldSigning.expired' : 'dappBrowser.requestChanged')));
+      if (p.state.expiration <= Date.now() || !p.systemPrompt && !current(p)) {
+        finish(p, new Error(t(p.state.expiration <= Date.now() ? 'coldSigning.expired' : 'dappBrowser.requestChanged')));
+      }
     }, 250);
     emit();
     void readDirectSigningKeys({ chainId: options.chainSlug, account: options.actor, permission: options.permission,
@@ -75,7 +94,7 @@ export function chooseColdSigningKey(key: string): void {
 
 export async function acceptColdSignature(raw: string, id: number): Promise<boolean> {
   const p = pending;
-  if (!p || p.state.id !== id || !current(p) || p.state.loading || p.state.validating) return false;
+  if (!p || p.state.id !== id || p.systemPrompt || !current(p) || p.state.loading || p.state.validating) return false;
   update(p, { validating: true, error: null });
   try {
     if (raw.length > 65_536) throw new Error(t('coldSigning.invalidResponse'));
