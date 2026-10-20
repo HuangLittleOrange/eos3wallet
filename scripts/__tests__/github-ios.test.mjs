@@ -20,6 +20,7 @@ test('iOS signing and upload use fresh hosted VMs without dependency execution o
   assert.equal(workflow.on.workflow_dispatch.inputs.upload_to_testflight.default, false);
   assert.equal(workflow.env.IOS_DISTRIBUTION, '${{ inputs.distribution }}');
   assert.equal(workflow.jobs.upload.if, "inputs.distribution == 'app-store-connect' && inputs.upload_to_testflight");
+  assert.ok(workflow.jobs.build.steps.some(step => /EXPO_OFFLINE=1 .*expo install --check/.test(step.run ?? '')));
   for (const [name, job] of Object.entries(workflow.jobs)) {
     assert.equal(job['runs-on'], 'macos-26');
     for (const step of job.steps) {

@@ -62,7 +62,8 @@ jobs:
           npm run install:safe
           npm test -- --runInBand
           npm run typecheck
-          ./node_modules/.bin/expo install --check
+          # Validate against the locked SDK's bundled matrix, as in Main tests.
+          EXPO_OFFLINE=1 ./node_modules/.bin/expo install --check
       - name: Generate native project and build unsigned archive without Apple credentials
         run: |
           token="$(openssl rand -hex 24)"
