@@ -22,9 +22,10 @@ import { useWalletSession } from '../../chain/WalletContext';
 import { passwordSigner } from '../../chain/signers';
 import { assertIdentityNotExpired, identityExpirationMs, parseEsr, signAndCallback } from '../esr';
 import { useEsrFlow } from '../useEsrFlow';
+import { DappSessionRejectedError } from '../sessionFailure';
 
 const { create, act } = require('react-test-renderer');
-const mockTranslate = (key: string) => key;
+const mockTranslate = (key: string, params?: { txId?: string }) => params?.txId ? `${key}: ${params.txId}` : key;
 const getSigner = jest.fn();
 const refresh = jest.fn();
 let flow: ReturnType<typeof useEsrFlow>;
@@ -248,4 +249,33 @@ it('legacy requests without expiration do not get a spurious timeout', async () 
   await open();
   await act(async () => { jest.advanceTimersByTime(300_000); });
   expect(flow.err).toBeNull();
+});
+
+
+it('an explicit callback session rejection closes the obsolete proof and guides a new DApp login', async () => {
+  jest.mocked(signAndCallback).mockRejectedValueOnce(new DappSessionRejectedError('SESSION_EXPIRED', 'login again'));
+  await mount(); await open();
+  await act(async () => { await flow.submitPassword('password'); });
+  expect(flow.esr).toBeNull();
+  expect(Alert.alert).toHaveBeenCalledWith('dappBrowser.sessionInvalidTitle', 'login again', expect.any(Array));
+  await act(async () => { await flow.submitPassword('password'); });
+  expect(signAndCallback).toHaveBeenCalledTimes(1);
+});
+
+
+it.each(['session', 'delivery'] as const)('shows the committed transaction ID after %s callback failure and removes the signing retry', async callbackFailure => {
+  const txId = 'b'.repeat(64);
+  jest.mocked(signAndCallback).mockResolvedValueOnce({ kind: 'callbackFailed', callbackUrl: 'https://dapp.invalid/cb',
+    signature: 'sig', txId, callbackFailure });
+  jest.mocked(parseEsr).mockResolvedValueOnce({ ...parsed(), req: { ...parsed().req, isIdentity: false } });
+  await mount(); await open();
+  await act(async () => { await flow.submitPassword('password'); });
+  const message = callbackFailure === 'session' ? 'dappBrowser.broadcastedSessionCallbackFailedBody' : 'dappBrowser.broadcastedCallbackFailedBody';
+  expect(Alert.alert).toHaveBeenCalledWith('dappBrowser.broadcastedTitle', `${message}: ${txId}`, expect.any(Array));
+  expect(flow.esr).toBeNull();
+  expect(flow.err).toBeNull();
+  await act(async () => { await flow.submitPassword('password'); });
+  expect(signAndCallback).toHaveBeenCalledTimes(1);
+  expect(getSigner).toHaveBeenCalledTimes(1);
+  expect(redirect).not.toHaveBeenCalled();
 });

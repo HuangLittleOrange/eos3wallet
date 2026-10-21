@@ -8,6 +8,7 @@ jest.mock('../linkIdentity', () => ({ getLinkIdentity: jest.fn(), linkDeviceName
 jest.mock('../linkSessions', () => ({ recordLinkSession: jest.fn() }));
 
 import { isEsrLink, normalizeEsr } from '../esr';
+import { DappSessionRejectedError } from '../sessionFailure';
 
 describe('isEsrLink', () => {
   it('esr: / anchor: / eosio://link 都算签名请求链接', () => {
@@ -303,6 +304,33 @@ describe('identity expiration and callback delivery', () => {
     }
   );
 
+  it('classifies only an explicit callback login rejection and never replays the callback', async () => {
+    jest.mocked(fetch).mockResolvedValueOnce({ ok: false, status: 401,
+      headers: { get: (name: string) => name === 'content-type' ? 'application/json' : null },
+      body: { getReader: () => {
+        let sent = false;
+        return { read: async () => { if (sent) return { done: true }; sent = true;
+          return { done: false, value: new TextEncoder().encode('{"error":{"code":"SESSION_EXPIRED"}}') }; },
+          cancel: async () => {} };
+      } },
+    } as any);
+    await expect(signAndCallback(options(makeResolved()))).rejects.toBeInstanceOf(DappSessionRejectedError);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([401, 403, 429, 500])('does not infer session expiry from callback HTTP %s alone', async status => {
+    jest.mocked(fetch).mockResolvedValueOnce({ ok: false, status } as any);
+    await expect(signAndCallback(options(makeResolved()))).rejects.toThrow('esrError.callbackFailed');
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('preserves callback transport failures without classifying them as login rejection', async () => {
+    const error = new TypeError('Network request failed');
+    jest.mocked(fetch).mockRejectedValueOnce(error);
+    await expect(signAndCallback(options(makeResolved()))).rejects.toBe(error);
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps foreground callbacks as redirects and missing callbacks as sign-only', async () => {
     expect((await signAndCallback(options(makeResolved(false)))).kind).toBe('redirect');
     expect((await signAndCallback(options(makeResolved(true, false, '')))).kind).toBe('none');
@@ -366,5 +394,44 @@ describe('linkRequestKey', () => {
     // 会把 "undefined" 当公钥记进会话表,导致之后每条推送都匹配不上被丢弃
     const plain = SigningRequest.identity({ callback: 'https://example.com/cb' }, zlib);
     expect(linkRequestKey(plain)).toBeNull();
+  });
+});
+
+describe('a delivered chain transaction survives callback failure', () => {
+  it.each(['session', 'network', 'server'] as const)('preserves the transaction ID after %s callback failure without replaying the transaction', async failure => {
+    const transaction = Transaction.from({ expiration: new Date(Date.now() + 120_000).toISOString().slice(0, 19),
+      ref_block_num: 1, ref_block_prefix: 2,
+      actions: [{ account: 'eosio.token', name: 'transfer', data: '00', authorization: [{ actor: 'alice', permission: 'active' }] }] });
+    const txId = String(transaction.id);
+    const resolved = { transaction, signingDigest: transaction.signingDigest(VAULTA),
+      request: { isIdentity: () => false, shouldBroadcast: () => true, data: { callback: 'https://dapp.example/cb' } },
+      getCallback: () => ({ background: true, payload: {}, url: 'https://dapp.example/cb' }),
+    } as any;
+    const callback = { ok: false, status: failure === 'session' ? 401 : 500,
+      headers: { get: (name: string) => name === 'content-type' ? 'application/json' : null },
+      body: { getReader: () => {
+        let done = false;
+        return { read: async () => {
+          if (done) return { done: true };
+          done = true;
+          return { done: false, value: new TextEncoder().encode('{"code":"SESSION_EXPIRED"}') };
+        }, cancel: async () => {} };
+      } },
+    };
+    const fetcher = jest.fn().mockResolvedValueOnce({ ok: true, status: 200,
+      headers: { entries: () => [['content-type', 'application/json']] },
+      text: async () => JSON.stringify({ transaction_id: txId, processed: { block_num: 42 } }),
+    });
+    if (failure === 'network') fetcher.mockRejectedValueOnce(new TypeError('Network request failed'));
+    else fetcher.mockResolvedValueOnce(callback);
+    globalThis.fetch = fetcher;
+    const result = await signAndCallback({ resolved, signer: { kind: 'privatekey', privateKey: String(PrivateKey.generate('K1')) },
+      chainId: VAULTA, chainSlug: 'vaulta', actor: 'alice', node: parseOpts.node });
+    expect(result).toMatchObject({ kind: 'callbackFailed', txId, callbackFailure: failure === 'session' ? 'session' : 'delivery' });
+    expect(result.signature).toMatch(/^SIG_K1_/);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    expect(fetcher.mock.calls[0][0]).toBe('https://node.invalid/v1/chain/send_transaction');
+    expect(fetcher.mock.calls[1][0]).toBe('https://dapp.example/cb');
+    expect(JSON.parse(fetcher.mock.calls[1][1].body).tx).toBe(txId);
   });
 });

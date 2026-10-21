@@ -21,6 +21,7 @@ import { t } from '../i18n';
 import { preflightDappResources } from './resourcePreflight';
 import { assertVisibleTransaction, decodeVisibleAction } from '../chain/transactionSafety';
 import { normalizeEsr } from './esr-links';
+import { readDappSessionFailure, DappSessionRejectedError } from './sessionFailure';
 
 export { isEsrLink, normalizeEsr } from './esr-links';
 
@@ -206,6 +207,7 @@ export type SignCallbackResult = (
   | { kind: 'none' }
   | { kind: 'posted'; callbackUrl: string }
   | { kind: 'redirect'; callbackUrl: string }
+  | { kind: 'callbackFailed'; callbackUrl: string; txId: string; callbackFailure: 'session' | 'delivery' }
 ) & {
   signature: string;
   /** 请求要求钱包代广播(shouldBroadcast)且已经上链时的交易 ID;dApp 自己广播的请求没有 */
@@ -319,14 +321,30 @@ export async function signAndCallback(opts: {
   assertIdentityNotExpired(opts.resolved);
   checkContext();
   // Use Expo's native fetch explicitly: the legacy RN fetch can ignore redirect policy.
-  const r = await callbackFetch(cb.url, {
-    method: 'POST',
-    credentials: 'omit',
-    redirect: 'error',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!r.ok) throw new Error(t('esrError.callbackFailed', { status: r.status }));
+  try {
+    const r = await callbackFetch(cb.url, {
+      method: 'POST',
+      credentials: 'omit',
+      redirect: 'error',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) {
+      // Only an explicit DApp login error qualifies. HTTP 401/403 alone can also
+      // mean gateway configuration or missing access, and never proves expiry.
+      if (r.status === 401 || r.status === 403) {
+        const code = await readDappSessionFailure(r);
+        if (code) throw new DappSessionRejectedError(code, t('dappBrowser.sessionInvalidHint'));
+      }
+      throw new Error(t('esrError.callbackFailed', { status: r.status }));
+    }
+  } catch (error) {
+    // Broadcasting and notifying a DApp are independent outcomes. Once on-chain,
+    // this request is complete even if delivery fails; never offer to sign it again.
+    if (txId) return { kind: 'callbackFailed', signature, callbackUrl: cb.url, txId,
+      callbackFailure: error instanceof DappSessionRejectedError ? 'session' : 'delivery' };
+    throw error;
+  }
 
   return { kind: 'posted', signature, callbackUrl: cb.url, txId };
 }

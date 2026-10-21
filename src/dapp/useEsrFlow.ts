@@ -20,6 +20,7 @@ import { shouldInvalidateBackground } from '../crypto/systemAuthentication';
 import type { ActionSpec, Signer } from '../chain/transact';
 import { useI18n } from '../i18n';
 import { assertIdentityNotExpired, EsrRequest, identityExpirationMs, parseEsr, signAndCallback } from './esr';
+import { DappSessionRejectedError } from './sessionFailure';
 
 export type EsrFlowState = { req: EsrRequest; resolved: ResolvedSigningRequest } | null;
 
@@ -179,9 +180,10 @@ export function useEsrFlow(opts: {
       }
       if (r.txId) {
         // 钱包代广播的请求:已经上链了,告诉用户 tx id,而不是笼统的"已签名"
-        Alert.alert(t('dappBrowser.broadcastedTitle'), t('dappBrowser.broadcastedBody', { txId: r.txId }), [
-          { text: t('permission.ok') },
-        ]);
+        const body = r.kind === 'callbackFailed'
+          ? t(r.callbackFailure === 'session' ? 'dappBrowser.broadcastedSessionCallbackFailedBody' : 'dappBrowser.broadcastedCallbackFailedBody', { txId: r.txId })
+          : t('dappBrowser.broadcastedBody', { txId: r.txId });
+        Alert.alert(t('dappBrowser.broadcastedTitle'), body, [{ text: t('permission.ok') }]);
         return;
       }
       Alert.alert(
@@ -193,6 +195,11 @@ export function useEsrFlow(opts: {
       );
     } catch (e: any) {
       if (!mountedRef.current || generationRef.current !== generation) return;
+      if (e instanceof DappSessionRejectedError) {
+        invalidate();
+        Alert.alert(t('dappBrowser.sessionInvalidTitle'), e.message, [{ text: t('permission.ok') }]);
+        return;
+      }
       // 资源不够(CPU/NET、RAM):弹一键修复,复用刚拿到手的 signer;修好后用户再点一次签名
       if (!repair.offer(e, signer, permission)) setErr(e?.message ?? t('dappBrowser.signFailed'));
     } finally {

@@ -177,11 +177,18 @@ describe('scatter-js 2.0 接口契约', () => {
   });
 
   it('requestTransfer 按页面给的精度拼 quantity,缺符号时直接报错', async () => {
-    const { win, sent } = runInjected();
-    win.scatter.requestTransfer(null, 'bob', 1.5, { symbol: 'A', contract: 'core.vaulta', precision: 4 });
+    const { win, sent, settle } = runInjected();
+    const transfer = win.scatter.requestTransfer(null, 'bob', 1.5, { symbol: 'A', contract: 'core.vaulta', precision: 4 });
+    expect(sent.map(m => m.method)).toEqual(['getIdentity']);
+    settle('getIdentity', { account: 'alice', publicKey: 'PUB_K1_test' });
+    await Promise.resolve(); await Promise.resolve();
     const msg = sent.filter((m) => m.method === 'requestSignature').pop();
+    expect(msg.params.actions[0].authorization[0].actor).toBe('alice');
+    expect(msg.params.actions[0].data.from).toBe('alice');
     expect(msg.params.actions[0].data.quantity).toBe('1.5000 A');
     expect(msg.params.actions[0].account).toBe('core.vaulta');
+    settle('requestSignature', { transaction_id: 'transfer-id' });
+    await transfer;
 
     await expect(win.scatter.requestTransfer(null, 'bob', 1.5, {})).rejects.toThrow();
   });
@@ -505,7 +512,14 @@ describe('TokenPocket SDK 全量方法', () => {
     );
     // 需要 App 参与的调用一律按"成功、返回空"应答,只验证链路通不通
     await Promise.resolve();
-    sent.forEach((msg) => win.__auroraResolve(msg.id, true, msg.method === 'getIdentity' ? { account: 'alice', publicKey: 'PUB_K1_test' } : null));
+    let replied = 0;
+    do {
+      const batch = sent.slice(replied);
+      replied = sent.length;
+      batch.forEach((msg) => win.__auroraResolve(msg.id, true, msg.method === 'getIdentity' ? { account: 'alice', publicKey: 'PUB_K1_test' } : null));
+      // A transfer without a sender constructs its signing request after consent.
+      await Promise.resolve(); await Promise.resolve();
+    } while (sent.length > replied);
     await Promise.all(pending);
     const silent = TP_SDK_METHODS.filter((m) => m !== 'isConnected' && !answered[m]);
     expect(silent).toEqual([]);
@@ -566,4 +580,96 @@ describe('TokenPocket SDK 全量方法', () => {
     settle('getBalance', [{ symbol: 'A', contract: 'core.vaulta', amount: 0.1, precision: 4, raw: '0.1000 A' }]);
     await expect(p).resolves.toEqual({ result: true, data: { balance: '0.1000' }, msg: 'success' });
   });
+});
+
+
+describe('restored DApp connection recovery', () => {
+  it('checkLogin validates a cached page identity with native permission and clears a stale login', async () => {
+    const { win, sent, settle } = runInjected();
+    const events: string[] = [];
+    win.scatter.addEventHandler((type: string) => events.push(type));
+    win.scatter.useIdentity({ accounts: [{ name: 'old-account' }] });
+    const check = win.scatter.checkLogin();
+    expect(sent.map(m => m.method)).toEqual(['getIdentityFromPermissions']);
+    settle('getIdentityFromPermissions', null);
+    await expect(check).resolves.toBeNull();
+    expect(win.scatter.identity).toBeNull();
+    expect(await win.scatter.getPublicKey()).toBe('');
+    expect(events).toContain('logout');
+    expect(sent.some(m => m.method === 'getIdentity')).toBe(false);
+  });
+
+  it('eosjs key discovery reconnects before signing when a reopened page has no key', async () => {
+    const { win, sent, settle } = runInjected();
+    const api = win.scatter.eos({}, FakeEosjs2Api, {});
+    const keys = api.opts.signatureProvider.getAvailableKeys();
+    expect(sent.map(m => m.method)).toEqual(['getIdentity']);
+    settle('getIdentity', { account: 'alice', publicKey: 'PUB_K1_test' });
+    await expect(keys).resolves.toEqual(['PUB_K1_test']);
+    await expect(api.opts.signatureProvider.getAvailableKeys()).resolves.toEqual(['PUB_K1_test']);
+    expect(sent).toHaveLength(1);
+  });
+
+  it('key discovery preserves a rejected connection without sending a signing request', async () => {
+    const { win, sent, settle } = runInjected();
+    const api = win.scatter.eos({}, FakeEosjs2Api, {});
+    const rejected = expect(api.opts.signatureProvider.getAvailableKeys()).rejects.toThrow('User rejected');
+    settle('getIdentity', 'User rejected', false);
+    await rejected;
+    expect(sent.map(m => m.method)).toEqual(['getIdentity']);
+  });
+
+  it('native reconnection updates the injected identity and EOS key provider', async () => {
+    const { win } = runInjected();
+    win.__auroraSetAccount('alice', 'PUB_K1_test');
+    expect(win.scatter.identity.accounts[0].name).toBe('alice');
+    expect(win.__aurora.account).toBe('alice');
+    const api = win.scatter.eos({}, FakeEosjs2Api, {});
+    await expect(api.opts.signatureProvider.getAvailableKeys()).resolves.toEqual(['PUB_K1_test']);
+  });
+
+  it('TP transfers obtain the approved sender before constructing a transaction', async () => {
+    const { win, sent, settle } = runInjected();
+    const transfer = win.tp.eosTokenTransfer({ to: 'bob', amount: 2, tokenName: 'A', contract: 'core.vaulta' });
+    expect(sent.map(m => m.method)).toEqual(['getIdentity']);
+    settle('getIdentity', { account: 'alice', publicKey: 'PUB_K1_test' });
+    await Promise.resolve(); await Promise.resolve();
+    const tx = sent.find(m => m.method === 'requestSignature').params.actions[0];
+    expect(tx.data.from).toBe('alice');
+    expect(tx.authorization).toEqual([{ actor: 'alice', permission: 'active' }]);
+    settle('requestSignature', { transaction_id: 'transfer-id' });
+    await expect(transfer).resolves.toMatchObject({ result: true, data: { transactionId: 'transfer-id' } });
+  });
+
+  it('a rejected TP reconnection does not submit a transfer', async () => {
+    const { win, sent, settle } = runInjected();
+    const transfer = win.tp.eosTokenTransfer({ to: 'bob', amount: 2, tokenName: 'A', contract: 'core.vaulta' });
+    settle('getIdentity', 'User rejected', false);
+    await expect(transfer).resolves.toMatchObject({ result: false, msg: 'User rejected' });
+    expect(sent.map(m => m.method)).toEqual(['getIdentity']);
+  });
+});
+
+it('an unsuccessful permission check does not mistake a bridge error for revoked permission', async () => {
+  const { win, settle } = runInjected();
+  const login = win.scatter.login();
+  settle('getIdentity', { account: 'alice', publicKey: 'PUB_K1_test' }); await login;
+  const events: string[] = [];
+  win.scatter.addEventHandler((event: string) => events.push(event));
+  const check = win.scatter.checkLogin();
+  settle('getIdentityFromPermissions', 'Network request failed', false);
+  await expect(check).resolves.toBeNull();
+  expect(win.scatter.identity.accounts[0].name).toBe('alice');
+  expect(await win.scatter.getPublicKey()).toBe('PUB_K1_test');
+  expect(events).not.toContain('logout');
+});
+
+it('explicit logout notifies a DApp even when only its own cached login remains', async () => {
+  const { win, settle } = runInjected();
+  const events: string[] = [];
+  win.scatter.addEventHandler((event: string) => events.push(event));
+  const logout = win.scatter.forgetIdentity();
+  settle('forgetIdentity', true);
+  await logout;
+  expect(events).toEqual(['logout']);
 });

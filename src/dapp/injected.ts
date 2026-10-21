@@ -1,5 +1,6 @@
 import { buildInjectedTokenPocketScript } from './injected-token-pocket';
 import { buildInjectedEsrScript } from './injected-esr';
+import { buildInjectedSessionFailureScript } from './injected-session-failure';
 
 /**
  * 注入到 DApp 页面的钱包 provider。
@@ -92,11 +93,16 @@ export function buildInjectedScript(opts: {
 
   // 当前账户变化时由 App 主动调用,通知 DApp
   window.__auroraSetAccount = function (account, publicKey) {
+    var changed = CFG.account !== account || CFG.publicKey !== publicKey;
+    sessionIdentityChanged();
     CFG.account = account;
     CFG.publicKey = publicKey;
-    if (scatter.identity) scatter.identity = buildIdentity();
-    window.dispatchEvent(new Event('aurora#accountChanged'));
-    fireScatterEvent('accountChanged', buildIdentity());
+    scatter.identity = account ? buildIdentity() : null;
+    if (window.__aurora) window.__aurora.account = account;
+    if (changed) {
+      window.dispatchEvent(new Event('aurora#accountChanged'));
+      fireScatterEvent('accountChanged', scatter.identity);
+    }
   };
 
   // scatter-js 2.0 的事件订阅(addEventHandler/listen)。DApp 用它监听用户
@@ -147,11 +153,23 @@ export function buildInjectedScript(opts: {
     };
   }
 
-  function receiveIdentity(r) {
+  function clearIdentity(notifyAlways) {
+    var hadIdentity = !!scatter.identity || !!CFG.account;
+    if (hadIdentity || notifyAlways) sessionIdentityChanged();
+    scatter.identity = null;
+    CFG.account = '';
+    CFG.publicKey = '';
+    if (window.__aurora) window.__aurora.account = '';
+    if (hadIdentity || notifyAlways) fireScatterEvent('logout', null);
+  }
+
+  function receiveIdentity(r, silent) {
     if (!r || !r.account) throw new Error('Wallet connection required');
+    if (!silent || CFG.account !== r.account || CFG.publicKey !== (r.publicKey || '')) sessionIdentityChanged();
     CFG.account = r.account;
     CFG.publicKey = r.publicKey || '';
     scatter.identity = buildIdentity();
+    if (window.__aurora) window.__aurora.account = CFG.account;
     return scatter.identity;
   }
 
@@ -172,17 +190,20 @@ export function buildInjectedScript(opts: {
 
     /** Silent permission check; it must never open a connection prompt. */
     getIdentityFromPermissions: function () {
-      if (scatter.identity) return Promise.resolve(scatter.identity);
+      // DApps can restore a cached identity via useIdentity; native permission is
+      // the source of truth even when the page still thinks it is logged in.
+      var generation = sessionGeneration;
       return call('getIdentityFromPermissions')
-        .then(receiveIdentity)
+        .then(function (r) {
+          if (generation !== sessionGeneration) return null;
+          if (!r || !r.account) { clearIdentity(); return null; }
+          return receiveIdentity(r, true);
+        })
         .catch(function () { return null; });
     },
 
     forgetIdentity: function () {
-      scatter.identity = null;
-      CFG.account = '';
-      CFG.publicKey = '';
-      fireScatterEvent('logout', null);
+      clearIdentity(true);
       return call('forgetIdentity').catch(function () {}).then(function () { return true; });
     },
 
@@ -269,6 +290,11 @@ export function buildInjectedScript(opts: {
       var precision = opt.precision === undefined ? opt.decimals : opt.precision;
       if (!to || !symbol) {
         return Promise.reject(new Error('requestTransfer 需要 to 和 options.symbol'));
+      }
+      if (!CFG.account) {
+        return scatter.getIdentity().then(function () {
+          return scatter.requestTransfer(network, to, amount, options);
+        });
       }
       var digits = precision === undefined ? 4 : Number(precision);
       var quantity = Number(amount).toFixed(digits) + ' ' + symbol;
@@ -365,7 +391,12 @@ export function buildInjectedScript(opts: {
       if (isEosjs2Api) {
         var signatureProvider = {
           getAvailableKeys: function () {
-            return Promise.resolve(CFG.publicKey ? [CFG.publicKey] : []);
+            if (CFG.publicKey) return Promise.resolve([CFG.publicKey]);
+            // eosjs asks for keys before it sends any signing request. A DApp
+            // restored from storage must be able to reconnect at this step too.
+            return scatter.getIdentity().then(function () {
+              return CFG.publicKey ? [CFG.publicKey] : [];
+            });
           },
           sign: function (args) {
             // 带 context-free data 的交易,签名摘要要把它的哈希也算进去;App 侧
@@ -424,6 +455,8 @@ export function buildInjectedScript(opts: {
 
   // Anchor/ESR page transport uses the same link rules as native navigation.
   ${buildInjectedEsrScript()}
+
+  ${buildInjectedSessionFailureScript()}
 
   // ---------------- 就绪通知 ----------------
   // DApp 若先于注入执行,会挂 scatterLoaded 监听等这个事件。

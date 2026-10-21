@@ -102,6 +102,12 @@ export function buildInjectedTokenPocketScript(): string {
           return tpOk({ transactionId: txIdOf(r) });
         });
       case 'eosTokenTransfer': {
+        if (!p.from && !CFG.account) {
+          return call('getIdentity').then(function (r) {
+            receiveIdentity(r);
+            return tpDispatch(method, p);
+          });
+        }
         var digits = p.precision === undefined ? 4 : Number(p.precision);
         var quantity = Number(p.amount).toFixed(digits) + ' ' + p.tokenName;
         return call('requestSignature', {

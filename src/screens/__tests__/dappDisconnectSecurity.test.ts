@@ -211,3 +211,157 @@ test('old asynchronous public queries cannot reply to a reused request ID after 
   await send('query', 'getAccount', { account: 'fresh' }); await act(async () => { read.resolve(); });
   expect(response('query')).toHaveLength(1); expect(payload(response('query')[0]).account_name).toBe('fresh');
 });
+
+
+test('a restored DApp signing request reconnects with consent and continues the same request', async () => {
+  await send('restored', 'arbitrarySignature', { data: text });
+  expect(sheet().props.visible).toBe(false);
+  expect(signDigest).not.toHaveBeenCalled();
+  expect(response('restored', false)).toHaveLength(0);
+  await act(async () => { connectionButtons().find(b => b.text === 'dappBrowser.connectAllow')!.onPress!(); });
+  expect(injected.some(js => js.startsWith('window.__auroraSetAccount("alice", '))).toBe(true);
+  expect(sheet().props.visible).toBe(true);
+  expect(sheet().props.message).toBe(text);
+  expect(signDigest).not.toHaveBeenCalled();
+  await act(async () => { await sheet().props.onConfirm('synthetic-password'); });
+  expect(response('restored')).toHaveLength(1);
+  expect(Signature.from(payload(response('restored')[0]).signature).verifyDigest(Checksum256.hash(new TextEncoder().encode(text)), key.toPublic())).toBe(true);
+  expect(transact).not.toHaveBeenCalled();
+});
+
+test('reconnection continues a serialized transaction without changing bytes or broadcasting', async () => {
+  const tx = makeTransaction();
+  await sendTransaction('restored-tx', tx);
+  expect(getSigningAbi).not.toHaveBeenCalled();
+  await act(async () => { connectionButtons().find(b => b.text === 'dappBrowser.connectAllow')!.onPress!(); });
+  expect(sheet().props.visible).toBe(true);
+  await act(async () => { await sheet().props.onConfirm('synthetic-password'); });
+  expect(Signature.from(payload(response('restored-tx')[0]).signatures[0]).verifyDigest(tx.signingDigest(CHAINS.vaulta.chainIdHash), key.toPublic())).toBe(true);
+  expect(transact).not.toHaveBeenCalled();
+});
+
+test('rejecting reconnection returns rejection and a later attempt can reconnect', async () => {
+  await send('restored', 'arbitrarySignature', { data: text });
+  await act(async () => { connectionButtons().find(b => b.style === 'cancel')!.onPress!(); });
+  expect(response('restored', false)).toHaveLength(1);
+  expect(sheet().props.visible).toBe(false);
+  expect(signDigest).not.toHaveBeenCalled();
+  await send('retry', 'arbitrarySignature', { data: text });
+  await act(async () => { connectionButtons().find(b => b.text === 'dappBrowser.connectAllow')!.onPress!(); });
+  expect(sheet().props.visible).toBe(true);
+});
+
+test('concurrent restored requests cannot stack connection prompts or resume a revoked request', async () => {
+  await send('restored', 'arbitrarySignature', { data: text });
+  const old = connectionButtons();
+  await send('other', 'arbitrarySignature', { data: 'Other request' });
+  expect(response('other', false)).toHaveLength(1);
+  expect(jest.mocked(Alert.alert).mock.calls.filter(([title]) => title === 'dappBrowser.connectTitle')).toHaveLength(1);
+  await send('logout', 'forgetIdentity');
+  await act(async () => { old.find(b => b.text === 'dappBrowser.connectAllow')!.onPress!(); });
+  expect(sheet().props.visible).toBe(false);
+  expect(response('restored')).toHaveLength(0);
+  expect(signDigest).not.toHaveBeenCalled();
+});
+
+test('switching accounts while a reconnection prompt is open cannot approve the old request', async () => {
+  await send('restored', 'arbitrarySignature', { data: text });
+  const old = connectionButtons();
+  wallet = { ...wallet, account: 'bob', currentWallet: { ...wallet.currentWallet, account: 'bob' } };
+  await act(async () => { renderer.update(React.createElement(DappBrowserScreen)); });
+  await act(async () => { old.find(b => b.text === 'dappBrowser.connectAllow')!.onPress!(); });
+  expect(sheet().props.visible).toBe(false);
+  expect(response('restored')).toHaveLength(0);
+  expect(signDigest).not.toHaveBeenCalled();
+});
+
+test('restored action requests broadcast once after both connection and transaction approval', async () => {
+  const actions = [{ account: 'core.vaulta', name: 'transfer', authorization: [{ actor: 'alice', permission: 'active' }],
+    data: { from: 'alice', to: 'bob', quantity: '1.0000 A', memo: '' } }];
+  jest.mocked(transact).mockResolvedValueOnce({ txId: 'restored-id', explorerUrl: 'https://explorer.invalid/tx' } as any);
+  await send('restored-actions', 'requestSignature', { actions, chainId: CHAINS.vaulta.chainIdHash });
+  expect(transact).not.toHaveBeenCalled();
+  const buttons = connectionButtons();
+  await act(async () => { buttons.find(b => b.text === 'dappBrowser.connectAllow')!.onPress!(); });
+  expect(sheet().props.visible).toBe(true);
+  expect(transact).not.toHaveBeenCalled();
+  // Native button callbacks cannot accidentally consume or resume a request twice.
+  await act(async () => { buttons.find(b => b.text === 'dappBrowser.connectAllow')!.onPress!(); });
+  expect(response('restored-actions', false)).toHaveLength(0);
+  await act(async () => { await sheet().props.onConfirm('synthetic-password'); });
+  expect(transact).toHaveBeenCalledTimes(1);
+  expect(transact).toHaveBeenCalledWith(expect.objectContaining({ actor: 'alice', actions }));
+  expect(payload(response('restored-actions')[0]).transaction_id).toBe('restored-id');
+});
+
+test('page navigation invalidates a reconnection prompt before it can resume signing', async () => {
+  await send('restored', 'arbitrarySignature', { data: text });
+  const old = connectionButtons();
+  await act(async () => { renderer.root.findByType('WebView').props.onLoadStart({ nativeEvent: { url: 'https://other.invalid/' } }); });
+  await act(async () => { old.find(b => b.text === 'dappBrowser.connectAllow')!.onPress!(); });
+  expect(sheet().props.visible).toBe(false);
+  expect(response('restored')).toHaveLength(0);
+  expect(signDigest).not.toHaveBeenCalled();
+});
+
+const sessionNoticeButtons = () => jest.mocked(Alert.alert).mock.calls.filter(([title]) => title === 'dappBrowser.sessionInvalidTitle').at(-1)![2]!;
+test('explicit DApp login failure offers a reconnect guide without disconnecting until selected', async () => {
+  await connect();
+  await send('failure', 'dappSessionFailure', { status: 401, code: 'SESSION_EXPIRED' });
+  const buttons = sessionNoticeButtons();
+  await send('permission-before', 'getIdentityFromPermissions');
+  expect(payload(response('permission-before')[0]).account).toBe('alice');
+  await act(async () => { buttons.find(b => b.text === 'dappBrowser.sessionLoginAgain')!.onPress!(); });
+  expect(injected).toContain('window.scatter && window.scatter.forgetIdentity(); true;');
+  await send('permission-after', 'getIdentityFromPermissions');
+  expect(payload(response('permission-after')[0])).toBeNull();
+  expect(transact).not.toHaveBeenCalled(); expect(signDigest).not.toHaveBeenCalled();
+});
+test.each([
+  { status: 401 }, { status: 403, code: 'insufficient_scope' }, { status: 0, code: 'SESSION_EXPIRED' },
+  { status: 500, code: 'SESSION_EXPIRED' }, { status: 401, code: 'expired_tx_exception' }, { status: 401, code: 'INVALID_TOKEN' }, { status: 401, code: 'TOKEN_EXPIRED' },
+])('ordinary failure does not disconnect or offer reconnection: %j', async params => {
+  await connect();
+  await send('failure', 'dappSessionFailure', params);
+  expect(jest.mocked(Alert.alert).mock.calls.some(([title]) => title === 'dappBrowser.sessionInvalidTitle')).toBe(false);
+  await send('permission', 'getIdentityFromPermissions');
+  expect(payload(response('permission')[0]).account).toBe('alice');
+});
+test('repeated DApp failures coalesce and a dismissed notice leaves the wallet connected', async () => {
+  await connect();
+  await send('failure', 'dappSessionFailure', { status: 401, code: 'SESSION_EXPIRED' });
+  await act(async () => { sessionNoticeButtons().find(b => b.style === 'cancel')!.onPress?.(); });
+  await send('other-failure', 'dappSessionFailure', { status: 401, code: 'SESSION_INVALID' });
+  expect(jest.mocked(Alert.alert).mock.calls.filter(([title]) => title === 'dappBrowser.sessionInvalidTitle')).toHaveLength(1);
+  await send('permission', 'getIdentityFromPermissions');
+  expect(payload(response('permission')[0]).account).toBe('alice');
+});
+test('a notice from before a newer connection cannot disconnect it', async () => {
+  await connect();
+  await send('failure', 'dappSessionFailure', { status: 401, code: 'SESSION_EXPIRED' });
+  const old = sessionNoticeButtons();
+  await send('login-again', 'getIdentity');
+  await act(async () => { old.find(b => b.text === 'dappBrowser.sessionLoginAgain')!.onPress!(); });
+  await send('permission', 'getIdentityFromPermissions');
+  expect(payload(response('permission')[0]).account).toBe('alice');
+});
+test('login-failure notices cannot interrupt a pending signature', async () => {
+  await connect(); await send('sign', 'arbitrarySignature', { data: text });
+  await send('failure', 'dappSessionFailure', { status: 401, code: 'SESSION_EXPIRED' });
+  expect(jest.mocked(Alert.alert).mock.calls.some(([title]) => title === 'dappBrowser.sessionInvalidTitle')).toBe(false);
+  expect(sheet().props.visible).toBe(true);
+  await act(async () => { await sheet().props.onConfirm('synthetic-password'); });
+  expect(response('sign')).toHaveLength(1);
+});
+test('native node permission and network failures remain ordinary signing errors without reconnect prompts', async () => {
+  await connect();
+  const actions = [{ account: 'core.vaulta', name: 'transfer', authorization: [{ actor: 'alice', permission: 'active' }],
+    data: { from: 'alice', to: 'bob', quantity: '1.0000 A', memo: '' } }];
+  jest.mocked(transact).mockRejectedValueOnce(new TypeError('Network request failed'));
+  await send('tx', 'requestSignature', { actions });
+  await act(async () => { await sheet().props.onConfirm('synthetic-password'); });
+  expect(sheet().props.error).toBe('Network request failed');
+  expect(jest.mocked(Alert.alert).mock.calls.some(([title]) => title === 'dappBrowser.sessionInvalidTitle')).toBe(false);
+  await send('permission', 'getIdentityFromPermissions');
+  expect(payload(response('permission')[0]).account).toBe('alice');
+});

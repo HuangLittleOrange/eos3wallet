@@ -34,6 +34,7 @@ import { signingPermission } from '../crypto/vault';
 import { biometricSigner, passkeySigner, passwordSigner } from '../chain/signers';
 import { buildInjectedScript } from '../dapp/injected';
 import { DappAccessGuard, dappPageOrigin, secureDappOrigin } from '../dapp/accessGuard';
+import { dappSessionFailureCode } from '../dapp/sessionFailure';
 import EsrFlowOverlay from '../dapp/esr-flow-overlay';
 import { navigationRef } from '../navigation/navigationRef';
 import { decodeSerializedTransaction } from '../dapp/decodeTx';
@@ -93,6 +94,7 @@ export default function DappBrowserScreen() {
   const pendingRequest = useRef<string | null>(null);
   const submitting = useRef(false);
   const pendingConnection = useRef<string | null>(null);
+  const sessionFailureNotice = useRef<object | null>(null);
   const mounted = useRef(true);
 
   const [req, setReq] = useState<Req | null>(null);
@@ -149,6 +151,7 @@ export default function DappBrowserScreen() {
   contextRef.current = walletContext;
 
   useEffect(() => {
+    sessionFailureNotice.current = null;
     access.current.navigate(currentUrl.current, walletContext);
     pendingRequest.current = null;
     pendingConnection.current = null;
@@ -223,7 +226,7 @@ export default function DappBrowserScreen() {
   const { fullScreen, menubarInFullScreen, navGestures } = tokenPocket;
 
   const onMessage = useCallback(
-    (e: WebViewMessageEvent) => {
+    async (e: WebViewMessageEvent) => {
       let msg: Req;
       try {
         if (e.nativeEvent.data.length > 1_048_576) return;
@@ -243,48 +246,93 @@ export default function DappBrowserScreen() {
         if (requestIsCurrent()) reply(id, ok, payload);
       };
       if (browserEsr.handleBridgeRequest(msg, () => replyCurrent(msg.id, true, true))) return;
+      if (msg.method === 'dappSessionFailure') {
+        const recognized = !!dappSessionFailureCode(msg.params?.status, { code: msg.params?.code });
+        const canNotify = recognized && !submitting.current && !pendingRequest.current && !pendingConnection.current;
+        replyCurrent(msg.id, true, canNotify);
+        if (!canNotify || sessionFailureNotice.current) return;
+        const notice = {};
+        sessionFailureNotice.current = notice;
+        const capturedContext = contextRef.current;
+        const sourceUrl = currentUrl.current;
+        Alert.alert(t('dappBrowser.sessionInvalidTitle'), t('dappBrowser.sessionInvalidBody'), [
+          { text: t('walletDetail.cancel'), style: 'cancel' },
+          { text: t('dappBrowser.sessionLoginAgain'), onPress: () => {
+            // This notice is informational until the user chooses to disconnect.
+            // Never interrupt a transaction or a newer document/wallet context.
+            if (!mounted.current || contextRef.current !== capturedContext || currentUrl.current !== sourceUrl ||
+                sessionFailureNotice.current !== notice) return;
+            if (submitting.current || pendingRequest.current || pendingConnection.current) {
+              Alert.alert(t('dappBrowser.requestPending'));
+              return;
+            }
+            access.current.disconnect();
+            setConnected(false);
+            webRef.current?.injectJavaScript('window.scatter && window.scatter.forgetIdentity(); true;');
+          } },
+        ], { cancelable: false });
+        return;
+      }
       if (msg.method === 'getActions' && !msg.params?.account && !access.current.connected()) {
         replyCurrent(msg.id, false, t('dappBrowser.connectionRequired')); return;
       }
-      const needsConnection = ['arbitrarySignature', 'signTransaction', 'requestSignature'];
-      if (needsConnection.includes(msg.method)) {
-        if (!access.current.connected()) { replyCurrent(msg.id, false, t('dappBrowser.connectionRequired')); return; }
+      // A reopened DApp may restore its own login while this browser has no grant.
+      // Consent belongs to this exact request; resume it only after native approval.
+      const ensureConnection = () => new Promise<boolean>((resolve) => {
+        if (!w.hasAccount) { replyCurrent(msg.id, false, 'no account'); resolve(false); return; }
+        const capturedContext = contextRef.current;
+        let decided = false;
+        const disclose = () => {
+          if (decided) return;
+          decided = true;
+          if (!requestIsCurrent() || !access.current.connect(msg.id, capturedContext)) { resolve(false); return; }
+          pendingConnection.current = null;
+          sessionFailureNotice.current = null;
+          setConnected(true);
+          webRef.current?.injectJavaScript(`window.__auroraSetAccount(${JSON.stringify(w.account)}, ${JSON.stringify(activeKey)}); true;`);
+          resolve(true);
+        };
+        if (access.current.connected()) disclose();
+        else if (pendingConnection.current) {
+          replyCurrent(msg.id, false, t('dappBrowser.requestPending'));
+          resolve(false);
+        } else {
+          pendingConnection.current = msg.id;
+          Alert.alert(t('dappBrowser.connectTitle'), t('dappBrowser.connectBody', {
+            origin: secureDappOrigin(currentUrl.current) ?? '', account: w.account,
+          }), [
+            { text: t('walletDetail.cancel'), style: 'cancel', onPress: () => {
+              if (decided) return;
+              decided = true;
+              replyCurrent(msg.id, false, t('dappBrowser.userRejected'));
+              resolve(false);
+            } },
+            { text: t('dappBrowser.connectAllow'), onPress: disclose },
+          ], { cancelable: false });
+        }
+      });
+      const needsConnection = ['arbitrarySignature', 'signTransaction', 'requestSignature'].includes(msg.method);
+      if (needsConnection) {
+        if (!access.current.connected() && !await ensureConnection()) return;
+        if (!requestIsCurrent()) return;
         if (pendingRequest.current) { replyCurrent(msg.id, false, t('dappBrowser.requestPending')); return; }
         pendingRequest.current = msg.id;
       }
 
       switch (msg.method) {
-        case 'getIdentity': {
-          if (!w.hasAccount) {
-            replyCurrent(msg.id, false, 'no account');
-            return;
-          }
-          const capturedContext = contextRef.current;
-          const disclose = () => {
-            if (!requestIsCurrent()) return;
-            if (!access.current.connect(msg.id, capturedContext)) return;
-            setConnected(true);
+        case 'getIdentity':
+          if (await ensureConnection() && requestIsCurrent()) {
             replyCurrent(msg.id, true, { account: w.account, publicKey: activeKey });
-          };
-          if (access.current.connected()) disclose();
-          else if (pendingConnection.current) replyCurrent(msg.id, false, t('dappBrowser.requestPending'));
-          else {
-            pendingConnection.current = msg.id;
-            Alert.alert(t('dappBrowser.connectTitle'), t('dappBrowser.connectBody', {
-            origin: secureDappOrigin(currentUrl.current) ?? '', account: w.account,
-          }), [
-            { text: t('walletDetail.cancel'), style: 'cancel', onPress: () => replyCurrent(msg.id, false, t('dappBrowser.userRejected')) },
-            { text: t('dappBrowser.connectAllow'), onPress: disclose },
-            ], { cancelable: false });
           }
           return;
-        }
 
         case 'getIdentityFromPermissions':
+          setConnected(w.hasAccount && access.current.connected());
           replyCurrent(msg.id, true, w.hasAccount && access.current.connected() ? { account: w.account, publicKey: activeKey } : null);
           return;
 
         case 'forgetIdentity':
+          sessionFailureNotice.current = null;
           // Acknowledge this request before revoking every outstanding instance.
           replyCurrent(msg.id, true, true);
           access.current.disconnect();
@@ -756,6 +804,7 @@ export default function DappBrowserScreen() {
           onMessage={onMessage}
           onOpenWindow={browserEsr.onOpenWindow}
           onLoadStart={(e) => {
+            sessionFailureNotice.current = null;
             browserEsr.invalidate();
             tokenPocket.cancelScan();
             currentUrl.current = e.nativeEvent.url;
@@ -782,6 +831,7 @@ export default function DappBrowserScreen() {
           onShouldStartLoadWithRequest={(r) => {
             if (browserEsr.interceptUrl(r.url)) return false;
             if (r.isTopFrame && dappPageOrigin(r.url) !== dappPageOrigin(currentUrl.current)) {
+              sessionFailureNotice.current = null;
               browserEsr.invalidate();
               tokenPocket.cancelScan();
               currentUrl.current = r.url;
