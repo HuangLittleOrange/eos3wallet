@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, NativeSyntheticEvent, NativeScrollEvent, Image, RefreshControl, ActivityIndicator, useWindowDimensions } from 'react-native';
+import { Image as CachedImage } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -170,7 +171,7 @@ export default function DiscoverScreen() {
           {BANNERS.map((b) => (
             <TouchableOpacity key={b.id} style={{ width: W }} activeOpacity={0.8} disabled={!b.url} accessibilityRole={b.url ? 'link' : 'image'} accessibilityLabel={b.url || t('discover.tabTrending')} onPress={() => b.url && open(b.url)}>
               <View style={styles.banner}>
-                <Image source={{ uri: b.imageUrl }} style={styles.carouselImage} resizeMode="contain" />
+                <CachedImage source={{ uri: b.imageUrl }} cachePolicy="memory-disk" style={styles.carouselImage} contentFit="contain" />
               </View>
             </TouchableOpacity>
           ))}
@@ -232,7 +233,7 @@ export default function DiscoverScreen() {
                 >
                   <View style={[styles.appIcon, { width: Math.max(1, gridItemWidth - 6), height: Math.max(1, gridItemWidth - 6), backgroundColor: d.color }]}>
                     {d.iconUrl ? (
-                      <Image source={{ uri: d.iconUrl }} style={styles.projectImage} resizeMode="cover" />
+                      <CachedImage source={{ uri: d.iconUrl }} cachePolicy="memory-disk" style={styles.projectImage} contentFit="cover" />
                     ) : (
                       <Text style={[styles.appLetter, ['#fff', '#ffffff'].includes(d.color.toLowerCase()) && { color: colors.text }]}>
                         {d.letter}
@@ -265,7 +266,7 @@ export default function DiscoverScreen() {
                   onPress={() => promo.url && open(promo.url)}
                 >
                   <LinearGradient colors={promo.colors} style={styles.miniBanner}>
-                    {promo.imageUrl ? <Image source={{ uri: promo.imageUrl }} style={styles.bannerImage} resizeMode="cover" /> : null}
+                    {promo.imageUrl ? <CachedImage source={{ uri: promo.imageUrl }} cachePolicy="memory-disk" style={styles.bannerImage} contentFit="cover" /> : null}
                     <Text style={styles.miniTxt}>{localizedText(promo.title, locale)}</Text>
                   </LinearGradient>
                 </TouchableOpacity>
@@ -279,7 +280,7 @@ export default function DiscoverScreen() {
             {module.items.map((e) => (
               <TouchableOpacity key={e.id} style={styles.earnRow} activeOpacity={0.6} disabled={!e.url} onPress={() => e.url && open(e.url)}>
                 <View style={[styles.earnIcon, { backgroundColor: e.color }]}>
-                  {e.imageUrl ? <Image source={{ uri: e.imageUrl }} style={styles.earnImage} resizeMode="cover" /> : <Text style={styles.earnIconTxt}>{e.name.slice(0, 1)}</Text>}
+                  {e.imageUrl ? <CachedImage source={{ uri: e.imageUrl }} cachePolicy="memory-disk" style={styles.earnImage} contentFit="cover" /> : <Text style={styles.earnIconTxt}>{e.name.slice(0, 1)}</Text>}
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>

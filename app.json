@@ -117,6 +117,7 @@
         }
       ],
       "expo-localization",
+      "expo-image",
       "react-native-quick-crypto",
       [
         "expo-splash-screen",

@@ -16,6 +16,7 @@ jest.mock('@react-navigation/native', () => ({
   useFocusEffect: (callback: () => void) => require('react').useEffect(callback, [callback]),
 }));
 jest.mock('expo-linear-gradient', () => ({ LinearGradient: 'LinearGradient' }));
+jest.mock('expo-image', () => ({ Image: 'Image' }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons', MaterialCommunityIcons: 'MaterialCommunityIcons', FontAwesome: 'FontAwesome' }));
 jest.mock('../../components/DappRiskSheet', () => 'DappRiskSheet');
 jest.mock('../../components/TokenBadge', () => 'TokenBadge');
@@ -107,6 +108,25 @@ it('发现页只显示启用且featured的项目，服务端空目录不会恢�
   await act(async () => { renderer.update(React.createElement(DiscoverScreen)); });
   expect(textValues()).not.toContain('featured');
   expect(textValues()).toContain('content.emptyDapps');
+});
+
+it('应用图标跨页面和间隔重新进入复用磁盘缓存标识，换图时使用新地址', async () => {
+  const icon = 'https://images.example/app-icon.png';
+  setContent(empty, [project('cached', { iconUrl: icon })]);
+  const remoteImages = () => renderer.root.findAllByType('Image').filter((image: any) => image.props.source.uri);
+  await render(DiscoverScreen);
+  expect(remoteImages().map((image: any) => [image.props.source.uri, image.props.cachePolicy])).toEqual([[icon, 'memory-disk']]);
+  await act(async () => renderer.unmount());
+  jest.setSystemTime(Date.now() + 24 * 60 * 60 * 1000);
+  await render(DiscoverScreen);
+  expect(remoteImages().map((image: any) => [image.props.source.uri, image.props.cachePolicy])).toEqual([[icon, 'memory-disk']]);
+  await act(async () => renderer.unmount());
+  await render(SearchScreen);
+  await pressText('search.dapp');
+  expect(remoteImages().map((image: any) => [image.props.source.uri, image.props.cachePolicy])).toEqual([[icon, 'memory-disk']]);
+  setContent(empty, [project('cached', { iconUrl: 'https://images.example/app-icon-v2.png' })]);
+  await act(async () => renderer.update(React.createElement(SearchScreen)));
+  expect(remoteImages().map((image: any) => image.props.source.uri)).toEqual(['https://images.example/app-icon-v2.png']);
 });
 
 it('轮播缩到一张或清空时重置位置且停止自动播放', async () => {
@@ -255,7 +275,7 @@ it('轮播只展示完整图片，点击打开链接，无图片和停用项不�
   await render(DiscoverScreen);
   const images = renderer.root.findAllByType('Image').filter((image: any) => image.props.source.uri?.startsWith('https://images.example/'));
   expect(images.map((image: any) => image.props.source.uri)).toEqual(['https://images.example/linked.png', 'https://images.example/no-link.png']);
-  expect(images[0].props.resizeMode).toBe('contain');
+  expect(images[0].props.contentFit).toBe('contain');
   expect(textValues()).not.toContain('Legacy title');
   expect(textValues()).not.toContain('Legacy description');
   const linked = renderer.root.findAllByType('TouchableOpacity').find((node: any) => node.props.accessibilityLabel === 'https://linked.example');

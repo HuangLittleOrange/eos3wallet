@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Platform, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Platform } from 'react-native';
+import { Image as CachedImage } from 'expo-image';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -176,7 +177,7 @@ export default function SearchScreen() {
                 <TouchableOpacity style={styles.row} activeOpacity={0.6} onPress={() => open(d.appUrl)}>
                   <View style={[styles.dappIcon, { backgroundColor: d.color }]}>
                     {d.iconUrl ? (
-                      <Image source={{ uri: d.iconUrl }} style={styles.dappImage} resizeMode="cover" />
+                      <CachedImage source={{ uri: d.iconUrl }} cachePolicy="memory-disk" style={styles.dappImage} contentFit="cover" />
                     ) : (
                       <Text style={[styles.dappLetter, ['#fff', '#ffffff'].includes(d.color.toLowerCase()) && { color: colors.text }]}>
                         {d.letter}
