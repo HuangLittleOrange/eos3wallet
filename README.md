@@ -97,6 +97,8 @@ Each release uses its version tag, displays the actual APK application version, 
 
 Open **Actions → Main tests** for routine checks and **Actions → Public Android APK** for release build logs, hashes, and provenance. See [public builds and provenance verification](docs/github-android-build.md) for signing environment setup and verification commands. No version tag is created automatically by pushing to `main`.
 
+After Android/iOS builds or main-branch checks finish, **Build cache cleanup** keeps only the newest stable version's public dependency cache. An old-version rerun cannot displace a newer version's cache. Cleanup waits if another native build is queued or running; the next build completion retries it. Release downloads and build evidence are preserved. The cleanup workflow can also be run manually, with an optional dry run.
+
 Provenance binds files to a repository, workflow, and specific source commit. It does not establish an independent security audit or byte-for-byte reproducible builds.
 
 ## Wallet security

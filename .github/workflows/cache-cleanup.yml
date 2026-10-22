@@ -1,0 +1,116 @@
+name: Build cache cleanup
+
+on:
+  workflow_run:
+    workflows: [Public Android APK, iOS IPA, Main tests]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Show obsolete caches without deleting them'
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: build-cache-cleanup
+  cancel-in-progress: false
+
+jobs:
+  cleanup:
+    if: >-
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'workflow_dispatch' ||
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      actions: write
+    steps:
+      # Run only this default-branch workflow's API code. No checkout, artifacts,
+      # dependency installation, signing secrets, or execution of triggering code.
+      - name: Keep only the latest versioned public dependency cache
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPOSITORY: ${{ github.repository }}
+          DRY_RUN: ${{ inputs.dry_run || false }}
+        run: |
+          python3 - <<'PY'
+          import datetime, json, os, re, subprocess
+
+          repo = os.environ['REPOSITORY']
+          if not re.fullmatch(r'[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+', repo):
+              raise SystemExit('Invalid repository')
+          if os.environ['DRY_RUN'] not in ('true', 'false'):
+              raise SystemExit('Invalid dry-run flag')
+          dry_run = os.environ['DRY_RUN'] == 'true'
+          prefix = 'android-public-downloads-v1-'
+          build_paths = {'.github/workflows/android-build.yml', '.github/workflows/ios-build.yml'}
+          version_ref = re.compile(r'(?:refs/heads/)?refs/tags/v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)')
+
+          def report(message):
+              print(message)
+              if os.environ.get('GITHUB_STEP_SUMMARY'):
+                  with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+                      summary.write(message + '\n\n')
+
+          def listing(endpoint, field):
+              pages = json.loads(subprocess.check_output(['gh', 'api', '--paginate', '--slurp', endpoint], text=True))
+              if not isinstance(pages, list) or not pages or any(not isinstance(page, dict) or not isinstance(page.get(field), list) for page in pages):
+                  raise SystemExit('Invalid GitHub listing; no caches deleted')
+              return [item for page in pages for item in page[field]]
+
+          def builds_active():
+              for status in ('queued', 'in_progress', 'waiting', 'pending', 'requested'):
+                  runs = listing(f'repos/{repo}/actions/runs?status={status}&per_page=100', 'workflow_runs')
+                  if any(run['path'].split('@')[0] in build_paths for run in runs):
+                      return True
+              return False
+
+          if builds_active():
+              report('Cleanup deferred: a native build is active. The next build completion will retry.')
+              raise SystemExit(0)
+
+          caches = listing(f'repos/{repo}/actions/caches?per_page=100&key={prefix}&sort=created_at&direction=desc', 'actions_caches')
+          candidates = []
+          for cache in caches:
+              match = version_ref.fullmatch(cache['ref'])
+              if not cache['key'].startswith(prefix) or not match:
+                  continue
+              if type(cache['id']) is not int or cache['id'] < 1 or type(cache['size_in_bytes']) is not int or cache['size_in_bytes'] < 0:
+                  raise SystemExit('Invalid cache metadata; no caches deleted')
+              created = datetime.datetime.fromisoformat(cache['created_at'].replace('Z', '+00:00'))
+              if created.tzinfo is None:
+                  raise SystemExit('Invalid cache timestamp; no caches deleted')
+              candidates.append((tuple(map(int, match.groups())), created, cache['id'], cache))
+
+          if not candidates:
+              report('No versioned public dependency caches to clean.')
+              raise SystemExit(0)
+
+          # Version takes precedence over creation/access time: rerunning an old
+          # tag must never replace the newest version's retained cache.
+          latest = max(candidates, key=lambda item: item[:3])
+          obsolete = [item[3] for item in candidates if item[2] != latest[2]]
+          version = '.'.join(map(str, latest[0]))
+          report(f'Keep cache {latest[2]} for v{version} ({latest[3]["size_in_bytes"] / 1024**3:.2f} GiB).')
+          if dry_run:
+              report(f'Dry run: would delete {len(obsolete)} obsolete dependency caches.')
+              raise SystemExit(0)
+          if obsolete and builds_active():
+              report('Cleanup deferred: a native build started during inventory. Its completion will retry.')
+              raise SystemExit(0)
+
+          deleted = 0
+          freed = 0
+          for cache in obsolete:
+              result = subprocess.run(['gh', 'api', '--method', 'DELETE', f'repos/{repo}/actions/caches/{cache["id"]}'], capture_output=True, text=True)
+              if result.returncode:
+                  if 'HTTP 404' in result.stderr:
+                      continue  # GitHub may already have evicted this cache.
+                  raise SystemExit(f'Could not delete cache {cache["id"]}: {result.stderr.strip()}')
+              deleted += 1
+              freed += cache['size_in_bytes']
+          report(f'Deleted {deleted} obsolete dependency caches; freed {freed / 1024**3:.2f} GiB. Release artifacts are untouched.')
+          PY
