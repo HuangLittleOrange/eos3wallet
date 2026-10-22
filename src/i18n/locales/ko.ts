@@ -867,6 +867,8 @@ const ko: Record<keyof typeof zh, string> = {
   'walletDetail.comingSoonTitle': '곧 지원 예정',
   'walletDetail.comingSoonBody': '고급 모드는 아직 열리지 않았습니다',
   'walletDetail.deleteWallet': '지갑 삭제',
+  'walletDetail.removeWatchWallet': '관찰 지갑 제거',
+  'walletDetail.removeWatchWalletBody': '이 기기에서 관찰 계정 {{account}}을 제거할까요? 온체인 계정과 자산에는 영향이 없습니다.',
   'walletDetail.watchOnlyDeleteNote': '조회 전용 계정이라 로컬 키가 없어 삭제할 필요가 없습니다',
   'walletDetail.cannotExportTitle': '내보낼 수 없습니다',
   'walletDetail.cannotExportWatchOnly': '현재 계정은 조회 전용이며, 이 기기에 해당 키가 저장되어 있지 않습니다.',

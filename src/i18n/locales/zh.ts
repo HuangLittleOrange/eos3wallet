@@ -868,6 +868,8 @@ const zh = {
   'walletDetail.comingSoonTitle': '敬请期待',
   'walletDetail.comingSoonBody': '高级模式暂未开放',
   'walletDetail.deleteWallet': '删除钱包',
+  'walletDetail.removeWatchWallet': '移除观察钱包',
+  'walletDetail.removeWatchWalletBody': '确定从本机移除观察账户 {{account}}？不会删除链上账户或影响资产。',
   'walletDetail.watchOnlyDeleteNote': '只读观察账户,不涉及本机密钥,无需删除',
   'walletDetail.cannotExportTitle': '无法导出',
   'walletDetail.cannotExportWatchOnly': '当前是只读观察账户,本机没有保存该账户的密钥。',

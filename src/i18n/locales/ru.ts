@@ -867,6 +867,8 @@ const ru: Record<keyof typeof zh, string> = {
   'walletDetail.comingSoonTitle': 'Скоро',
   'walletDetail.comingSoonBody': 'Расширенный режим пока недоступен',
   'walletDetail.deleteWallet': 'Удалить кошелёк',
+  'walletDetail.removeWatchWallet': 'Удалить кошелёк для наблюдения',
+  'walletDetail.removeWatchWalletBody': 'Удалить аккаунт {{account}} из наблюдения на этом устройстве? Аккаунт и активы в блокчейне не изменятся.',
   'walletDetail.watchOnlyDeleteNote': 'Аккаунт только для просмотра, локального ключа нет, удалять нечего',
   'walletDetail.cannotExportTitle': 'Экспорт невозможен',
   'walletDetail.cannotExportWatchOnly': 'Текущий аккаунт доступен только для просмотра — на устройстве не сохранён его ключ.',

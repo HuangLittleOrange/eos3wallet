@@ -32,6 +32,7 @@ export default function WalletDetailScreen() {
   const { t } = useI18n();
   const wallet = w.currentWallet;
   const isPasskey = wallet?.source === 'passkey';
+  const isWatchOnly = !wallet || wallet.source === 'watch';
 
   const [copied, setCopied] = useState<'name' | 'addr' | null>(null);
   // 必须真的写进剪贴板——之前只显示"已复制"却什么都没复制,用户会拿着
@@ -168,11 +169,17 @@ export default function WalletDetailScreen() {
   const [deleting, setDeleting] = useState(false);
 
   const doDelete = async () => {
-    if (!wallet) return;
+    if (!wallet && !w.account) return;
     setDeleting(true);
     try {
-      await removeWallet(wallet.id);
-      await w.reloadWallets();
+      if (wallet) {
+        await removeWallet(wallet.id);
+        await w.reloadWallets();
+      } else {
+        // An imported watch account is held in the session, without a key slot.
+        // Persist an empty account so it cannot reappear on restart/chain switch.
+        w.setAccount('');
+      }
       // reloadWallets 会选择剩余钱包,没有账户时资产标签页显示创建/导入引导。
       nav.reset({ index: 0, routes: [{ name: 'Tabs' }] });
     } catch (e: any) {
@@ -183,10 +190,10 @@ export default function WalletDetailScreen() {
   };
 
   const confirmDelete = () => {
-    if (!wallet) return;
+    if (!wallet && !w.account) return;
     Alert.alert(
-      t('walletDetail.deleteWalletTitle'),
-      t('walletDetail.deleteWalletBody', { account: wallet.account }),
+      t(isWatchOnly ? 'walletDetail.removeWatchWallet' : 'walletDetail.deleteWalletTitle'),
+      t(isWatchOnly ? 'walletDetail.removeWatchWalletBody' : 'walletDetail.deleteWalletBody', { account: w.account }),
       [
         { text: t('walletDetail.cancel'), style: 'cancel' },
         { text: t('walletDetail.confirmDelete'), style: 'destructive', onPress: doDelete },
@@ -229,8 +236,8 @@ export default function WalletDetailScreen() {
         <TouchableOpacity style={styles.card} activeOpacity={0.6} onPress={openExport}>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>{t('walletDetail.exportKey')}</Text>
-            {!wallet || isPasskey ? (
-              <Text style={styles.rowSub}>{!wallet ? t('walletDetail.watchOnlyNa') : t('walletDetail.protectedByPasskey')}</Text>
+            {isWatchOnly || isPasskey ? (
+              <Text style={styles.rowSub}>{isWatchOnly ? t('walletDetail.watchOnlyNa') : t('walletDetail.protectedByPasskey')}</Text>
             ) : null}
             <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
           </View>
@@ -247,18 +254,16 @@ export default function WalletDetailScreen() {
 
         <View style={{ flex: 1, minHeight: 40 }} />
 
-        {wallet ? (
+        {wallet || w.account ? (
           <TouchableOpacity
             style={[styles.deleteBtn, deleting && styles.deleteBtnOff]}
             activeOpacity={0.85}
             disabled={deleting}
             onPress={confirmDelete}
           >
-            {deleting ? <ActivityIndicator color="#fff" /> : <Text style={styles.deleteTxt}>{t('walletDetail.deleteWallet')}</Text>}
+            {deleting ? <ActivityIndicator color="#fff" /> : <Text style={styles.deleteTxt}>{t(isWatchOnly ? 'walletDetail.removeWatchWallet' : 'walletDetail.deleteWallet')}</Text>}
           </TouchableOpacity>
-        ) : (
-          <Text style={styles.readOnlyNote}>{t('walletDetail.watchOnlyDeleteNote')}</Text>
-        )}
+        ) : null}
       </ScrollView>
 
       {/* 导出私钥:先验证密码/生物识别 */}

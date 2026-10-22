@@ -867,6 +867,8 @@ const ja: Record<keyof typeof zh, string> = {
   'walletDetail.comingSoonTitle': '近日対応予定',
   'walletDetail.comingSoonBody': '上級モードはまだ利用できません',
   'walletDetail.deleteWallet': 'ウォレットを削除',
+  'walletDetail.removeWatchWallet': '監視ウォレットを削除',
+  'walletDetail.removeWatchWalletBody': 'この端末から監視アカウント {{account}} を削除しますか？オンチェーンのアカウントや資産には影響しません。',
   'walletDetail.watchOnlyDeleteNote': '閲覧専用アカウントのためローカル鍵はなく、削除の必要はありません',
   'walletDetail.cannotExportTitle': 'エクスポートできません',
   'walletDetail.cannotExportWatchOnly': '現在のアカウントは閲覧専用で、本機にそのアカウントの鍵は保存されていません。',

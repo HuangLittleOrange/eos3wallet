@@ -867,6 +867,8 @@ const en: Record<keyof typeof zh, string> = {
   'walletDetail.comingSoonTitle': 'Coming soon',
   'walletDetail.comingSoonBody': 'Advanced mode is not available yet',
   'walletDetail.deleteWallet': 'Delete wallet',
+  'walletDetail.removeWatchWallet': 'Remove watch-only wallet',
+  'walletDetail.removeWatchWalletBody': 'Remove watch-only account {{account}} from this device? The on-chain account and assets are unaffected.',
   'walletDetail.watchOnlyDeleteNote': "Watch-only account — no local key involved, nothing to delete",
   'walletDetail.cannotExportTitle': 'Cannot export',
   'walletDetail.cannotExportWatchOnly': 'The current account is watch-only — this device has no key stored for it.',

@@ -121,6 +121,26 @@ it('主动添加观察账户立即退出无账户状态,重启仍保留', async 
   expect(state.hasAccount).toBe(true);
 });
 
+it.each([false, true])('移除观察账户后切链和重启都不再恢复它（其他钱包=%s）', async hasSavedWallet => {
+  const retainedWallets = hasSavedWallet ? [savedWallet] : [];
+  const expectedAccount = hasSavedWallet ? savedWallet.account : '';
+  jest.mocked(listWallets).mockResolvedValue(retainedWallets);
+  await mount();
+  await act(async () => state.setAccount('watchacct'));
+  await act(async () => state.setAccount(''));
+  expect((await loadSession())?.perChain?.vaulta?.account).toBe('');
+  expect(state.hasAccount).toBe(false);
+  expect(state.tokens).toEqual([]);
+  await act(async () => state.setChain('jungle4'));
+  await act(async () => state.setChain('vaulta'));
+  expect(state.account).toBe(expectedAccount);
+  expect(state.wallets).toEqual(retainedWallets);
+  await act(async () => root.unmount());
+  await mount();
+  expect(state.account).toBe(expectedAccount);
+  expect(state.wallets).toEqual(retainedWallets);
+});
+
 it('删除最后一个钱包后清空账户、余额和持久会话', async () => {
   jest.mocked(listWallets).mockResolvedValue([savedWallet]);
   await mount();

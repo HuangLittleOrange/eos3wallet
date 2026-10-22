@@ -867,6 +867,8 @@ const vi: Record<keyof typeof zh, string> = {
   'walletDetail.comingSoonTitle': 'Sắp ra mắt',
   'walletDetail.comingSoonBody': 'Chế độ nâng cao chưa được mở',
   'walletDetail.deleteWallet': 'Xóa ví',
+  'walletDetail.removeWatchWallet': 'Xóa ví chỉ xem',
+  'walletDetail.removeWatchWalletBody': 'Xóa tài khoản chỉ xem {{account}} khỏi thiết bị này? Tài khoản và tài sản trên chuỗi không bị ảnh hưởng.',
   'walletDetail.watchOnlyDeleteNote': 'Tài khoản chỉ xem, không liên quan đến khóa cục bộ, không cần xóa',
   'walletDetail.cannotExportTitle': 'Không thể xuất',
   'walletDetail.cannotExportWatchOnly': 'Tài khoản hiện tại chỉ ở chế độ xem, thiết bị này chưa lưu khóa của tài khoản đó.',
