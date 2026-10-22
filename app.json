@@ -26,7 +26,7 @@
     },
     "android": {
       "package": "com.eos3.wallet",
-      "versionCode": 11,
+      "versionCode": 12,
       "icon": "./assets/brand/eos3-app-icon.png",
       "adaptiveIcon": {
         "backgroundColor": "#2E7DF7",
