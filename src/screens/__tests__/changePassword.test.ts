@@ -56,7 +56,7 @@ test('reference form has three masked inputs, requires matching new passwords an
   expect(input(1).props.secureTextEntry).toBe(true);
   // Revealing a password must not re-enable credential capture on either platform.
   for (const index of [0, 1, 2]) expect(input(index).props).toEqual(expect.objectContaining({
-    textContentType: 'none', autoComplete: 'off', importantForAutofill: 'no',
+    textContentType: 'oneTimeCode', autoComplete: 'off', importantForAutofill: 'no',
     autoCorrect: false, spellCheck: false,
   }));
 });

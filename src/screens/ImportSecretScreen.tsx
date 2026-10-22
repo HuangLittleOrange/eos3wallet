@@ -220,11 +220,16 @@ export default function ImportSecretScreen() {
       if (state !== 'background') return;
       importGeneration.current++;
       verification.current?.abort();
-      setSecret('');
+      // Keep the page-local draft when switching apps to read a backup.
+      // Native screen protection covers the app switcher; confirmations expire.
       setDerived(null);
       setFound(null);
+      setSelectedAccount(null);
+      setSelectedPerms({});
       setBusy(false);
       setPwdOpen(false);
+      setErr(null);
+      setSaveErr(null);
     });
     return () => { mounted.current = false; importGeneration.current++; verification.current?.abort(); sub.remove(); };
   }, []);

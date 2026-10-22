@@ -25,7 +25,7 @@ import ImportSecretScreen from '../../screens/ImportSecretScreen';
 const { create, act } = require('react-test-renderer');
 let renderer: any;
 const expectExcluded = (input: any) => expect(input.props).toEqual(expect.objectContaining({
-  textContentType: 'none', autoComplete: 'off', importantForAutofill: 'no',
+  textContentType: 'oneTimeCode', autoComplete: 'off', importantForAutofill: 'no',
   autoCorrect: false, spellCheck: false, smartInsertDelete: false,
 }));
 const mount = async (element: React.ReactElement) => { await act(async () => { renderer = create(element); }); };

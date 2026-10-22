@@ -93,6 +93,42 @@ beforeEach(async () => {
 });
 afterEach(async () => { await act(async () => { renderer.unmount(); }); });
 
+async function changeAppState(state: 'inactive' | 'background' | 'active') {
+  await act(async () => {
+    (AppState as any).currentState = state;
+    const calls = jest.mocked(AppState.addEventListener).mock.calls;
+    (calls[calls.length - 1][1] as any)(state);
+  });
+}
+
+test.each(['privatekey', 'mnemonic'])('switching apps preserves the current %s draft until the import page is left', async mode => {
+  jest.mocked(useRoute).mockReturnValue({ params: { mode } } as any);
+  await act(async () => { renderer.update(React.createElement(ImportSecretScreen)); });
+  const input = mode === 'privatekey' ? key.toWif().slice(0, 20) : 'abandon abandon';
+  await act(async () => { renderer.root.findByType('TextInput').props.onChangeText(input); });
+  await changeAppState('inactive');
+  await changeAppState('background');
+  await changeAppState('active');
+  expect(renderer.root.findByType('TextInput').props.value).toBe(input);
+  expect(saveSecret).not.toHaveBeenCalled(); expect(addWallet).not.toHaveBeenCalled();
+  await act(async () => { renderer.unmount(); renderer = create(React.createElement(ImportSecretScreen)); });
+  expect(renderer.root.findByType('TextInput').props.value).toBe('');
+});
+
+test('returning from background retains a WIF draft but requires a fresh account search and confirmation', async () => {
+  const input = key.toWif();
+  await preview(input);
+  expect(dialog().props.visible).toBe(true);
+  await changeAppState('background'); await changeAppState('active');
+  expect(renderer.root.findByType('TextInput').props.value).toBe(input);
+  expect(dialog().props.visible).toBe(false);
+  expect(button('importSecret.importByPerms')).toBeUndefined();
+  expect(button('importSecret.parseAndSearch').props.disabled).toBe(false);
+  expect(saveSecret).not.toHaveBeenCalled(); expect(addWallet).not.toHaveBeenCalled();
+  await preview(input); await save();
+  expect(addWallet).toHaveBeenCalledWith(expect.objectContaining({ account: 'alice', publicKey: authorizedKey }), 'synthetic-test-password');
+});
+
 test('the original malicious discovery proof cannot save a wallet or poison the receive address', async () => {
   candidate = 'attacker'; authorizedKey = String(attackerKey.toPublic());
   await preview(); await save();

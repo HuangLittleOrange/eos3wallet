@@ -97,10 +97,17 @@ export function generateKey(): DerivedKey {
   throw new Error(t('keysError.derivationFailed'));
 }
 
+/** Copies from backups may include line breaks or invisible text separators. */
+function cleanPrivateKeyInput(input: string): string {
+  // These characters never belong to WIF/PVT encodings. Keep case, punctuation,
+  // and the checksum intact so damaged keys still fail the normal parser.
+  return input.replace(/[\s\u200B-\u200D\u2060]/g, '');
+}
+
 /** 私钥字符串 → 密钥对。同时接受 PVT_K1_... 与旧版 5... 格式 */
 export function fromPrivateKey(input: string): DerivedKey {
   try {
-    const priv = PrivateKey.from(input.trim());
+    const priv = PrivateKey.from(cleanPrivateKeyInput(input));
     return keyInfo(priv, '(直接导入)');
   } catch {
     // Parser errors can include the supplied key; never expose them to UI/logging.
@@ -121,7 +128,7 @@ function keyInfo(priv: PrivateKey, path: string): DerivedKey {
 /** 私钥格式是否合法 —— 用于输入框即时校验,不抛异常 */
 export function isValidPrivateKey(s: string): boolean {
   try {
-    PrivateKey.from(s.trim());
+    PrivateKey.from(cleanPrivateKeyInput(s));
     return true;
   } catch {
     return false;

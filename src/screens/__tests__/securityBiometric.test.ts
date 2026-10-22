@@ -69,7 +69,7 @@ it('enabling verifies only the master password, never an account id', async () =
   await mount();
   await act(async () => { await renderer.root.findByProps({testID:'biometric-unlock-toggle'}).props.onValueChange(true); });
   expect(renderer.root.findByType('TextInput').props).toEqual(expect.objectContaining({
-    textContentType: 'none', autoComplete: 'off', importantForAutofill: 'no',
+    textContentType: 'oneTimeCode', autoComplete: 'off', importantForAutofill: 'no',
   }));
   await act(async () => { renderer.root.findByType('TextInput').props.onChangeText('shared-password'); });
   await act(async () => { await button('security.enableAction').props.onPress(); });
