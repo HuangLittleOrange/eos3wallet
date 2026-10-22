@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Privacy policy for EOS³ Wallet: wallet data, connected services, usage analytics, permissions, and your privacy choices.">
+  <meta name="color-scheme" content="light">
+  <title>Privacy Policy · EOS³ Wallet</title>
+  <link rel="canonical" href="https://wallet.eos3.app/privacy/">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <a class="skip" href="#policy">Skip to policy</a>
+  <header class="site-header">
+    <a class="brand" href="/" aria-label="EOS³ Wallet home">EOS³ <span>Wallet</span></a>
+    <nav aria-label="Policy language"><a href="#english" lang="en">English</a><a href="#chinese" lang="zh-Hans">简体中文</a></nav>
+  </header>
+  <main id="policy">
+    <div class="intro">
+      <p class="eyebrow">EOS³ Wallet</p>
+      <h1>Privacy Policy</h1>
+      <p class="subtitle" lang="zh-Hans">隐私政策</p>
+      <p class="date">Effective and last updated: <time datetime="2026-10-21">October 21, 2026</time></p>
+    </div>
+    <div class="summary">
+      <p><strong>At a glance.</strong> Imported wallet private keys are kept on your device. Blockchain activity is public. Connected features send necessary information to network and service providers. Basic Firebase usage analytics is enabled by default in configured release builds.</p>
+      <p class="contact">Privacy contact: <a href="mailto:xiaojuzibtc@gmail.com">xiaojuzibtc@gmail.com</a></p>
+    </div>
+    <article id="english" aria-labelledby="english-title">
+      <h2 id="english-title">English</h2>
+      <nav class="contents" aria-label="English policy contents">
+        <a href="#scope">Scope</a><a href="#information">Information</a><a href="#use">Use and sharing</a><a href="#analytics">Analytics</a><a href="#permissions">Permissions</a><a href="#retention">Retention and choices</a><a href="#contact">Contact</a>
+      </nav>
+      <section id="scope">
+        <h3>1. Who we are and what this covers</h3>
+        <p>VA Labs LLC publishes EOS³ Wallet (“we,” “us,” or “our”), a wallet application for the EOS / Vaulta network. This policy describes information handled by the wallet application, this website, and the EOS³ login, authorization, and resource-sponsorship services when you choose to use them.</p>
+        <p>Independent blockchain networks, node operators, DApps, authentication providers, app stores, and other third-party services also handle information under their own policies. Their involvement is described below.</p>
+      </section>
+      <section id="information">
+        <h3>2. Information handled by the wallet</h3>
+        <dl>
+          <dt>Wallet information stored on your device</dt>
+          <dd>Imported private keys, locally generated device signing keys, wallet accounts and labels, preferences, manually entered contacts, and connection/session information are stored locally as needed for wallet operation. The wallet protects stored signing secrets using the device’s secure storage and, where applicable, encryption tied to your master password. Our wallet client does not send your imported private keys or master password to our servers or Firebase Analytics. Exporting or copying a secret at your request makes it available outside that protected storage.</dd>
+          <dt>Public blockchain data and transaction requests</dt>
+          <dd>Node and history services receive account names, public keys, balance and history queries, and signed transactions needed to retrieve information or broadcast your requested actions. Transaction data may include recipient accounts, amounts, contract actions, permissions, and memos. Resource-sponsorship and authorization services receive relevant accounts, transaction contents, authorization settings, request identifiers, and signatures to provide the feature you selected.</dd>
+          <dt>Optional sign-in, account creation, and authorization</dt>
+          <dd>If you choose Google sign-in, the related service receives the Google account identifier, email address and verification status, name, and profile image made available through the authorized sign-in flow. Login and account-linking services process session tokens, account associations, public keys, credential identifiers, registration/authentication challenges, and verification responses. If you use a Telegram-linked authorization flow, the service can associate a Telegram user identifier, username/display name, and the requesting project/bot with the authorized wallet account and permission settings. Passkey private credentials are managed by your platform or credential provider; any credential synchronization follows that provider’s settings and policies. We do not receive your biometric templates or Google password.</dd>
+          <dt>DApp and wallet connections</dt>
+          <dd>When you authorize a DApp connection or signing request, the selected DApp may receive your account name, public key, network, requested transaction/signature data, and connection status. Wallet compatibility interfaces can also expose the app version, language, operating system, and a random identifier generated for that site. Persistent ESR / Anchor-style sessions may send encrypted session messages through relay providers. Visiting a website in the DApp browser also makes an ordinary web connection to that site.</dd>
+          <dt>Technical, usage, and support information</dt>
+          <dd>Our services, hosting/CDN providers, and connected services may receive IP addresses, request times, user-agent/app version information, request results, and security or operational logs. Firebase Analytics processes the usage information described in section 4. If you contact us, we receive your contact address and the messages or files you choose to send. Apple may process TestFlight enrollment, device/build information, crash reports, and submitted feedback under its own terms; feedback and diagnostics made available to us are used to test and support the app.</dd>
+        </dl>
+        <p><strong>Public blockchain records:</strong> account names, public keys, balances, permissions, transfers, and transaction memos can be publicly visible and retained by the network indefinitely. Do not put private information in a transaction memo. We cannot erase or make a confirmed blockchain record private.</p>
+      </section>
+      <section id="use">
+        <h3>3. Why information is used and who receives it</h3>
+        <p>We use information to provide wallet and connected-service functions; authenticate and link accounts; process actions you request; protect services against abuse; diagnose problems; understand basic app usage; respond to support and privacy requests; and meet applicable legal obligations.</p>
+        <p>Information is shared according to the function used:</p>
+        <ul>
+          <li><strong>Blockchain, RPC, history, token and market-data providers:</strong> the queries and transaction data required for account, asset, resource, pricing, and transfer features.</li>
+          <li><strong>Google:</strong> optional Google sign-in and Google Analytics for Firebase. See <a href="https://policies.google.com/privacy">Google’s Privacy Policy</a> and <a href="https://firebase.google.com/support/privacy">Firebase privacy information</a>.</li>
+          <li><strong>Apple and operating-system/credential providers:</strong> app distribution, TestFlight, device permissions, secure storage, biometric authentication, and passkey functionality, according to the selected platform’s policies. See <a href="https://www.apple.com/legal/privacy/">Apple’s Privacy Policy</a>.</li>
+          <li><strong>Google ML Kit on Android:</strong> QR recognition is performed on the device; the SDK can process device/app information, installation identifiers, performance, and usage diagnostics as described in <a href="https://developers.google.com/ml-kit/terms">ML Kit’s terms and data disclosures</a>. This Android SDK disclosure does not mean the iOS app uses Android ML Kit.</li>
+          <li><strong>Hosting, CDN and security providers, including Cloudflare:</strong> network and request data needed to deliver and protect our websites and services. See <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare’s Privacy Policy</a>.</li>
+          <li><strong>DApps, authorization, sponsorship, image/content and relay providers:</strong> information needed for the external resource or feature you use. A DApp is responsible for its own subsequent processing.</li>
+        </ul>
+        <p>We do not sell personal information or use wallet transaction activity for targeted advertising. We use service providers under their applicable service and data-protection terms and expect appropriate confidentiality and security protections. We may disclose information where legally required, to address fraud or security threats, or as part of a lawful organizational transfer with appropriate protections.</p>
+      </section>
+      <section id="analytics">
+        <h3>4. Usage analytics and website technologies</h3>
+        <p>Configured release builds use <strong>Google Analytics for Firebase</strong> to measure installations, sessions, engagement, and basic technical performance of app use. Collection is enabled by default after the app checks its saved preference. The SDK supplies automatic events such as <code>first_open</code>, <code>session_start</code>, and <code>user_engagement</code>, an analytics installation identifier, and standard device/app metadata. Network requests also disclose an IP address to the receiving service. This processing is not a claim of complete anonymity.</p>
+        <p>The wallet’s analytics integration does not send wallet account names, balances, public/private keys, master passwords, transaction details, signatures, DApp URLs, or a custom user ID. Advertising storage, ad user data, and ad personalization are disabled in the app’s configuration; IDFA/advertising-ID support is not used for this integration.</p>
+        <p><strong>Current controls:</strong> this release does not offer an in-app analytics switch or a first-launch analytics prompt. Disabled preferences saved by an earlier version are respected. Contact us about analytics and privacy requests; we may need a relevant technical identifier to locate data, and cannot identify every analytics installation from an email address or wallet account. Removing the app does not itself erase previously collected analytics data.</p>
+        <p>Related sign-in websites use cookies and session/local storage to keep you signed in and complete authorization flows. Hosting/CDN systems can use security cookies and process website traffic/performance information. This privacy page does not embed app analytics, advertising scripts, or third-party fonts.</p>
+      </section>
+      <section id="permissions">
+        <h3>5. Permissions and device features</h3>
+        <ul>
+          <li><strong>Camera and selected photos:</strong> used to scan a QR code or read a code from an image you select. Saving receive codes or selected DApp images may request permission to save to your photo library. The wallet’s QR scanning feature does not upload your full photo library or camera stream to us.</li>
+          <li><strong>Biometric authentication:</strong> the operating system confirms authentication for unlocking or signing; the wallet does not receive your face or fingerprint template.</li>
+          <li><strong>Clipboard and sharing:</strong> copying or exporting information uses the system clipboard or a destination you choose. Clipboard history, synchronization, screenshots, backups, and receiving apps may retain an exported secret. Automatic clipboard clearing is best effort.</li>
+        </ul>
+        <p>You can revoke camera, photo and biometric permissions through device settings; related features may stop working. These operating-system permission controls do not serve as a Firebase Analytics switch. The wallet does not request microphone access, precise location, or access to your device address book for its core wallet features. Independent websites opened in the DApp browser have their own privacy practices.</p>
+      </section>
+      <section id="retention">
+        <h3>6. Retention, deletion, and your choices</h3>
+        <p>We retain off-chain information only as needed for the purpose for which it was collected, including operating an active linked account, completing a request, investigating abuse, providing support, and complying with legal obligations. When information is no longer needed, we delete it or de-identify it, subject to applicable retention requirements and backup lifecycles. Analytics retention is governed by the configured Google Analytics retention settings and Google’s applicable terms; non-identifying aggregate statistics may remain longer.</p>
+        <p>You can manage/remove local wallets and connections using the app’s available controls, revoke device permissions, and revoke Google authorization through your Google account. Before removing local keys, make sure you retain any recovery material you need. Removing a local wallet, uninstalling the app, or disconnecting a DApp does not automatically revoke an on-chain permission or delete information already received by another service. Secure-storage entries and backups may persist depending on platform settings.</p>
+        <p>For account-linked service information, support records, or other information under our control, email <a href="mailto:xiaojuzibtc@gmail.com">xiaojuzibtc@gmail.com</a> with your request. Depending on applicable law, you may request access, correction, deletion, a copy/portability, restriction, or object to processing, withdraw consent where processing relies on it, and complain to a relevant data-protection authority. We may ask for proportionate verification of your request. <strong>Never send a private key, seed phrase, or master password to prove ownership.</strong></p>
+        <p>We cannot delete public blockchain records, information controlled independently by third-party services, or data we must retain by law. For Apple/TestFlight or Google-held data, their own privacy and account tools may also be necessary. We will explain applicable limitations when responding.</p>
+      </section>
+      <section>
+        <h3>7. Security and international processing</h3>
+        <p>We use encrypted network connections, protected local secret storage, and access controls appropriate to the functions involved. No system can guarantee absolute security. You remain responsible for protecting your device, recovery material, exported keys, and the sites or apps to which you grant permissions.</p>
+        <p>Our infrastructure and third-party providers can process information in countries other than your own, whose laws may differ. We use the relevant providers’ data-protection terms and applicable safeguards for service processing. Contact us for questions about the processing relevant to your use of the app.</p>
+      </section>
+      <section>
+        <h3>8. Children and policy updates</h3>
+        <p>EOS³ Wallet is not directed to children. If you believe a child has provided personal information to us, contact us so we can investigate and take appropriate action.</p>
+        <p>We may update this policy as features, providers, or requirements change. The updated policy and date will be published at this address. Where required, we will provide additional notice or obtain consent; publication of this policy alone is not an in-app consent mechanism.</p>
+      </section>
+      <section id="contact">
+        <h3>9. Contact</h3>
+        <p><strong>VA Labs LLC · EOS³ Wallet</strong><br>Privacy and data requests: <a href="mailto:xiaojuzibtc@gmail.com">xiaojuzibtc@gmail.com</a><br>Website: <a href="https://wallet.eos3.app/">wallet.eos3.app</a></p>
+      </section>
+    </article>
+    <article id="chinese" lang="zh-Hans" aria-labelledby="chinese-title">
+      <h2 id="chinese-title">简体中文</h2>
+      <p class="date">生效及最后更新日期：2026 年 10 月 21 日</p>
+      <section>
+        <h3>1. 运营主体与适用范围</h3>
+        <p>VA Labs LLC 发布 EOS³ Wallet（下称“我们”），这是一款面向 EOS / Vaulta 网络的钱包应用。本政策说明钱包应用、本网站，以及您选择使用的 EOS³ 登录、授权和资源代付服务如何处理信息。</p>
+        <p>独立区块链网络、节点运营商、DApp、身份验证提供商、应用商店及其他第三方服务也会依据其各自的政策处理信息，下文说明了这些服务参与处理的情形。</p>
+      </section>
+      <section>
+        <h3>2. 钱包处理的信息</h3>
+        <dl>
+          <dt>保存在设备上的钱包信息</dt>
+          <dd>导入的私钥、本地生成的设备签名密钥、钱包账户及名称、偏好设置、手动添加的联系人和连接会话信息，会根据钱包运行需要保存在本地。钱包使用设备安全存储保护签名秘密，并在适用情况下使用与主密码关联的加密。钱包客户端不会把您导入的私钥或主密码发送给我们的服务器或 Firebase 统计服务。您主动导出或复制秘密信息后，这些信息会离开原有的受保护存储。</dd>
+          <dt>公开链上数据与交易请求</dt>
+          <dd>节点及历史查询服务会收到查询账户、余额和交易记录所需的账户名、公钥及请求参数，以及广播您所要求操作时需要的已签名交易。交易内容可能包含收款账户、金额、合约操作、权限和备注。资源代付及授权服务会收到完成所选功能所需的账户、交易内容、授权设置、请求标识和签名。</dd>
+          <dt>可选的登录、开户和授权</dt>
+          <dd>选择 Google 登录后，相关服务会收到您授权的登录流程提供的 Google 账户标识、邮箱及验证状态、名称和头像。登录及账户关联服务会处理会话令牌、账户关联、公钥、凭据标识、注册/验证挑战和验证结果。如您使用 Telegram 关联授权流程，服务可能将 Telegram 用户标识、用户名/显示名称及发起请求的项目或机器人与获授权钱包账户和权限设置关联。Passkey 私有凭据由设备平台或凭据提供商管理，其同步行为遵循该提供商的设置与政策。我们不会收到您的生物识别模板或 Google 密码。</dd>
+          <dt>DApp 与钱包连接</dt>
+          <dd>您授权连接或签名请求后，所选 DApp 可能收到您的账户名、公钥、网络、所请求的交易或签名数据以及连接状态。钱包兼容接口还可能提供应用版本、语言、操作系统和为该网站生成的随机标识。持久化 ESR / Anchor 类会话可能通过中继服务传输加密会话消息。在 DApp 浏览器访问网站时，也会与该网站建立普通网络连接。</dd>
+          <dt>技术、使用情况及支持信息</dt>
+          <dd>我们的服务、托管/CDN 提供商和所连接服务可能收到 IP 地址、请求时间、用户代理/应用版本、请求结果以及安全和运行日志。Firebase 会处理第 4 节所述使用情况信息。您联系我们时，我们会收到您的联系地址及您主动提供的消息或附件。Apple 可能依据其条款处理 TestFlight 加入记录、设备与构建信息、崩溃报告和您提交的反馈；我们收到的反馈及诊断信息用于测试和支持应用。</dd>
+        </dl>
+        <p><strong>区块链是公开的：</strong>账户名、公钥、余额、权限、转账及交易备注可能公开可见，并由网络长期保存。请勿在交易备注中填写隐私信息。我们无法删除已确认的链上记录，也无法将其改为私密。</p>
+      </section>
+      <section>
+        <h3>3. 处理目的与信息接收方</h3>
+        <p>我们使用信息来提供钱包及关联服务、验证和关联账户、处理您要求的操作、防止滥用、排查问题、了解基础使用情况、响应支持与隐私请求，以及履行适用的法律义务。</p>
+        <ul>
+          <li><strong>区块链、RPC、历史查询、代币及行情服务：</strong>接收账户、资产、资源、价格和转账功能所需的查询及交易数据。</li>
+          <li><strong>Google：</strong>提供可选的 Google 登录及 Google Analytics for Firebase。参见 <a href="https://policies.google.com/privacy?hl=zh-CN">Google 隐私政策</a>及 <a href="https://firebase.google.com/support/privacy">Firebase 隐私说明</a>。</li>
+          <li><strong>Apple 与操作系统/凭据提供商：</strong>按所选平台政策提供应用分发、TestFlight、设备权限、安全存储、生物识别验证及 Passkey 功能。参见 <a href="https://www.apple.com/legal/privacy/">Apple 隐私政策</a>。</li>
+          <li><strong>Android 上的 Google ML Kit：</strong>二维码识别在设备本地完成；该 SDK 可能按其 <a href="https://developers.google.com/ml-kit/terms">条款及数据说明</a>处理设备/应用信息、安装标识、性能和使用诊断。本项不表示 iOS 应用使用 Android ML Kit。</li>
+          <li><strong>包括 Cloudflare 在内的托管、CDN 与安全服务：</strong>处理交付及保护网站和服务所需的网络与请求信息。参见 <a href="https://www.cloudflare.com/privacypolicy/">Cloudflare 隐私政策</a>。</li>
+          <li><strong>DApp、授权、代付、图片/内容及中继服务：</strong>处理您使用相关外部资源或功能所需的信息。DApp 对其后续处理行为自行负责。</li>
+        </ul>
+        <p>我们不出售个人信息，也不将钱包交易活动用于定向广告。我们按相关服务及数据保护条款使用服务提供商，并期望其提供适当的保密与安全保护。我们可能依法披露信息，以应对欺诈或安全威胁，或在具备适当保护的合法组织转移中处理信息。</p>
+      </section>
+      <section>
+        <h3>4. 使用统计与网站技术</h3>
+        <p>已配置的正式构建使用 <strong>Google Analytics for Firebase</strong> 统计安装、会话、活跃情况和应用使用的基础技术信息。应用检查已保存的偏好后，默认开启统计。SDK 提供 <code>first_open</code>、<code>session_start</code>、<code>user_engagement</code> 等自动事件、统计安装标识和标准设备/应用元数据。接收网络请求的服务也会收到 IP 地址。这不代表完全匿名处理。</p>
+        <p>钱包的统计集成不会发送钱包账户名、余额、公私钥、主密码、交易详情、签名、DApp 网址或自定义用户 ID。应用配置关闭了广告存储、广告用户数据和广告个性化；该集成不使用 IDFA/广告标识支持。</p>
+        <p><strong>当前可用控制：</strong>本版本没有应用内统计开关，也没有首次启动的统计提示；之前版本保存的关闭偏好仍会被遵守。您可就统计及隐私请求联系我们。查找相关数据可能需要适当的技术标识，我们无法仅凭邮箱或钱包账户识别每个统计安装实例。卸载应用不会自动清除已收集的历史统计。</p>
+        <p>相关登录网站使用 Cookie、会话及本地存储来保持登录和完成授权。托管/CDN 系统可能使用安全 Cookie 并处理网站流量/性能信息。本隐私政策页面不嵌入应用统计、广告脚本或第三方字体。</p>
+      </section>
+      <section>
+        <h3>5. 权限与设备功能</h3>
+        <ul>
+          <li><strong>相机及选定照片：</strong>用于扫码或识别您选择图片中的二维码。保存收款码或选定 DApp 图片时可能请求相册写入权限。钱包扫码功能不会把整个相册或相机视频流上传给我们。</li>
+          <li><strong>生物识别：</strong>由操作系统确认解锁或签名验证，钱包不会收到面部或指纹模板。</li>
+          <li><strong>剪贴板与分享：</strong>复制或导出信息会使用系统剪贴板或您选择的接收方。剪贴板历史、同步、截图、备份或其他应用可能保留导出的秘密，自动清理剪贴板只是尽力措施。</li>
+        </ul>
+        <p>您可以通过设备设置撤销相机、照片及生物识别权限，相应功能可能不可用。这些系统权限不是 Firebase 统计开关。钱包核心功能不会请求麦克风、精确定位或设备通讯录访问权限。DApp 浏览器中打开的独立网站有各自的隐私行为。</p>
+      </section>
+      <section>
+        <h3>6. 保留、删除与您的选择</h3>
+        <p>我们仅在收集目的所需期间保留链下信息，包括运营有效的关联账户、完成请求、调查滥用、提供支持及履行法律义务。不再需要的信息会被删除或去标识化，但适用的法定保留要求和备份生命周期除外。统计信息的保留遵循已配置的 Google Analytics 保留设置及 Google 适用条款；无法识别个人的汇总统计可能保留更长时间。</p>
+        <p>您可使用应用已有功能管理或移除本地钱包及连接，撤销设备权限，并在 Google 账户中撤销 Google 授权。删除本地密钥前，请先保留所需的恢复材料。移除本地钱包、卸载应用或断开 DApp 不会自动撤销链上权限，也不会删除其他服务已收到的信息；安全存储项目及备份是否保留取决于平台设置。</p>
+        <p>对于关联服务账户信息、支持记录或我们控制的其他信息，请向 <a href="mailto:xiaojuzibtc@gmail.com">xiaojuzibtc@gmail.com</a> 提交请求。根据适用法律，您可能享有访问、更正、删除、获取副本/可携带、限制或反对处理、在依赖同意处理时撤回同意，以及向有关数据保护机构投诉的权利。我们可能要求适度的身份或请求验证。<strong>验证身份无需、也不应发送私钥、助记词或主密码。</strong></p>
+        <p>我们无法删除公开区块链记录、由第三方独立控制的信息或依法必须保留的数据。对于 Apple/TestFlight 或 Google 持有的数据，可能还需要使用其隐私或账户工具。我们会在回复中说明适用的限制。</p>
+      </section>
+      <section>
+        <h3>7. 安全与跨境处理</h3>
+        <p>我们使用加密网络连接、受保护的本地秘密存储及与功能相适应的访问控制。任何系统都无法保证绝对安全。请妥善保护设备、恢复材料、导出密钥及您授权的网站或应用。</p>
+        <p>我们的基础设施及第三方提供商可能在您所在国家/地区以外处理信息，当地法律可能不同。服务处理适用相关提供商的数据保护条款及适用的保护措施。如需了解与您使用功能有关的处理情况，请联系我们。</p>
+      </section>
+      <section>
+        <h3>8. 儿童与政策更新</h3>
+        <p>EOS³ Wallet 并非面向儿童的产品。如您认为儿童向我们提供了个人信息，请联系我们，以便调查并采取适当措施。</p>
+        <p>我们可能因功能、服务提供商或要求变化更新政策，并在本网址公布更新内容和日期。必要时会另行通知或获取同意；仅发布本政策不构成应用内同意机制。</p>
+      </section>
+      <section>
+        <h3>9. 联系我们</h3>
+        <p><strong>VA Labs LLC · EOS³ Wallet</strong><br>隐私及数据请求：<a href="mailto:xiaojuzibtc@gmail.com">xiaojuzibtc@gmail.com</a><br>网站：<a href="https://wallet.eos3.app/">wallet.eos3.app</a></p>
+      </section>
+    </article>
+    <footer><a href="/">EOS³ Wallet</a><span>Privacy Policy · 隐私政策</span><a href="#policy">Back to top · 返回顶部</a></footer>
+  </main>
+</body>
+</html>
