@@ -14,6 +14,7 @@ import { Ionicons } from '@expo/vector-icons';
 
 import BottomSheet from './BottomSheet';
 import CenterDialog from './CenterDialog';
+import { safeDisplayText } from './displayText';
 import { colors, spacing } from '../theme';
 import { ActionSpec } from '../chain/transact';
 import { friendlyChainErrorMessage } from '../chain/sponsor';
@@ -21,6 +22,13 @@ import { biometricEnabled } from '../crypto/vault';
 import { useI18n } from '../i18n';
 
 const BLUE = '#1E88FF';
+
+/** Action data is attacker-controlled; never let invisible controls reorder it. */
+function displayDataValue(value: unknown, empty: string): string {
+  if (value === '') return empty;
+  if (typeof value === 'object' && value !== null) return safeDisplayText(JSON.stringify(value, null, 2));
+  return safeDisplayText(String(value));
+}
 
 /**
  * 交易确认弹层。
@@ -178,7 +186,7 @@ export default function ConfirmTxSheet({
                 <Text style={styles.actionName}>{t('confirmTx.messageLabel')}</Text>
               </View>
               <Text style={styles.messageBody} selectable>
-                {message}
+                {safeDisplayText(message)}
               </Text>
             </View>
           ) : null}
@@ -201,7 +209,7 @@ export default function ConfirmTxSheet({
                 <View key={k} style={styles.kvRow}>
                   <Text style={styles.kvK}>{k}</Text>
                   <Text style={styles.kvV} selectable>
-                    {v === '' ? t('confirmTx.emptyValue') : typeof v === 'object' && v !== null ? JSON.stringify(v, null, 2) : String(v)}
+                    {displayDataValue(v, t('confirmTx.emptyValue'))}
                   </Text>
                 </View>
               ))}

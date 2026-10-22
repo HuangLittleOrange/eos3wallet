@@ -94,6 +94,11 @@ export async function assertSponsoredTxMatchesIntent(opts: {
   let nextUserAction = 0;
   for (const act of tx.actions) {
     const auths = act.authorization;
+    // An action with no authorization needs no signature to execute; it must
+    // never ride along hidden as if it were a sponsor-owned action.
+    if (auths.length === 0) {
+      throw new TxIntentMismatchError(t('txCheck.unexpectedAction', { contract: String(act.account), action: String(act.name) }));
+    }
     if (!auths.some((l) => String(l.actor) === opts.actor)) {
       // 保留 Sponsor 自己授权的附加 action。它们不在本校验的保护范围内。
       continue;

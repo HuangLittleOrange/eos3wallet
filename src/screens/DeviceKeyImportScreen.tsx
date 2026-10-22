@@ -53,6 +53,7 @@ export default function DeviceKeyImportScreen({ route, purpose }: {
   const [hint, setHint] = useState<string | null>(null);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
+  const [accountChoices, setAccountChoices] = useState<string[] | null>(null);
   const [anchorReview, setAnchorReview] = useState<DeviceKeyReview | null>(null);
   const [anchorAccount, setAnchorAccount] = useState('');
   const anchorSessionRef = useRef<AnchorWebSession | null>(null);
@@ -134,6 +135,7 @@ export default function DeviceKeyImportScreen({ route, purpose }: {
   useEffect(() => {
     setAnchorReview(null);
     setAnchorAccount('');
+    setAccountChoices(null);
     anchorSessionRef.current = null;
     anchorNodeRef.current = null;
     return () => { anchorAbortRef.current?.abort(); };
@@ -212,40 +214,53 @@ export default function DeviceKeyImportScreen({ route, purpose }: {
       assertPendingDeviceChain(pending, w.chainId);
       const context = checkContext;
       const isCurrent = () => mountedRef.current && checkContextRef.current === context;
-      let account = '';
+      let accounts: string[] = [];
       // Callback arrival can precede the public RPC/indexer catching up. Retry
       // automatically, while never treating callback parameters as chain proof.
       for (let attempt = 0; attempt < attempts; attempt++) {
-        const accounts = await findAccountsForDeviceKey(w.node, w.historyNode, pending);
+        accounts = await findAccountsForDeviceKey(w.node, w.historyNode, pending);
         if (!isCurrent()) return;
-        if (accounts.length) {
-          try {
-            await importPendingDeviceKey(pending, accounts[0], w.chainId, w.node);
-            if (!isCurrent()) return;
-            account = accounts[0];
-            break;
-          } catch (error: any) {
-            if (error?.message !== t('deviceKeyImport.notYet')) throw error;
-          }
-        }
+        if (accounts.length) break;
         if (attempt + 1 < attempts) await new Promise(resolve => setTimeout(resolve, 1500));
         if (!isCurrent()) return;
       }
-      if (!account) {
+      if (!accounts.length) {
         if (!silent) setHint(t('deviceKeyImport.notYet'));
         return;
       }
-      // 同一把公钥被多个账户授权极少见;真遇到就按链上返回顺序取第一个,其余账户
-      // 用户可以再走一遍私钥导入(私钥就在本机)
-      await w.reloadWallets();
-      w.setAccount(account);
-      nav.reset({ index: 0, routes: [{ name: 'Tabs' }] });
-      Alert.alert(t('deviceKeyImport.successTitle'), t('deviceKeyImport.successBody', { account }));
+      // Never import silently. Anyone can add this public key to their own
+      // account, and a deep link can mount this screen; the user must see and
+      // pick the account name before it becomes the active wallet.
+      setAccountChoices(accounts);
     } catch (e: any) {
       setHint(isConnectionError(e) ? t('walletCtxError.networkError') : e?.message ?? t('deviceKey.failed'));
     } finally {
       busyRef.current = false;
       setBusy(false);
+    }
+  };
+
+  const confirmAccount = async (account: string) => {
+    if (!pending || busyRef.current || editingName || checkContextRef.current !== checkContext ||
+        !accountChoices?.includes(account)) return;
+    busyRef.current = true;
+    setBusy(true);
+    setHint(null);
+    try {
+      assertPendingDeviceChain(pending, w.chainId);
+      await importPendingDeviceKey(pending, account, w.chainId, w.node);
+      if (!mountedRef.current || checkContextRef.current !== checkContext) return;
+      await w.reloadWallets();
+      if (!mountedRef.current || checkContextRef.current !== checkContext) return;
+      w.setAccount(account);
+      setAccountChoices(null);
+      nav.reset({ index: 0, routes: [{ name: 'Tabs' }] });
+      Alert.alert(t('deviceKeyImport.successTitle'), t('deviceKeyImport.successBody', { account }));
+    } catch (e: any) {
+      if (mountedRef.current) setHint(e?.message ?? t('deviceKey.failed'));
+    } finally {
+      busyRef.current = false;
+      if (mountedRef.current) setBusy(false);
     }
   };
 
@@ -407,6 +422,25 @@ export default function DeviceKeyImportScreen({ route, purpose }: {
             <Text style={styles.keyMono} selectable>
               {pending.publicKey}
             </Text>
+          </View>
+        ) : null}
+
+        {accountChoices?.length ? (
+          <View style={styles.keyCard}>
+            <Text style={styles.keyLabel}>{t('deviceKeyImport.confirmTitle')}</Text>
+            <Text style={styles.openHint}>{t('deviceKeyImport.confirmHint')}</Text>
+            {accountChoices.map(account => (
+              <TouchableOpacity
+                key={account}
+                style={styles.secondary}
+                disabled={busy || editingName}
+                accessibilityRole="button"
+                accessibilityLabel={`${t('deviceKeyImport.confirmTitle')}: ${account}`}
+                onPress={() => void confirmAccount(account)}
+              >
+                <Text style={styles.keyMono}>{account}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
         ) : null}
 

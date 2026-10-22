@@ -34,6 +34,7 @@ import {
   remainingAmount,
   selectableAssetCatalog,
   todayRemainingAmount,
+  verifyManagedApp,
 } from '../chain/permissions';
 import { biometricSigner, passkeySigner, passwordSigner } from '../chain/signers';
 import { signingPermission } from '../crypto/vault';
@@ -118,6 +119,10 @@ export default function PermissionDetailScreen() {
         if (!alive) return;
         const current = fresh?.permissions.find(candidate => permissionKey(candidate) === route.params.permissionKey && candidate.managedByPayLimit);
         if (!current) throw new Error(t('permission.noAuthorized'));
+        // The list is remote metadata; prove this exact permission/bot pair
+        // exists on chain before building a transaction that targets it.
+        await verifyManagedApp({ chainId: w.chainId, account: w.account, app: current });
+        if (!alive) return;
         const actions = await buildPendingActions(pending, current);
         if (alive) setConfirm(actions);
       } catch (e: any) {

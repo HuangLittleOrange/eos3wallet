@@ -108,3 +108,13 @@ it('撤销:不是 paylimit 管的权限没有 bot,跳过 delbot', () => {
   const actions = buildRevokeActions({ account: 'alice', app: { ...app, managedByPayLimit: false, botIdHash: undefined }, linkedActions: [] });
   expect(actions.map((a) => a.name)).toEqual(['deleteauth']);
 });
+
+it.each(['active', 'owner'])('撤销:后端响应不能把 deleteauth 指向系统权限 %s', (permission) => {
+  expect(() => buildRevokeActions({ account: 'alice', app: { ...app, permission }, linkedActions: [] }))
+    .toThrow('permission.systemPermission');
+});
+
+it('撤销:会被 Name.from 改写的权限名同样拒绝', () => {
+  expect(() => buildRevokeActions({ account: 'alice', app: { ...app, permission: 'alice-smith' }, linkedActions: [] }))
+    .toThrow('permission.systemPermission');
+});

@@ -101,6 +101,9 @@ it('existing accounts return through device authorization and require a chain ma
   jest.mocked(openAuthSessionAsync).mockResolvedValue({ type: 'success', url: 'eos3wallet://device-key-authorized?account=forged' });
   jest.mocked(findAccountsForDeviceKey).mockResolvedValue(['alice']);
   await act(async () => { await button('passkeyCreate.submit').props.onPress(); });
+  expect(importPendingDeviceKey).not.toHaveBeenCalled();
+  expect(hasText('alice')).toBe(true);
+  await act(async () => { await button('alice').props.onPress(); });
   expect(importPendingDeviceKey).toHaveBeenCalledWith(pending, 'alice', 'vaulta', expect.anything());
   expect(setAccount).toHaveBeenCalledWith('alice');
   expect(mockReset).toHaveBeenCalledWith({ index: 0, routes: [{ name: 'Tabs' }] });
@@ -121,6 +124,7 @@ it('never imports on failed chain authorization verification', async () => {
   jest.mocked(findAccountsForDeviceKey).mockResolvedValue(['alice']);
   jest.mocked(importPendingDeviceKey).mockRejectedValue(new Error('verification failed'));
   await act(async () => { await button('passkeyCreate.submit').props.onPress(); });
+  await act(async () => { await button('alice').props.onPress(); });
   expect(setAccount).not.toHaveBeenCalled();
   expect(mockReset).not.toHaveBeenCalled();
   expect(hasText('verification failed')).toBe(true);

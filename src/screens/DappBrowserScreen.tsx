@@ -393,8 +393,10 @@ export default function DappBrowserScreen() {
           }
           const raw = msg.params?.data;
           const text = typeof raw === 'string' ? raw : '';
+          // Reject control and invisible bidi/format characters: they would be
+          // signed verbatim but could make the displayed text read differently.
           // eslint-disable-next-line no-control-regex
-          if (!text || /[\u0000-\u0008\u000e-\u001f]/.test(text) || text.length > 512) {
+          if (!text || /[\u0000-\u0008\u000E-\u001F\u007F-\u009F\u200B\u200E\u200F\u202A-\u202E\u2060-\u2069\uFEFF]/.test(text) || text.length > 512) {
             replyCurrent(msg.id, false, t('dappBrowser.messageNotPlainText'));
             return;
           }
@@ -829,7 +831,11 @@ export default function DappBrowserScreen() {
             if (s.title) setSiteName(s.title);
           }}
           onShouldStartLoadWithRequest={(r) => {
-            if (browserEsr.interceptUrl(r.url)) return false;
+            // On iOS this callback also fires for subframes and carries
+            // isTopFrame; a subframe must never open a signing/login prompt
+            // attributed to the top-level site. Android only reports top-frame
+            // navigations and omits the flag, so only an explicit false blocks.
+            if (r.isTopFrame !== false && browserEsr.interceptUrl(r.url)) return false;
             if (r.isTopFrame && dappPageOrigin(r.url) !== dappPageOrigin(currentUrl.current)) {
               sessionFailureNotice.current = null;
               browserEsr.invalidate();

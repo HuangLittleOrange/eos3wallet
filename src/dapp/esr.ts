@@ -7,10 +7,10 @@
 // 我们在内置浏览器里拦截 anchor:// 与 esr:// 导航,直接用本钱包完成,
 // 用户不需要再跳去 Anchor —— 他人已经在手机上了。
 import { notifyTransactionApplied } from '../chain/walletDataEvents';
-import { deflateRaw, inflateRaw } from 'pako';
 import { fetch as callbackFetch } from 'expo/fetch';
 import { SigningRequest, ResolvedSigningRequest } from '@wharfkit/signing-request';
 import { ABI, APIClient, Name, PublicKey, Serializer, Signature, SignedTransaction, TimePointSec } from '@wharfkit/antelope';
+import { ESR_ZLIB } from './esrZlib';
 
 import { getSigningAbi } from '../chain/signingAbi';
 import { CHAINS, ChainConfig, ChainId, NodeInfo } from '../chain/config';
@@ -28,14 +28,9 @@ export { isEsrLink, normalizeEsr } from './esr-links';
 /**
  * SigningRequest 需要一个 zlib 实现来解压缩紧凑编码的请求。
  * 必须用纯 JS 的 pako —— react-zlib-js 在 RN 运行时会引用不存在的
- * Browser 全局变量,直接白屏。
+ * Browser 全局变量,直接白屏。解压上限见 esrZlib.ts。
  */
-const zlibOpts = {
-  zlib: {
-    deflateRaw: (data: Uint8Array) => deflateRaw(data),
-    inflateRaw: (data: Uint8Array) => inflateRaw(data),
-  },
-};
+const zlibOpts = ESR_ZLIB;
 
 export const ESR_IDENTITY_TIMEOUT_SECONDS = 5 * 60;
 
@@ -93,6 +88,9 @@ export async function parseEsr(
 ): Promise<{ req: EsrRequest; resolved: ResolvedSigningRequest }> {
   const esr = normalizeEsr(url);
   if (!esr) throw new Error(t('esrError.unrecognizedLink'));
+  // Real requests are a few KB; the cap also bounds uncompressed payloads that
+  // never reach the inflate size limit.
+  if (esr.length > 64_000) throw new Error(t('esrError.unrecognizedLink'));
 
   const request = SigningRequest.from(esr, zlibOpts);
   const callbackOrigin = esrCallbackOrigin(String(request.data.callback ?? ''));

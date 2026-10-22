@@ -16,6 +16,9 @@
 import { Asset } from '@wharfkit/antelope';
 
 import { eos3Get } from './eos3Sign';
+import { isValidAccountName } from './account';
+import { CHAINS, type ChainId } from './config';
+import { readTrustedRpc } from './trustedRpc';
 import { PAYLIMIT_CONTRACT } from '../passkey/constants';
 import type { ActionSpec } from './transact';
 import { t } from '../i18n';
@@ -69,6 +72,41 @@ export type AuthorizedAppsOverview = {
 /** 拉取某账号的已授权应用列表 —— 不需要 eos3.app 平台登录态,按账号名查 */
 export function fetchAuthorizedApps(account: string): Promise<AuthorizedAppsOverview> {
   return eos3Get<AuthorizedAppsOverview>(`/api/passkey-chain/permissions/account/${encodeURIComponent(account)}`);
+}
+
+/**
+ * The overview comes from eos3.app. Before any management action, require the
+ * permission and the paylimit bot row to exist on chain, corroborated by two
+ * built-in RPC hosts (never the selected/custom node). This stops a compromised
+ * or buggy response from turning "revoke app X" into a write against another
+ * bot or a system permission.
+ */
+export async function verifyManagedApp(opts: {
+  chainId: ChainId; account: string; app: AuthorizedApp; signal?: AbortSignal;
+}): Promise<void> {
+  const chain = CHAINS[opts.chainId];
+  const permission = opts.app.permission;
+  const botIdHash = (opts.app.botIdHash ?? '').trim().toLowerCase();
+  if (!chain || !isValidAccountName(permission) || permission === 'owner' || permission === 'active' ||
+      !/^[a-f0-9]{64}$/.test(botIdHash)) throw new Error(t('permission.appNotOnChain'));
+  const verified = await readTrustedRpc<boolean>(chain.chainIdHash, async read => {
+    const [account, table] = await Promise.all([
+      read('/v1/chain/get_account', { account_name: opts.account }),
+      read('/v1/chain/get_table_rows', { json: true, code: PAYLIMIT_CONTRACT, scope: opts.account, table: 'botauth', limit: 1000 }),
+    ]);
+    if (!Array.isArray(account?.permissions) || !Array.isArray(table?.rows) || table.more) {
+      throw new Error(t('permission.appNotOnChain'));
+    }
+    const hasPermission = account.permissions.some((entry: any) =>
+      entry?.perm_name === permission && entry?.parent !== '' &&
+      entry.perm_name !== 'owner' && entry.perm_name !== 'active');
+    const row = table.rows.find((entry: any) =>
+      String(entry?.bot_id_hash ?? '').toLowerCase() === botIdHash &&
+      String(entry?.owner ?? '') === opts.account &&
+      String(entry?.permission ?? '') === permission);
+    return { key: JSON.stringify([hasPermission, row ? String(row.id) : '']), value: hasPermission && !!row };
+  }, () => new Error(t('permission.appNotOnChain')), opts.signal);
+  if (!verified) throw new Error(t('permission.appNotOnChain'));
 }
 
 // ---------- 拼管理 action(只拼,不签;签名/广播交给 transact()) ----------
@@ -171,6 +209,12 @@ export type LinkedAction = { contract: string; action: string };
  * client.getLinkedActions() 从链上现查——概览接口只给了个数。
  */
 export function buildRevokeActions(opts: { account: string; app: AuthorizedApp; linkedActions: LinkedAction[] }): ActionSpec[] {
+  // The overview response is remote input; never let it turn "revoke this app"
+  // into deleting a system permission (or an invalid/coerced name).
+  const permission = opts.app.permission;
+  if (!isValidAccountName(permission) || permission === 'owner' || permission === 'active') {
+    throw new Error(t('permission.systemPermission'));
+  }
   const actions: ActionSpec[] = opts.linkedActions.map((la) => ({
     account: 'eosio',
     name: 'unlinkauth',
@@ -186,7 +230,7 @@ export function buildRevokeActions(opts: { account: string; app: AuthorizedApp; 
   actions.push({
     account: 'eosio',
     name: 'deleteauth',
-    data: { account: opts.account, permission: opts.app.permission },
+    data: { account: opts.account, permission },
   });
   return actions;
 }

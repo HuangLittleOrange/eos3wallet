@@ -13,6 +13,12 @@ jest.mock('../../components/AssetEditSheet', () => 'AssetEditSheet');
 jest.mock('../../components/ResourceRepairSheet', () => ({ useResourceRepair: () => ({ prepare: jest.fn(), offer: () => false, element: null }) }));
 jest.mock('../../chain/WalletContext', () => ({ useWallet: jest.fn(), useWalletSession: jest.fn() }));
 jest.mock('../../chain/eos3Sign', () => ({ eos3Get: jest.fn() }));
+jest.mock('../../chain/trustedRpc', () => ({
+  readTrustedRpc: async (_chain: string, query: any) => (await query(async (path: string) =>
+    path.endsWith('get_account')
+      ? { permissions: [{ perm_name: 'demo', parent: 'active' }] }
+      : { rows: [{ id: 1, bot_id_hash: 'ab'.repeat(32), owner: 'alice', permission: 'demo' }], more: false })).value,
+}));
 jest.mock('../../chain/transact', () => ({ transact: jest.fn(async () => ({})) }));
 jest.mock('../../chain/signers', () => ({ passwordSigner: () => async () => ({}), biometricSigner: jest.fn(), passkeySigner: jest.fn() }));
 jest.mock('../../crypto/vault', () => ({ signingPermission: () => 'active' }));

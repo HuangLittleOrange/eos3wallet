@@ -169,4 +169,13 @@ describe('assertSponsoredTxMatchesIntent', () => {
       assertSponsoredTxMatchesIntent({ ...baseOpts, serializedTransaction: encodeTx([noopAct, userAct, noopAct]) })
     ).resolves.toBeUndefined();
   });
+
+  it('无授权的 action 不能冒充 sponsor 自己的 action 混进来', async () => {
+    const noAuth = Action.from({
+      account: 'eosio.token', name: 'transfer', authorization: [], data: feeData,
+    }, tokenAbi);
+    await expect(
+      assertSponsoredTxMatchesIntent({ ...baseOpts, serializedTransaction: encodeTx([noopAct, userAct, noAuth]) })
+    ).rejects.toBeInstanceOf(TxIntentMismatchError);
+  });
 });

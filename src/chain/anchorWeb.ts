@@ -2,9 +2,9 @@ import { AppState, Linking, Platform } from 'react-native';
 import * as WebBrowser from 'expo-web-browser';
 import { ABI, PrivateKey, PublicKey, Serializer, Signature, Transaction } from '@wharfkit/antelope';
 import { SigningRequest, type CallbackPayload } from '@wharfkit/signing-request';
-import { deflateRaw, inflateRaw } from 'pako';
 import { generateKey } from '../crypto/keys';
 import { sealMessage } from '../dapp/linkCrypto';
+import { ESR_ZLIB } from '../dapp/esrZlib';
 import { listenLinkChannel } from '../dapp/linkSocket';
 import { CHAINS } from './config';
 import { t } from '../i18n';
@@ -15,7 +15,7 @@ export const ANCHOR_WEB_ORIGIN = 'https://vaulta.anchorwallet.io';
 const RETURN_URL = ANCHOR_WEB_RETURN_URL;
 const APP_NAME = 'eos3wallet';
 const CHAIN = CHAINS.vaulta.chainIdHash;
-const esrOptions = { zlib: { deflateRaw: (b: Uint8Array) => deflateRaw(b), inflateRaw: (b: Uint8Array) => inflateRaw(b) } };
+const esrOptions = ESR_ZLIB;
 const linkAbi = ABI.from({ structs: [
   { name: 'link_create', base: '', fields: [{ name: 'session_name', type: 'name' }, { name: 'request_key', type: 'public_key' }, { name: 'user_agent', type: 'string$' }] },
   { name: 'link_info', base: '', fields: [{ name: 'expiration', type: 'time_point_sec' }] },
