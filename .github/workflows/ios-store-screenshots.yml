@@ -1,0 +1,68 @@
+name: iOS Store Screenshots
+run-name: App Store screenshots for 1.0.10 (35)
+
+on:
+  push:
+    branches: [codex/app-store-screenshots]
+    paths:
+      - .github/workflows/ios-store-screenshots.yml
+      - scripts/ios-store-screenshots.py
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-store-screenshots
+  cancel-in-progress: false
+
+jobs:
+  screenshots:
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.4.1.app/Contents/Developer
+      IOS_BUILD_NUMBER: '35'
+      CI: '1'
+      EXPO_NO_DOTENV: '1'
+      EXPO_NO_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          path: controller
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: 56c2bb5eaee6903e578cc6c378c594b76dc51a60
+          persist-credentials: false
+          path: app-source
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '22.23.2'
+      - name: Verify and install the exact release dependencies
+        working-directory: app-source
+        run: |
+          token="$(openssl rand -hex 24)"
+          echo "::stop-commands::$token"
+          trap 'echo "::$token::"' EXIT
+          npm run check:source
+          npm run install:safe
+      - name: Build and capture genuine simulator screenshots without release credentials
+        run: |
+          token="$(openssl rand -hex 24)"
+          echo "::stop-commands::$token"
+          trap 'echo "::$token::"' EXIT
+          python3 controller/scripts/ios-store-screenshots.py app-source store-screenshots
+      - name: Preserve screenshots and provenance
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: ios-store-screenshots-${{ github.run_id }}
+          path: store-screenshots/
+          if-no-files-found: error
+          retention-days: 90
+          compression-level: 0
+      - name: Clean generated build and dependencies
+        if: always()
+        run: |
+          rm -rf "$RUNNER_TEMP/eos3-store-screenshots" app-source/ios app-source/node_modules
