@@ -25,7 +25,7 @@ function fixture(edit = () => {}, approve = true) {
 }
 
 test('approved registry inventory and locked installation policy pass', () => {
-  assert.deepEqual(verifyDependencyPolicy(root), { packages: 1000, blockedInstallScripts: 3 });
+  assert.deepEqual(verifyDependencyPolicy(root), { packages: 1001, blockedInstallScripts: 3 });
 });
 
 test('unreviewed lock changes fail even with a valid npm lockfile', () => {
