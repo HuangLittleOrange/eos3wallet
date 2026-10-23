@@ -56,7 +56,7 @@ export type ChainConfig = {
 export const CHAINS: Record<ChainId, ChainConfig> = {
   vaulta: {
     id: 'vaulta',
-    name: 'Vaulta',
+    name: 'EOS',
     chainIdHash: 'aca376f206b8fc25a6ed44dbdc66547c36c6c33e3a119ffbeaef943642f0e906',
     // Vaulta 改名后用户持有/转账用的代币是 core.vaulta 合约下的 A,不再是旧的
     // eosio.token/EOS——旧 EOS 代币还挂在链上(见 format.ts 的 CANONICAL 表,

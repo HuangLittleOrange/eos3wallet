@@ -2,7 +2,7 @@
 
 **English** | [简体中文](README.zh-CN.md)
 
-An EOS / Vaulta mobile wallet for the Vaulta mainnet, built with Expo SDK 57, React Native, and TypeScript.
+An EOS mobile wallet for the EOS mainnet, built with Expo SDK 57, React Native, and TypeScript.
 
 ## Features
 

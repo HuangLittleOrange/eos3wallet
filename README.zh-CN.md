@@ -2,7 +2,7 @@
 
 [English](README.md) | **简体中文**
 
-基于 Expo SDK 57、React Native 和 TypeScript 的 EOS / Vaulta 移动钱包，面向 Vaulta 主网。
+基于 Expo SDK 57、React Native 和 TypeScript 的 EOS 移动钱包，面向 EOS 主网。
 
 ## 功能
 

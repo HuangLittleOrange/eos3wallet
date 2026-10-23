@@ -39,7 +39,7 @@ export function buildInjectedTokenPocketScript(): string {
 
   function txIdOf(r) { return r && (r.transaction_id || r.transactionId); }
 
-  var NOT_EOS = 'EOS³ Wallet 只支持 EOS / Vaulta,不支持这条链';
+  var NOT_EOS = 'EOS³ Wallet 只支持 EOS,不支持这条链';
 
   /**
    * 官方 SDK 的每个方法都在这里有一个分支,按用途分四类:

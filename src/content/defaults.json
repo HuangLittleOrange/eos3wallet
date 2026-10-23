@@ -11,12 +11,12 @@
         "ru": "EOS³ Wallet — надёжно и просто"
       },
       "subtitle": {
-        "zh": "支持 Vaulta / EOS 主网与 Jungle4 测试网\n助记词、私钥、观察钱包与 Passkey 一站接入",
-        "en": "Supports Vaulta / EOS mainnet and the Jungle4 testnet\nMnemonic, private key, watch wallet and Passkey — all in one place",
-        "ko": "Vaulta / EOS 메인넷과 Jungle4 테스트넷 지원\n니모닉, 개인키, 관찰 지갑, Passkey를 한 곳에서",
-        "vi": "Hỗ trợ mainnet Vaulta / EOS và testnet Jungle4\nCụm từ khôi phục, khóa riêng, ví theo dõi và Passkey — tất cả trong một nơi",
-        "ja": "Vaulta / EOS メインネットと Jungle4 テストネットに対応\nニーモニック、秘密鍵、ウォッチウォレット、Passkey をひとつに",
-        "ru": "Поддерживает основную сеть Vaulta / EOS и тестовую сеть Jungle4\nМнемоническая фраза, закрытый ключ, кошелёк для наблюдения и Passkey — всё в одном месте"
+        "zh": "支持 EOS 主网与 Jungle4 测试网\n助记词、私钥、观察钱包与 Passkey 一站接入",
+        "en": "Supports EOS mainnet and the Jungle4 testnet\nMnemonic, private key, watch wallet and Passkey — all in one place",
+        "ko": "EOS 메인넷과 Jungle4 테스트넷 지원\n니모닉, 개인키, 관찰 지갑, Passkey를 한 곳에서",
+        "vi": "Hỗ trợ mainnet EOS và testnet Jungle4\nCụm từ khôi phục, khóa riêng, ví theo dõi và Passkey — tất cả trong một nơi",
+        "ja": "EOS メインネットと Jungle4 テストネットに対応\nニーモニック、秘密鍵、ウォッチウォレット、Passkey をひとつに",
+        "ru": "Поддерживает основную сеть EOS и тестовую сеть Jungle4\nМнемоническая фраза, закрытый ключ, кошелёк для наблюдения и Passkey — всё в одном месте"
       }
     },
     "banners": [
@@ -587,7 +587,7 @@
       "enabled": true,
       "sortOrder": 8,
       "name": "Unicove",
-      "description": "Official Vaulta interface",
+      "description": "Official EOS interface",
       "iconUrl": "",
       "appUrl": "https://unicove.com",
       "category": "Tools",
@@ -597,32 +597,32 @@
       "translations": {
         "zh": {
           "name": "Unicove",
-          "description": "Vaulta 官方界面",
+          "description": "EOS 官方界面",
           "category": "工具"
         },
         "en": {
           "name": "Unicove",
-          "description": "Official Vaulta interface",
+          "description": "Official EOS interface",
           "category": "Tools"
         },
         "ko": {
           "name": "Unicove",
-          "description": "Vaulta 공식 인터페이스",
+          "description": "EOS 공식 인터페이스",
           "category": "도구"
         },
         "vi": {
           "name": "Unicove",
-          "description": "Giao diện chính thức của Vaulta",
+          "description": "Giao diện chính thức của EOS",
           "category": "Công cụ"
         },
         "ja": {
           "name": "Unicove",
-          "description": "Vaulta 公式インターフェース",
+          "description": "EOS 公式インターフェース",
           "category": "ツール"
         },
         "ru": {
           "name": "Unicove",
-          "description": "Официальный интерфейс Vaulta",
+          "description": "Официальный интерфейс EOS",
           "category": "Инструменты"
         }
       }
