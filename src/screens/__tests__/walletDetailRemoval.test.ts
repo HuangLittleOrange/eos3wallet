@@ -53,7 +53,23 @@ test('details exposes removal for an imported watch account and requires confirm
   expect(session.setAccount).not.toHaveBeenCalled(); expect(removeWallet).not.toHaveBeenCalled();
   await act(async () => { await confirm(); });
   expect(session.setAccount).toHaveBeenCalledWith('');
-  expect(removeWallet).not.toHaveBeenCalled(); expect(session.reloadWallets).not.toHaveBeenCalled();
+  expect(removeWallet).not.toHaveBeenCalled(); expect(session.reloadWallets).toHaveBeenCalledTimes(1);
+  expect(session.setAccount.mock.invocationCallOrder[0]).toBeLessThan(session.reloadWallets.mock.invocationCallOrder[0]);
+  expect(reset).toHaveBeenCalledWith({ index: 0, routes: [{ name: 'Tabs' }] });
+});
+
+test('removing a legacy watch account waits for the remaining wallet selection before returning home', async () => {
+  let finish!: () => void;
+  session.reloadWallets.mockImplementation(() => new Promise<void>(resolve => {
+    finish = () => { session.account = 'remaining'; resolve(); };
+  }));
+  await mount();
+  await act(async () => button('walletDetail.removeWatchWallet').props.onPress());
+  let pending!: Promise<void>;
+  await act(async () => { pending = confirm() as unknown as Promise<void>; });
+  expect(reset).not.toHaveBeenCalled();
+  await act(async () => { finish(); await pending; });
+  expect(session.account).toBe('remaining');
   expect(reset).toHaveBeenCalledWith({ index: 0, routes: [{ name: 'Tabs' }] });
 });
 

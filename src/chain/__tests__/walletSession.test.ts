@@ -163,6 +163,9 @@ it.each([false, true])('移除观察账户后切链和重启都不再恢复它�
   expect((await loadSession())?.perChain?.vaulta?.account).toBe('');
   expect(state.hasAccount).toBe(false);
   expect(state.tokens).toEqual([]);
+  await act(async () => state.reloadWallets());
+  expect(state.account).toBe(expectedAccount);
+  expect(state.hasAccount).toBe(hasSavedWallet);
   await act(async () => state.setChain('jungle4'));
   await act(async () => state.setChain('vaulta'));
   expect(state.account).toBe(expectedAccount);

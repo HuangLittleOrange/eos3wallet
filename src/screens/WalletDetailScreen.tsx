@@ -174,12 +174,13 @@ export default function WalletDetailScreen() {
     try {
       if (wallet) {
         await removeWallet(wallet.id);
-        await w.reloadWallets();
       } else {
         // Legacy watch accounts may only exist in the session, without an index entry.
         // Persist an empty account so it cannot reappear on restart/chain switch.
         w.setAccount('');
       }
+      // 旧版观察账户同样需要重新选择剩余钱包，不能只清空账户就返回首页。
+      await w.reloadWallets();
       // reloadWallets 会选择剩余钱包,没有账户时资产标签页显示创建/导入引导。
       nav.reset({ index: 0, routes: [{ name: 'Tabs' }] });
     } catch (e: any) {
