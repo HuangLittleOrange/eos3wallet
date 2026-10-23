@@ -176,7 +176,7 @@ export default function WalletDetailScreen() {
         await removeWallet(wallet.id);
         await w.reloadWallets();
       } else {
-        // An imported watch account is held in the session, without a key slot.
+        // Legacy watch accounts may only exist in the session, without an index entry.
         // Persist an empty account so it cannot reappear on restart/chain switch.
         w.setAccount('');
       }

@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView } from 'react-native';
+import React, { useRef, useState } from 'react';
+import { Alert, View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Name } from '@wharfkit/antelope';
@@ -8,6 +8,7 @@ import { colors, spacing } from '../theme';
 import PageHeader from '../components/PageHeader';
 import { useWalletSession } from '../chain/WalletContext';
 import { legacyLabel } from '../chain/config';
+import { addWallet, newWalletId } from '../crypto/vault';
 import { useI18n } from '../i18n';
 
 const BLUE = '#1E88FF';
@@ -26,16 +27,31 @@ export default function ImportWatchScreen() {
   const w = useWalletSession();
   const { t } = useI18n();
   const [accountName, setAccountName] = useState('');
+  const [saving, setSaving] = useState(false);
+  const savingRef = useRef(false);
 
   const account = canonicalAccount(accountName);
-  const ready = !!account;
+  const ready = !!account && !saving;
 
-  const watchOnly = () => {
-    if (!account) return;
-    w.setAccount(account);
-    // reset 而不是 navigate——导入这个动作是一次性的,不该留在返回栈里,
-    // 不然「返回」键还能翻回这个已经完成的表单
-    nav.reset({ index: 0, routes: [{ name: 'Tabs' }] });
+  const watchOnly = async () => {
+    if (!account || savingRef.current) return;
+    savingRef.current = true;
+    setSaving(true);
+    try {
+      // 会话只记当前账户；观察钱包也必须写入索引，切换后才能继续保留。
+      // 仅保存账户元数据，不创建私钥或主密码；重复导入由 addWallet 合并。
+      await addWallet({ id: newWalletId(), account, chainId: w.chainId,
+        publicKey: '', source: 'watch', createdAt: Date.now() });
+      await w.reloadWallets();
+      w.setAccount(account);
+      // 导入完成后移除表单，避免返回键再次进入已完成的流程。
+      nav.reset({ index: 0, routes: [{ name: 'Tabs' }] });
+    } catch (e: any) {
+      Alert.alert(t('importSecret.saveFailed'), e?.message ?? t('send.unknownError'));
+    } finally {
+      savingRef.current = false;
+      setSaving(false);
+    }
   };
 
   return (
@@ -58,6 +74,7 @@ export default function ImportWatchScreen() {
             placeholderTextColor={colors.textFaint}
             style={styles.input}
             autoCapitalize="none"
+            editable={!saving}
             maxLength={12}
           />
           <Text style={styles.hint}>{t('importWatch.hint')}</Text>

@@ -684,7 +684,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       historyNode,
       account,
       // 只有当前账户在本机、且是这条链上存的私钥,才可签名
-      readOnly: !currentWallet,
+      readOnly: !currentWallet || currentWallet.source === 'watch',
       currentWallet,
       switchWallet,
       wallets,

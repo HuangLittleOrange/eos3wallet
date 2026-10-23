@@ -323,6 +323,23 @@ describe('change master password', () => {
 });
 
 describe('钱包索引', () => {
+  it('观察钱包无需密钥或主密码即可持久保存，重复导入合并，按链隔离且可独立移除', async () => {
+    const watch = wallet({ id: 'watch', account: 'observer', publicKey: '', source: 'watch', chainId: 'vaulta' });
+    await addWallet(watch);
+    await addWallet({ ...watch, id: 'watch-again', createdAt: watch.createdAt + 1 });
+    const otherChain = { ...watch, id: 'watch-testnet', chainId: 'jungle4' as const };
+    await addWallet(otherChain);
+    expect(await listWallets()).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: watch.id, account: 'observer', source: 'watch', chainId: 'vaulta' }),
+      otherChain,
+    ]));
+    expect(await listWallets()).toHaveLength(2);
+    expect(await hasMasterPassword()).toBe(false);
+    expect([...memStore.keys()]).toEqual(['aurora.wallet.index']);
+    await removeWallet(watch.id);
+    expect(await listWallets()).toEqual([otherChain]);
+  });
+
   it('addWallet + listWallets + removeWallet 基本闭环', async () => {
     const a = wallet({ account: 'alice' });
     const b = wallet({ account: 'bob', publicKey: 'PUB_K1_y' });

@@ -121,6 +121,38 @@ it('主动添加观察账户立即退出无账户状态,重启仍保留', async 
   expect(state.hasAccount).toBe(true);
 });
 
+it('保存的观察钱包切换到其他钱包并重启后仍可选中，且保持只读', async () => {
+  const watch: StoredWallet = { id: 'watch-id', account: 'watchacct', publicKey: '',
+    source: 'watch', createdAt: 2, chainId: 'vaulta' };
+  jest.mocked(listWallets).mockResolvedValue([savedWallet]);
+  await mount();
+  jest.mocked(listWallets).mockResolvedValue([savedWallet, watch]);
+  await act(async () => state.reloadWallets());
+  await act(async () => state.setAccount(watch.account));
+  expect(state.currentWallet).toEqual(watch);
+  expect(state.readOnly).toBe(true);
+  await act(async () => state.switchWallet(savedWallet.id));
+  expect(state.readOnly).toBe(false);
+  await act(async () => root.unmount());
+  await mount();
+  expect(state.currentWallet).toEqual(savedWallet);
+  expect(state.wallets).toContainEqual(watch);
+  await act(async () => state.switchWallet(watch.id));
+  expect(state.currentWallet).toEqual(watch);
+  expect(state.readOnly).toBe(true);
+  await act(async () => state.setChain('jungle4'));
+  expect(state.account).toBe('');
+  await act(async () => state.setChain('vaulta'));
+  expect(state.currentWallet).toEqual(watch);
+  // 删除保存的观察钱包后，会话不能把它复活成临时观察账户。
+  jest.mocked(listWallets).mockResolvedValue([savedWallet]);
+  await act(async () => state.reloadWallets());
+  await act(async () => root.unmount());
+  await mount();
+  expect(state.currentWallet).toEqual(savedWallet);
+  expect(state.wallets).not.toContainEqual(watch);
+});
+
 it.each([false, true])('移除观察账户后切链和重启都不再恢复它（其他钱包=%s）', async hasSavedWallet => {
   const retainedWallets = hasSavedWallet ? [savedWallet] : [];
   const expectedAccount = hasSavedWallet ? savedWallet.account : '';

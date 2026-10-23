@@ -1,7 +1,7 @@
 import type { StoredWallet } from '../crypto/vault';
 import type { ChainId } from './config';
 
-/** A selected observation account remains keyless and is never written to the vault. */
+/** Legacy observation sessions can transact externally without a saved wallet record. */
 export function transactionWallet(w: {
   currentWallet?: StoredWallet; account: string; chainId: ChainId; hasAccount?: boolean;
 }): StoredWallet | undefined {
