@@ -12,7 +12,7 @@ import { useI18n } from '../i18n';
 const BLUE = '#2E7DF7';
 
 /**
- * 合约付费开户，或通过 eos3.app / Anchor 网页授权开通本机钱包。
+ * 合约付费开户，或通过 eos3.app 网页授权开通本机钱包。
  * 先设置主密码：网页授权使用的设备私钥也需加密保存在本机。
  */
 export default function CreateWalletMethodScreen() {
@@ -57,13 +57,6 @@ export default function CreateWalletMethodScreen() {
             desc={t('createWalletMethod.googleOneTapDesc')}
             onPress={() => nav.navigate('PasskeyCreate')}
           />
-          <View style={styles.sep} />
-          <Row
-            icon={<MaterialCommunityIcons name="anchor" size={22} color={BLUE} />}
-            title={t('createWalletMethod.anchorOneTap')}
-            desc={t('createWalletMethod.anchorOneTapDesc')}
-            onPress={() => nav.navigate('DeviceKeyImport', { provider: 'anchor', purpose: 'create' })}
-          />
         </View>
       </View>
     </View>
@@ -99,7 +92,6 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: '#F2F3F5' },
 
   group: { backgroundColor: colors.white, borderRadius: 12, marginBottom: 14, paddingHorizontal: 14 },
-  sep: { height: StyleSheet.hairlineWidth, backgroundColor: '#EEF0F3', marginLeft: 50 },
 
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 14 },
   rowOff: { opacity: 0.45 },
