@@ -5,6 +5,7 @@
   const downloadOrigin = 'https://wallet.eos3.app';
   const names = ['wallet-release.apk', 'SHA256SUMS', 'android-release-evidence.zip'];
   let current;
+  let currentIOS;
 
   function validate(data) {
     if (!data || data.draft !== false || data.prerelease !== false || !Number.isSafeInteger(data.id) || data.id <= 0 ||
@@ -40,6 +41,11 @@
       document.getElementById('github-download').href = current.assets[names[0]].browser_download_url;
       document.getElementById('release-page').href = current.url;
     }
+    if (currentIOS) {
+      document.querySelector('[data-i18n="iosDescription"]').textContent = english
+        ? `EOS³ Wallet ${currentIOS.versionName} is available on TestFlight. No device ID registration required.`
+        : `EOS³ Wallet ${currentIOS.versionName} 已开放 TestFlight 测试，无需登记设备 ID。`;
+    }
     const status = document.getElementById('release-sync');
     if (status) status.textContent = english
       ? 'Downloads verified and synced by the server.' : '下载信息已由后台同步并校验';
@@ -49,6 +55,12 @@
     try {
       current = validate(JSON.parse(document.getElementById('release-data').textContent));
     } catch { /* Preserve the complete server-rendered release if embedded data is unavailable. */ }
+    try {
+      const data = JSON.parse(document.getElementById('ios-release-data').textContent);
+      if (data && /^\d+\.\d+\.\d+$/.test(data.versionName) &&
+          Number.isSafeInteger(data.versionCode) && data.versionCode > 0 &&
+          data.apkUrl === document.getElementById('ios-download').href) currentIOS = data;
+    } catch { /* Preserve the server-rendered iOS description if metadata is unavailable. */ }
     render();
   });
   document.addEventListener('eos3-language-change', render);

@@ -1,0 +1,10 @@
+[Unit]
+Description=Check the published iOS website version once an hour
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=eos3-wallet-ios-site.service
+
+[Install]
+WantedBy=timers.target
