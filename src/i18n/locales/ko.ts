@@ -889,7 +889,7 @@ const ko: Record<keyof typeof zh, string> = {
   'walletDetail.privateKey': '개인키',
   'walletDetail.revealWarning': '절대 스크린샷, 사진 촬영, 타인에게 전달하지 마세요 —— 개인키를 요구하는 사람은 모두 사기꾼입니다.',
   'walletDetail.copySecret': '개인 키 복사',
-  'walletDetail.secretCopyHint': "복사 후 시간 제한은 없습니다. 내보내기 종료 시 또는 앱이 백그라운드로 전환될 때 삭제를 시도합니다. 클립보드 기록과 동기화된 사본은 회수할 수 없습니다.",
+  'walletDetail.secretCopyHint': "복사 후 다른 앱으로 전환하여 붙여넣을 수 있습니다. 내보내기를 닫거나 앱이 백그라운드로 전환되어도 클립보드는 유지됩니다. 사용 후 직접 지워 주세요.",
   'walletDetail.copiedAndClose': '기록했습니다, 닫기',
 
   'dappMore.copyLink': '링크 복사',

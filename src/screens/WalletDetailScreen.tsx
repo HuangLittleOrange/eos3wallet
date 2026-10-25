@@ -71,8 +71,8 @@ export default function WalletDetailScreen() {
   const secretClipboard = useRef<SecretClipboard | null>(null);
   if (!secretClipboard.current) secretClipboard.current = new SecretClipboard(Clipboard);
 
-  // 复制后不限时;退出导出或进入后台时只清理我们写入的那份内容,
-  // 不会误删用户后来复制的其他内容。
+  // 成功复制后保留系统剪贴板，供其他 APP 粘贴；切后台仅取消未完成的复制，
+  // 保留已展示的私钥和截屏保护，直到用户关闭导出或离开页面。
   const writeSecretClipboard = async () => {
     if (!secret || !exportOpen.current || revealedRef.current !== secret || AppState.currentState !== 'active') return;
     const justCopied = secret;
@@ -149,7 +149,7 @@ export default function WalletDetailScreen() {
     exportGeneration.current++;
     exportOpen.current = false;
     revealedRef.current = null;
-    void secretClipboard.current?.clear();
+    void secretClipboard.current?.cancelPendingCopies();
     setExportStep('closed');
     setSecret(null);
     setSecretCopied(false);
@@ -160,7 +160,11 @@ export default function WalletDetailScreen() {
   useFocusEffect(useCallback(() => () => { closeExport(); }, [wallet?.id]));
   useEffect(() => {
     const sub = AppState.addEventListener('change', (state) => {
-      if (state === 'background' && (revealedRef.current !== null || shouldInvalidateBackground())) closeExport();
+      if (state !== 'background') return;
+      if (revealedRef.current !== null) {
+        exportGeneration.current++;
+        void secretClipboard.current?.cancelPendingCopies();
+      } else if (shouldInvalidateBackground()) closeExport();
     });
     return () => sub.remove();
   }, []);

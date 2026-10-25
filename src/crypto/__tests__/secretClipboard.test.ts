@@ -20,16 +20,18 @@ test('explicit export keeps its value without a time limit', async () => {
   expect(clipboard.setStringAsync).toHaveBeenCalledTimes(1);
   expect(jest.getTimerCount()).toBe(0);
 });
-test('exit/background cleanup clears the exported value', async () => {
+test('exit/background cancellation preserves a completed export for pasting into another app', async () => {
   const owner = new SecretClipboard(clipboard);
   await owner.copy('test-secret', () => true);
-  await owner.clear();
-  expect(text).toBe('');
+  await owner.cancelPendingCopies();
+  expect(text).toBe('test-secret');
+  expect(clipboard.getStringAsync).not.toHaveBeenCalled();
+  expect(clipboard.setStringAsync).toHaveBeenCalledTimes(1);
 });
 test('does not delete another value the user copied later', async () => {
   const owner = new SecretClipboard(clipboard);
   await owner.copy('test-secret', () => true); text = 'public address';
-  await owner.clear(); expect(text).toBe('public address');
+  await owner.cancelPendingCopies(); expect(text).toBe('public address');
 });
 test('cancellation clears a native copy that completes after leaving the screen', async () => {
   let finish!: () => void;
@@ -39,14 +41,14 @@ test('cancellation clears a native copy that completes after leaving the screen'
   const owner = new SecretClipboard(clipboard);
   const copied = owner.copy('test-secret', () => true);
   await Promise.resolve();
-  const cleared = owner.clear(); finish();
+  const cleared = owner.cancelPendingCopies(); finish();
   expect(await copied).toBe(false); await cleared;
   expect(text).toBe('');
 });
 test('queued copies from a cancelled export cannot restore a secret', async () => {
   const owner = new SecretClipboard(clipboard);
   const copied = owner.copy('test-secret', () => true);
-  const cleared = owner.clear();
+  const cleared = owner.cancelPendingCopies();
   expect(await copied).toBe(false); await cleared;
   expect(clipboard.setStringAsync).not.toHaveBeenCalled();
 });

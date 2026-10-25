@@ -889,7 +889,7 @@ const en: Record<keyof typeof zh, string> = {
   'walletDetail.privateKey': 'Private key',
   'walletDetail.revealWarning': 'Never screenshot, photograph, or send this to anyone — anyone asking for your private key is a scammer.',
   'walletDetail.copySecret': 'Copy private key',
-  'walletDetail.secretCopyHint': "No time limit after copying. Cleanup is attempted when leaving export or moving the app to the background. Clipboard history and synced copies cannot be revoked.",
+  'walletDetail.secretCopyHint': "After copying, switch to another app to paste. Closing export or moving the app to the background keeps the clipboard intact. Clear it yourself when finished.",
   'walletDetail.copiedAndClose': "I've written it down, close",
 
   'dappMore.copyLink': 'Copy link',

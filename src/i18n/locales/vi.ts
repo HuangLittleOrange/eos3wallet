@@ -889,7 +889,7 @@ const vi: Record<keyof typeof zh, string> = {
   'walletDetail.privateKey': 'Khóa riêng',
   'walletDetail.revealWarning': 'Không chụp màn hình, chụp ảnh hay gửi cho bất kỳ ai —— ai hỏi xin khóa riêng đều là lừa đảo.',
   'walletDetail.copySecret': 'Sao chép khóa riêng tư',
-  'walletDetail.secretCopyHint': "Không giới hạn thời gian sau khi sao chép. Ứng dụng cố xóa khi thoát xuất khóa hoặc chuyển sang nền. Không thể thu hồi lịch sử hay bản sao đã đồng bộ.",
+  'walletDetail.secretCopyHint': "Sau khi sao chép, bạn có thể chuyển sang ứng dụng khác để dán. Đóng màn hình xuất khóa hoặc chuyển ứng dụng sang nền sẽ không xóa bộ nhớ tạm. Hãy tự xóa sau khi sử dụng.",
   'walletDetail.copiedAndClose': 'Tôi đã ghi lại, đóng',
 
   'dappMore.copyLink': 'Sao chép liên kết',

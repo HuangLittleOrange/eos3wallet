@@ -3,8 +3,8 @@ type Clipboard = {
   getStringAsync: () => Promise<string>;
 };
 
-/** Explicit secret export only. Serializes native writes and clears only our last value.
- * Clipboard APIs cannot revoke clipboard history/sync or guarantee cleanup after termination.
+/** Explicit secret export only. Serializes native writes and cancels unfinished copies.
+ * Completed exports stay on the system clipboard so they can be pasted into other apps.
  */
 export class SecretClipboard {
   private value: string | null = null;
@@ -36,11 +36,13 @@ export class SecretClipboard {
         await this.clearOwnedValue();
         return false;
       }
+      // The user now owns this completed export. Drop our reference without clearing it.
+      this.value = null;
       return true;
     });
   }
 
-  clear(): Promise<void> {
+  cancelPendingCopies(): Promise<void> {
     this.generation++;
     return this.enqueue(() => this.clearOwnedValue());
   }

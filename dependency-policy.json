@@ -1,5 +1,5 @@
 {
-  "lockSha256": "4cdb47e20075ab9e85f3f8f7ad0112bffa365e94d62fcb4ba8901a9baa281771",
+  "lockSha256": "08a3b4af5edb78462d5b5c3cf33c2b537a202989fc7022c670402f4e74d472fb",
   "blockedInstallScripts": [
     "node_modules/@firebase/util@1.15.2",
     "node_modules/fsevents@2.3.3",

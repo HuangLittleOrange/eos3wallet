@@ -890,7 +890,7 @@ const zh = {
   'walletDetail.privateKey': '私钥',
   'walletDetail.revealWarning': '切勿截图、拍照或发给任何人 —— 索要私钥的一律是骗子。',
   'walletDetail.copySecret': '复制私钥',
-  'walletDetail.secretCopyHint': "复制后不限时；退出导出或进入后台时会尝试清除。系统历史和同步副本无法撤回。",
+  'walletDetail.secretCopyHint': "复制成功后可切换到其他 APP 粘贴；关闭导出或切后台不会清空剪贴板。使用完毕请自行清除。",
   'walletDetail.copiedAndClose': '我已抄写,关闭',
 
   'dappMore.copyLink': '复制链接',

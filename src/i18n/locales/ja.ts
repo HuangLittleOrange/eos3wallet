@@ -889,7 +889,7 @@ const ja: Record<keyof typeof zh, string> = {
   'walletDetail.privateKey': '秘密鍵',
   'walletDetail.revealWarning': 'スクリーンショットや撮影、他人への送信は絶対にしないでください —— 秘密鍵を求める人は詐欺師です。',
   'walletDetail.copySecret': '秘密鍵をコピー',
-  'walletDetail.secretCopyHint': "コピー後の時間制限はありません。エクスポート終了時やアプリがバックグラウンドに移った際に消去を試みます。履歴や同期済みのコピーは取り消せません。",
+  'walletDetail.secretCopyHint': "コピー後は他のアプリに切り替えて貼り付けられます。エクスポートを閉じたりバックグラウンドに移ったりしてもクリップボードは消去されません。使用後はご自身で消去してください。",
   'walletDetail.copiedAndClose': '書き写しました、閉じる',
 
   'dappMore.copyLink': 'リンクをコピー',
