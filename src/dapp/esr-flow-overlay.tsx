@@ -30,6 +30,9 @@ export default function EsrFlowOverlay({ flow, origin }: {
         origin={origin}
         onClose={flow.close}
         actions={flow.sheetActions(origin)}
+        notice={flow.esr && !flow.esr.req.isIdentity
+          ? t('dappBrowser.transactionExpires', { time: new Date(flow.esr.resolved.transaction.expiration.toMilliseconds()).toLocaleString() })
+          : undefined}
         chainName={flow.chainConfig.name}
         testnet={flow.chainConfig.testnet}
         actor={flow.account}

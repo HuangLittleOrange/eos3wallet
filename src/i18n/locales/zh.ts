@@ -708,6 +708,7 @@ const zh = {
 
   'dappBrowser.cannotLoginTitle': '无法登录',
   'dappBrowser.cannotLoginBody': '该请求需要签名,但当前是只读账户,本机没有保存对应密钥。请先导入该账户的私钥,或改用 passkey 钱包。',
+  'dappBrowser.transactionExpires': '交易到期时间：{{time}}',
   'dappBrowser.cannotParseTitle': '无法解析请求',
   'dappBrowser.cannotParseBody': '签名请求格式不正确',
   'dappBrowser.rejectedTitle': '已拒绝签名',

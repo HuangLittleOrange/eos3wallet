@@ -2,7 +2,7 @@
   "expo": {
     "name": "EOS³ Wallet",
     "slug": "eostp",
-    "version": "1.0.13",
+    "version": "1.0.14",
     "updates": {
       "enabled": false
     },
@@ -26,7 +26,7 @@
     },
     "android": {
       "package": "com.eos3.wallet",
-      "versionCode": 14,
+      "versionCode": 15,
       "icon": "./assets/brand/eos3-app-icon.png",
       "adaptiveIcon": {
         "backgroundColor": "#2E7DF7",

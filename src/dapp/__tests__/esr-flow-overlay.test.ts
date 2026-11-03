@@ -11,7 +11,7 @@ import EsrFlowOverlay from '../esr-flow-overlay';
 const { create, act } = require('react-test-renderer');
 let renderer: any;
 const flow = () => ({
-  esr: { req: { callbackOrigin: 'https://cb.anchor.link' } }, parsing: false,
+  esr: { req: { callbackOrigin: 'https://cb.anchor.link', isIdentity: true } }, parsing: false,
   busy: false, err: null, close: jest.fn(), sheetActions: jest.fn(() => []),
   chainConfig: { name: 'Vaulta', testnet: false }, account: 'alice', permission: 'owner',
   wallet: { id: 'wallet', source: 'passkey' },
@@ -47,4 +47,13 @@ test('standalone parsing shows progress without inventing a browser origin or op
   expect(state.sheetActions).toHaveBeenCalledWith(undefined);
   expect(renderer.root.findByType('ActivityIndicator')).toBeDefined();
   expect(renderer.root.findByType('Text').children).toEqual(['dappBrowser.connectingNode']);
+});
+
+test('a transaction confirmation includes its expiration', async () => {
+  const state = flow();
+  state.esr = { req: { isIdentity: false }, resolved: { transaction: {
+    expiration: { toMilliseconds: () => Date.parse('2026-11-03T09:21:05Z') },
+  } } };
+  await mount(state);
+  expect(renderer.root.findByType('ConfirmTxSheet').props.notice).toBe('dappBrowser.transactionExpires');
 });

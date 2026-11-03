@@ -707,6 +707,7 @@ const ko: Record<keyof typeof zh, string> = {
 
   'dappBrowser.cannotLoginTitle': '로그인할 수 없습니다',
   'dappBrowser.cannotLoginBody': '이 요청은 서명이 필요하지만 현재 계정은 조회 전용이라 이 기기에 해당 키가 저장되어 있지 않습니다. 먼저 해당 계정의 개인키를 가져오거나 passkey 지갑으로 전환해 주세요.',
+  'dappBrowser.transactionExpires': '거래 만료 시간: {{time}}',
   'dappBrowser.cannotParseTitle': '요청을 해석할 수 없습니다',
   'dappBrowser.cannotParseBody': '서명 요청 형식이 올바르지 않습니다',
   'dappBrowser.rejectedTitle': '서명이 거부되었습니다',

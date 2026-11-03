@@ -33,6 +33,10 @@ export { isEsrLink, normalizeEsr } from './esr-links';
 const zlibOpts = ESR_ZLIB;
 
 export const ESR_IDENTITY_TIMEOUT_SECONDS = 5 * 60;
+function assertEsrTransaction(transaction: import('@wharfkit/antelope').Transaction): void {
+  if (transaction.expiration.toMilliseconds() <= Date.now()) throw new Error(t('chainError.expired'));
+  assertVisibleTransaction(transaction, Infinity);
+}
 
 export class EsrIdentityExpiredError extends Error {
   constructor() {
@@ -145,7 +149,7 @@ export async function parseEsr(
     { ...header, chainId: walletChain }
   );
 
-  if (!request.isIdentity()) assertVisibleTransaction(resolved.transaction);
+  if (!request.isIdentity()) assertEsrTransaction(resolved.transaction);
   else {
     assertIdentityNotExpired(resolved);
     // Identity requests can explicitly specify an account/permission instead of placeholders.
@@ -229,7 +233,7 @@ export async function signAndCallback(opts: {
   checkContext();
   assertIdentityNotExpired(opts.resolved);
   esrCallbackOrigin(String(opts.resolved.request.data?.callback ?? ''));
-  if (!opts.resolved.request.isIdentity()) assertVisibleTransaction(opts.resolved.transaction);
+  if (!opts.resolved.request.isIdentity()) assertEsrTransaction(opts.resolved.transaction);
   const broadcast = opts.resolved.request.shouldBroadcast();
 
   let txId: string | undefined;
@@ -241,12 +245,12 @@ export async function signAndCallback(opts: {
   // signingDigest 是只读属性,链 id 已在 resolve 阶段固定进请求里
   const sig: Signature = await signDigest(opts.signer, opts.resolved.signingDigest, {
     transaction: opts.resolved.transaction, chainId: opts.chainId,
-    permission: opts.permission ?? 'active', isCurrent: opts.isCurrent,
+    permission: opts.permission ?? 'active', isCurrent: opts.isCurrent, maxLifetimeMs: Infinity,
   });
   checkContext();
   // System authentication can outlast the proof even when it was valid before signing.
   assertIdentityNotExpired(opts.resolved);
-  if (!opts.resolved.request.isIdentity()) assertVisibleTransaction(opts.resolved.transaction);
+  if (!opts.resolved.request.isIdentity()) assertEsrTransaction(opts.resolved.transaction);
   const signature = String(sig);
 
   if (broadcast) {

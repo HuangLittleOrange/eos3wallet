@@ -707,6 +707,7 @@ const vi: Record<keyof typeof zh, string> = {
 
   'dappBrowser.cannotLoginTitle': 'Không thể đăng nhập',
   'dappBrowser.cannotLoginBody': 'Yêu cầu này cần chữ ký, nhưng tài khoản hiện tại chỉ ở chế độ xem, thiết bị này chưa lưu khóa tương ứng. Vui lòng nhập khóa riêng của tài khoản đó trước, hoặc chuyển sang ví passkey.',
+  'dappBrowser.transactionExpires': 'Giao dịch hết hạn lúc: {{time}}',
   'dappBrowser.cannotParseTitle': 'Không thể phân tích yêu cầu',
   'dappBrowser.cannotParseBody': 'Định dạng yêu cầu ký không hợp lệ',
   'dappBrowser.rejectedTitle': 'Đã từ chối ký',

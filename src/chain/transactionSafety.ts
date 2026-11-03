@@ -3,13 +3,13 @@ import { coreActionAbi } from './coreTokenAbi';
 import type { ActionSpec } from './transact';
 
 /** Fields not represented by the confirmation UI must never be signed silently. */
-export function assertVisibleTransaction(transaction: Transaction): void {
+export function assertVisibleTransaction(transaction: Transaction, maxLifetimeMs = 600_000): void {
   if (!transaction.actions.length || transaction.context_free_actions.length ||
       transaction.transaction_extensions.length || Number(transaction.delay_sec) !== 0) {
     throw new Error('Unsupported transaction fields');
   }
   const expiration = transaction.expiration.toMilliseconds();
-  if (!Number.isFinite(expiration) || expiration <= Date.now() || expiration > Date.now() + 600_000) {
+  if (!Number.isFinite(expiration) || expiration <= Date.now() || expiration > Date.now() + maxLifetimeMs) {
     throw new Error('Invalid transaction expiration');
   }
 }

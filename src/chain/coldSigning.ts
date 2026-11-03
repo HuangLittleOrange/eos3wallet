@@ -5,7 +5,7 @@ import { readDirectSigningKeys } from './importAccount';
 import { tokenPocketResult, tokenPocketSigningQr, verifyColdResult, type ColdTransaction } from './coldSigningProtocol';
 import { t } from '../i18n';
 
-type Options = ColdTransaction & { chainSlug: ChainId; isCurrent?: () => boolean };
+type Options = ColdTransaction & { chainSlug: ChainId; isCurrent?: () => boolean; maxLifetimeMs?: number };
 export type ColdSigningState = {
   id: number; actor: string; permission: string; chainSlug: ChainId; expiration: number;
   loading: boolean; validating: boolean;
@@ -59,7 +59,7 @@ export function requestColdSignature(options: Options): Promise<Signature> {
     if (CHAINS[options.chainSlug].chainIdHash !== options.chainId || options.isCurrent?.() === false) throw new Error(t('dappBrowser.requestChanged'));
     // Snapshot all signed bytes before opening any asynchronous UI or RPC read.
     const transaction = Serializer.decode({ data: Serializer.encode({ object: options.transaction }), type: Transaction });
-    assertVisibleTransaction(transaction);
+    assertVisibleTransaction(transaction, options.maxLifetimeMs);
     const mine = transaction.actions.flatMap(a => a.authorization).filter(a => String(a.actor) === options.actor);
     if (!mine.length || mine.some(a => String(a.permission) !== options.permission)) throw new Error(t('coldSigning.unsupported'));
     options = { ...options, transaction };
@@ -107,7 +107,7 @@ export async function acceptColdSignature(raw: string, id: number): Promise<bool
       permission: p.options.permission, signal: p.controller.signal });
     if (!current(p)) return false;
     if (!keys.includes(p.state.publicKey)) throw new Error(t('coldSigning.keyChanged'));
-    assertVisibleTransaction(p.options.transaction);
+    assertVisibleTransaction(p.options.transaction, p.options.maxLifetimeMs);
     finish(p, undefined, signature);
     return true;
   } catch (error: any) {

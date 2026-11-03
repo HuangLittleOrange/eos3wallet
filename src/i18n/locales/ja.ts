@@ -707,6 +707,7 @@ const ja: Record<keyof typeof zh, string> = {
 
   'dappBrowser.cannotLoginTitle': 'ログインできません',
   'dappBrowser.cannotLoginBody': 'このリクエストには署名が必要ですが、現在のアカウントは閲覧専用で、本機に対応する鍵が保存されていません。先にそのアカウントの秘密鍵をインポートするか、passkey ウォレットに切り替えてください。',
+  'dappBrowser.transactionExpires': '取引の有効期限：{{time}}',
   'dappBrowser.cannotParseTitle': 'リクエストを解析できません',
   'dappBrowser.cannotParseBody': '署名リクエストの形式が正しくありません',
   'dappBrowser.rejectedTitle': '署名を拒否しました',

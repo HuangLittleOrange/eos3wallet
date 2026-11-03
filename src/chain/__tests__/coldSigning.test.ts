@@ -34,6 +34,15 @@ test('TP opens no relay and only completes after signature and fresh authority c
   expect(coldSigningSnapshot()).toBeNull();
   expect(jest.getTimerCount()).toBe(0);
 });
+test('a longer ESR lifetime is honored throughout external signing only when explicitly supplied', async () => {
+  const o = options();
+  o.transaction = Transaction.from({ ...o.transaction, expiration: new Date(Date.now() + 30 * 60_000).toISOString().slice(0, 19) });
+  await expect(requestColdSignature(o)).rejects.toThrow('Invalid transaction expiration');
+  const signed = requestColdSignature({ ...o, maxLifetimeMs: Infinity });
+  await tick();
+  expect(await acceptColdSignature(result(o), coldSigningSnapshot()!.id)).toBe(true);
+  expect((await signed).verifyDigest(o.transaction.signingDigest(o.chainId), key.toPublic())).toBe(true);
+});
 test('bad data keeps the pending request usable and a correct retry completes', async () => {
   const o = options(), signed = requestColdSignature(o); await tick();
   const id = coldSigningSnapshot()!.id;

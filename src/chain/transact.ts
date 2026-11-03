@@ -279,7 +279,7 @@ export async function sponsoredTransact(opts: TransactOpts & { approvedFee?: str
  * 那条路由 session 内部签名,不经过这里。
  */
 export async function signDigest(signer: Signer, digest: Checksum256, external?: {
-  transaction: Transaction; chainId: string; permission: string; isCurrent?: () => boolean;
+  transaction: Transaction; chainId: string; permission: string; isCurrent?: () => boolean; maxLifetimeMs?: number;
 }): Promise<Signature> {
   if (signer.kind === 'external') {
     if (!external || !external.transaction.signingDigest(external.chainId).equals(digest)) throw new Error(t('coldSigning.unsupportedMessage'));

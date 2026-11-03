@@ -46,7 +46,8 @@ describe('normalizeEsr', () => {
 // 用身份请求(identity)做样本:不需要合约 ABI 就能 create/resolve,足够覆盖链校验分支。
 import { deflateRaw, inflateRaw } from 'pako';
 import { SigningRequest } from '@wharfkit/signing-request';
-import { PrivateKey, Transaction } from '@wharfkit/antelope';
+import { ABI, Action, PrivateKey, Transaction } from '@wharfkit/antelope';
+import * as signingAbi from '../../chain/signingAbi';
 import { assertIdentityNotExpired, buildCallback, EsrIdentityExpiredError, linkRequestKey, parseEsr, signAndCallback } from '../esr';
 import { CHAINS } from '../../chain/config';
 import { CpuNetExhaustedError } from '../../chain/sponsor';
@@ -171,6 +172,35 @@ describe('parseEsr 链 ID 校验', () => {
   it('多链请求:列表里有当前链就放行,没有就拒', async () => {
     await expect(parseEsr(identityOn(null, [JUNGLE, VAULTA]), parseOpts)).resolves.toBeTruthy();
     await expect(parseEsr(identityOn(null, [JUNGLE]), parseOpts)).rejects.toThrow('esrError.chainMismatch');
+  });
+});
+
+describe('ESR prepared transaction expiration', () => {
+  const abi = ABI.from({ structs: [{ name: 'propose', base: '', fields: [{ name: 'proposer', type: 'name' }] }],
+    actions: [{ name: 'propose', type: 'propose', ricardian_contract: '' }] });
+  const uri = (offset: number) => {
+    const action = Action.from({ account: 'eosio.msig', name: 'propose',
+      authorization: [{ actor: 'alice', permission: 'active' }], data: { proposer: 'alice' } }, abi);
+    const transaction = Transaction.from({ expiration: new Date(Date.now() + offset).toISOString().slice(0, 19),
+      ref_block_num: 1, ref_block_prefix: 2, actions: [action] });
+    return SigningRequest.createSync({ chainId: VAULTA, transaction }, zlib).encode();
+  };
+  beforeEach(() => {
+    jest.useFakeTimers().setSystemTime(new Date('2026-11-03T08:51:00Z'));
+    mockGetInfo(VAULTA);
+    jest.spyOn(signingAbi, 'getSigningAbi').mockResolvedValue(abi);
+  });
+  afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
+
+  it('accepts a 30-minute prepared multisig request without changing its transaction', async () => {
+    const { req, resolved } = await parseEsr(uri(30 * 60_000), parseOpts);
+    expect(req.actions[0]).toMatchObject({ account: 'eosio.msig', name: 'propose', data: { proposer: 'alice' } });
+    expect(resolved.transaction.expiration.toMilliseconds()).toBe(Date.now() + 30 * 60_000);
+  });
+
+  it('rejects expired requests but accepts longer-lived prepared transactions', async () => {
+    await expect(parseEsr(uri(0), parseOpts)).rejects.toThrow('chainError.expired');
+    await expect(parseEsr(uri(7 * 24 * 60 * 60_000), parseOpts)).resolves.toBeTruthy();
   });
 });
 

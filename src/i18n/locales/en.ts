@@ -707,6 +707,7 @@ const en: Record<keyof typeof zh, string> = {
 
   'dappBrowser.cannotLoginTitle': 'Cannot sign in',
   'dappBrowser.cannotLoginBody': 'This request needs a signature, but the current account is watch-only — no matching key is stored on this device. Import that account\'s private key first, or switch to a passkey wallet.',
+  'dappBrowser.transactionExpires': 'Transaction expires: {{time}}',
   'dappBrowser.cannotParseTitle': 'Cannot parse request',
   'dappBrowser.cannotParseBody': 'Malformed signing request',
   'dappBrowser.rejectedTitle': 'Signing rejected',

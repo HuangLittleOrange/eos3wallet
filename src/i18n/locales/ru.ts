@@ -707,6 +707,7 @@ const ru: Record<keyof typeof zh, string> = {
 
   'dappBrowser.cannotLoginTitle': 'Не удалось войти',
   'dappBrowser.cannotLoginBody': 'Этот запрос требует подписи, но текущий аккаунт доступен только для просмотра — на устройстве нет соответствующего ключа. Сначала импортируйте закрытый ключ этого аккаунта или переключитесь на кошелёк с passkey.',
+  'dappBrowser.transactionExpires': 'Срок действия транзакции: {{time}}',
   'dappBrowser.cannotParseTitle': 'Не удалось разобрать запрос',
   'dappBrowser.cannotParseBody': 'Неверный формат запроса на подпись',
   'dappBrowser.rejectedTitle': 'Подпись отклонена',
