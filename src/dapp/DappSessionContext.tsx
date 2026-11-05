@@ -1,4 +1,6 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { useWalletSession } from '../chain/WalletContext';
+import type { ChainId } from '../chain/config';
 
 /**
  * DApp 浏览会话 —— 全局只记一个"当前/最近打开"的会话。
@@ -13,12 +15,13 @@ export type DappSession = {
   /** 每次 openDapp 递增,用于判断"这是同一个会话被切回来了"还是"要开一个新的" */
   id: number;
   url: string;
+  networkId: ChainId;
 };
 
 type Ctx = {
   session: DappSession | null;
   minimized: boolean;
-  openDapp: (url: string) => void;
+  openDapp: (url: string, expectedNetwork?: ChainId) => void;
   /**
    * 处理一条 Anchor/ESR 签名请求(扫码、LinkSessionProvider 收到的推送)——
    * 跟"打开一个网页"是两码事,不占用/不影响上面的 session 和悬浮球。见
@@ -40,19 +43,23 @@ const DappSessionCtx = createContext<Ctx | null>(null);
 let nextId = 1;
 
 export function DappSessionProvider({ children }: { children: React.ReactNode }) {
+  const { chainId } = useWalletSession();
+  const activeNetwork = useRef(chainId);
+  activeNetwork.current = chainId;
   const [session, setSession] = useState<DappSession | null>(null);
   const [minimized, setMinimized] = useState(false);
-  const [pendingRequest, setPendingRequest] = useState<{ uri: string; signal?: AbortSignal } | null>(null);
-  const pendingEsr = pendingRequest?.uri ?? null;
-  const pendingEsrSignal = pendingRequest?.signal;
+  const [pendingRequest, setPendingRequest] = useState<{ uri: string; signal?: AbortSignal; networkId: ChainId } | null>(null);
+  const pendingEsr = pendingRequest?.networkId === chainId ? pendingRequest.uri : null;
+  const pendingEsrSignal = pendingRequest?.networkId === chainId ? pendingRequest.signal : undefined;
 
-  const openDapp = useCallback((url: string) => {
-    setSession({ id: nextId++, url });
+  const openDapp = useCallback((url: string, expectedNetwork?: ChainId) => {
+    if (expectedNetwork !== undefined && expectedNetwork !== activeNetwork.current) return;
+    setSession({ id: nextId++, url, networkId: activeNetwork.current });
     setMinimized(false);
   }, []);
 
   const openEsr = useCallback((uri: string, signal?: AbortSignal) => {
-    if (!signal?.aborted) setPendingRequest({ uri, signal });
+    if (!signal?.aborted) setPendingRequest({ uri, signal, networkId: activeNetwork.current });
   }, []);
   const clearPendingEsr = useCallback(() => setPendingRequest(null), []);
 
@@ -62,12 +69,19 @@ export function DappSessionProvider({ children }: { children: React.ReactNode })
     setSession(null);
     setMinimized(false);
   }, []);
+  useEffect(() => {
+    setSession(current => current?.networkId === chainId ? current : null);
+    setPendingRequest(current => current?.networkId === chainId ? current : null);
+    setMinimized(false);
+  }, [chainId]);
+  // Hide the old network synchronously, before effects can run or a WebView can reload.
+  const currentSession = session?.networkId === chainId ? session : null;
 
   // 和 WalletContext 同一条规则:Provider 的 value 必须 memo 化,
   // 不然每次渲染造新对象,所有消费方跟着白渲染一遍
   const value = useMemo(
-    () => ({ session, minimized, openDapp, openEsr, pendingEsr, pendingEsrSignal, clearPendingEsr, minimize, restore, close }),
-    [session, minimized, openDapp, openEsr, pendingEsr, pendingEsrSignal, clearPendingEsr, minimize, restore, close]
+    () => ({ session: currentSession, minimized: !!currentSession && minimized, openDapp, openEsr, pendingEsr, pendingEsrSignal, clearPendingEsr, minimize, restore, close }),
+    [currentSession, minimized, openDapp, openEsr, pendingEsr, pendingEsrSignal, clearPendingEsr, minimize, restore, close]
   );
 
   return <DappSessionCtx.Provider value={value}>{children}</DappSessionCtx.Provider>;

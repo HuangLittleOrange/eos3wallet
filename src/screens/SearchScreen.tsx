@@ -12,10 +12,13 @@ import { priceIn } from '../chain/prices';
 import TokenBadge from '../components/TokenBadge';
 import DappRiskSheet from '../components/DappRiskSheet';
 import { useOpenDapp } from '../dapp/useOpenDapp';
-import { DappHistoryItem, clearDappHistory, isUrlLike, listDappHistory, normalizeDappUrl } from '../dapp/dappGate';
+import { clearDappHistory, isUrlLike, normalizeDappUrl } from '../dapp/dappGate';
+import { useDappRecords } from '../dapp/useDappRecords';
 import { useI18n } from '../i18n';
 import { useFocusedAppContent } from '../content/useFocusedAppContent';
 import { visibleItems } from '../content/types';
+import { projectsForNetwork } from '../content/networkDiscovery';
+import NetworkSelector from '../components/NetworkSelector';
 
 const BLUE = '#1E88FF';
 
@@ -25,7 +28,8 @@ export default function SearchScreen() {
   const w = useWallet();
   const { t, locale } = useI18n();
   const [tab, setTab] = useState(0);
-  const { projects } = useFocusedAppContent(Platform.OS !== 'web' && tab === 1);
+  const { projects: allProjects } = useFocusedAppContent(Platform.OS !== 'web' && tab === 1);
+  const projects = useMemo(() => projectsForNetwork(allProjects, w.chainId), [allProjects, w.chainId]);
 
   const TABS = Platform.OS === 'web' ? [t('search.myTokens')] : [t('search.myTokens'), t('search.dapp')];
 
@@ -43,15 +47,10 @@ export default function SearchScreen() {
   }), [projects, locale]);
   const { open, pending, cancel, confirm } = useOpenDapp(() => nav.goBack());
   const [q, setQ] = useState('');
-  const [history, setHistory] = useState<DappHistoryItem[]>([]);
-
-  useEffect(() => {
-    listDappHistory().then(setHistory);
-  }, []);
+  const { history } = useDappRecords(w.chainId);
 
   const clearHistory = () => {
-    clearDappHistory();
-    setHistory([]);
+    void clearDappHistory(w.chainId);
   };
 
   const urlSuggestion = isUrlLike(q) ? normalizeDappUrl(q) : null;
@@ -74,6 +73,7 @@ export default function SearchScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
+      <View style={{ paddingHorizontal: spacing.lg }}><NetworkSelector /></View>
       <View style={styles.searchRow}>
         <View style={styles.searchBox}>
           <Ionicons name="search" size={20} color={colors.textSub} />

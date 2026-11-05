@@ -113,12 +113,20 @@ test('save-image permission failures report failure; retries report success afte
 
 test('favorites are not toggled off when already saved', async () => {
   await send('addFavorite');
-  expect(toggleDappFavorite).toHaveBeenCalledWith(options.url, 'alcor.exchange');
+  expect(toggleDappFavorite).toHaveBeenCalledWith(options.url, 'alcor.exchange', 'vaulta');
   expect(options.onFavorited).toHaveBeenCalledTimes(1);
   jest.mocked(isDappFavorite).mockResolvedValueOnce(true);
   await send('addFavorite');
   expect(toggleDappFavorite).toHaveBeenCalledTimes(1);
   expect(options.reply).toHaveBeenLastCalledWith('doc:1', true, true);
+});
+
+test('browser favorites use the current network for lookup and storage', async () => {
+  options = { ...options, networkId: 'jungle4' };
+  await act(async () => renderer.update(React.createElement(Harness)));
+  await send('addFavorite');
+  expect(isDappFavorite).toHaveBeenCalledWith(options.url, 'jungle4');
+  expect(toggleDappFavorite).toHaveBeenCalledWith(options.url, 'alcor.exchange', 'jungle4');
 });
 
 test.each(['getIdentity', 'requestSignature', 'signTransaction', 'arbitrarySignature', 'unknown'])

@@ -1,12 +1,16 @@
-import React, { useCallback, useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Dimensions, FlatList, Alert, Image } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 
 import { colors, spacing } from '../theme';
 import PageHeader from '../components/PageHeader';
-import { DappHistoryItem, clearDappHistory, listDappHistory, removeDappHistoryItem } from '../dapp/dappGate';
+import { clearDappHistory, removeDappHistoryItem } from '../dapp/dappGate';
+import { useDappRecords } from '../dapp/useDappRecords';
+import { useWalletSession } from '../chain/WalletContext';
+import NetworkSelector from '../components/NetworkSelector';
+import UnassignedDappRecords from '../components/UnassignedDappRecords';
 import { useDappSession } from '../dapp/DappSessionContext';
 import { useI18n } from '../i18n';
 
@@ -29,18 +33,13 @@ export default function DappTabsScreen() {
   const insets = useSafeAreaInsets();
   const { session, minimized, openDapp } = useDappSession();
   const { t } = useI18n();
-  const [tabs, setTabs] = useState<DappHistoryItem[]>([]);
-
-  useFocusEffect(
-    useCallback(() => {
-      listDappHistory().then(setTabs);
-    }, [])
-  );
+  const { chainId } = useWalletSession();
+  const { history: tabs, unassignedHistory } = useDappRecords(chainId);
 
   const minimizedUrl = minimized ? session?.url : undefined;
 
   const openTab = (url: string) => {
-    openDapp(url);
+    openDapp(url, chainId);
     nav.goBack();
   };
 
@@ -53,8 +52,7 @@ export default function DappTabsScreen() {
   };
 
   const closeTab = async (url: string) => {
-    await removeDappHistoryItem(url);
-    setTabs(await listDappHistory());
+    await removeDappHistoryItem(url, chainId);
   };
 
   const clearAll = () => {
@@ -65,8 +63,7 @@ export default function DappTabsScreen() {
         text: t('dappTabs.clear'),
         style: 'destructive',
         onPress: async () => {
-          await clearDappHistory();
-          setTabs([]);
+          await clearDappHistory(chainId);
         },
       },
     ]);
@@ -75,6 +72,7 @@ export default function DappTabsScreen() {
   return (
     <View style={styles.root}>
       <PageHeader title={tabs.length ? t('dappTabs.titleWithCount', { count: tabs.length }) : t('dappTabs.title')} />
+      <View style={{ paddingHorizontal: spacing.lg }}><NetworkSelector /></View>
 
       <FlatList
         data={tabs}
@@ -93,6 +91,7 @@ export default function DappTabsScreen() {
             </TouchableOpacity>
           </View>
         }
+        ListFooterComponent={<UnassignedDappRecords kind="history" entries={unassignedHistory} networkId={chainId} existingUrls={tabs.map(item => item.url)} />}
         renderItem={({ item }) => {
           const isMinimized = item.url === minimizedUrl;
           const host = item.url.replace(/^https?:\/\//, '').replace(/\/.*$/, '');

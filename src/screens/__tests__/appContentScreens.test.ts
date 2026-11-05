@@ -20,7 +20,9 @@ jest.mock('expo-image', () => ({ Image: 'Image' }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Ionicons', MaterialCommunityIcons: 'MaterialCommunityIcons', FontAwesome: 'FontAwesome' }));
 jest.mock('../../components/DappRiskSheet', () => 'DappRiskSheet');
 jest.mock('../../components/TokenBadge', () => 'TokenBadge');
-jest.mock('../../chain/WalletContext', () => ({ useWallet: () => ({ tokens: [], prices: {} }), useWalletSession: () => ({ walletsReadError: false }) }));
+jest.mock('../../components/NetworkSelector', () => 'NetworkSelector');
+let mockNetwork = 'vaulta';
+jest.mock('../../chain/WalletContext', () => ({ useWallet: () => ({ tokens: [], prices: {}, chainId: mockNetwork }), useWalletSession: () => ({ walletsReadError: false, chainId: mockNetwork }) }));
 jest.mock('../../chain/MessagesContext', () => ({ useMessages: jest.fn() }));
 jest.mock('../../components/PageHeader', () => 'PageHeader');
 jest.mock('../../dapp/useOpenDapp', () => ({ useOpenDapp: jest.fn() }));
@@ -28,6 +30,7 @@ jest.mock('../../dapp/DappSessionContext', () => ({ useDappSession: () => ({ ses
 jest.mock('../../dapp/dappGate', () => ({
   listDappHistory: jest.fn(async () => []), listDappFavorites: jest.fn(async () => []),
   clearDappHistory: jest.fn(), removeDappFavorite: jest.fn(), toggleDappFavorite: jest.fn(),
+  subscribeDappRecords: () => () => {}, assignDappRecord: jest.fn(),
   isUrlLike: () => false, normalizeDappUrl: (url: string) => url,
 }));
 jest.mock('../../i18n', () => ({ useI18n: jest.fn() }));
@@ -87,6 +90,7 @@ beforeEach(() => {
   (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
   jest.useFakeTimers();
   jest.clearAllMocks();
+  mockNetwork = 'vaulta';
   setLocale('en');
   setContent();
   jest.mocked(useMessages).mockReturnValue({ messages: [], unreadCount: 0, markAllRead: jest.fn() });
@@ -127,6 +131,24 @@ it('应用图标跨页面和间隔重新进入复用磁盘缓存标识，换图�
   setContent(empty, [project('cached', { iconUrl: 'https://images.example/app-icon-v2.png' })]);
   await act(async () => renderer.update(React.createElement(SearchScreen)));
   expect(remoteImages().map((image: any) => image.props.source.uri)).toEqual(['https://images.example/app-icon-v2.png']);
+});
+
+it.each([DiscoverScreen, SearchScreen])('切换网络立即过滤应用并打开对应网络的网址', async screen => {
+  setContent(empty, [project('main-only'), project('shared', { networkUrls: { vaulta: 'https://main.example', jungle4: 'https://test.example' } })]);
+  await render(screen);
+  if (screen === SearchScreen) await pressText('search.dapp');
+  expect(textValues()).toContain('main-only');
+  await pressText('shared');
+  expect(open).toHaveBeenLastCalledWith('https://main.example');
+  mockNetwork = 'jungle4';
+  await act(async () => { renderer.update(React.createElement(screen)); });
+  expect(textValues()).not.toContain('main-only');
+  await pressText('shared');
+  expect(open).toHaveBeenLastCalledWith('https://test.example');
+  setContent(empty, [project('main-only')]);
+  await act(async () => { renderer.update(React.createElement(screen)); });
+  expect(textValues()).not.toContain('main-only');
+  expect(textValues()).toContain('content.emptyDapps');
 });
 
 it('轮播缩到一张或清空时重置位置且停止自动播放', async () => {

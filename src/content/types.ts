@@ -1,8 +1,9 @@
 import type { LocaleId } from '../i18n';
+import type { ChainId } from '../chain/config';
 
 export type LocalizedText = Partial<Record<LocaleId, string>>;
 
-export type ContentItem = { id: string; enabled: boolean; sortOrder: number };
+export type ContentItem = { id: string; enabled: boolean; sortOrder: number; networkIds?: ChainId[] };
 export type ContentBanner = ContentItem & {
   imageUrl?: string;
   url?: string;
@@ -52,6 +53,8 @@ export type AppContent = {
 };
 
 export type AppBrowseProject = ContentItem & {
+  /** When present, only explicitly configured deployments are available. */
+  networkUrls?: Partial<Record<ChainId, string>>;
   name: string;
   description: string;
   iconUrl: string;

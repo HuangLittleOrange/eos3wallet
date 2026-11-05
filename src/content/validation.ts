@@ -1,4 +1,5 @@
 import type { AppBrowseProject, AppContent, AppContentResponse, ContentItem, LocalizedText } from './types';
+import { isChainId, type ChainId } from '../chain/config';
 
 const LOCALES = new Set(['zh', 'en', 'ja', 'ko', 'vi', 'ru']);
 const COLOR = /^#(?:[0-9a-f]{3}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
@@ -46,7 +47,13 @@ function optionalURL(value: unknown): string | undefined {
 function item(value: Record<string, unknown>): ContentItem {
   const id = text(value.id, 80, true);
   if (id !== id.trim() || !Number.isInteger(value.sortOrder) || Math.abs(Number(value.sortOrder)) > 1_000_000) invalid();
-  return { id, sortOrder: value.sortOrder as number, enabled: boolean(value.enabled) };
+  let networkIds: ChainId[] | undefined;
+  if (value.networkIds !== undefined) {
+    if (!Array.isArray(value.networkIds) || !value.networkIds.every(isChainId)
+      || new Set(value.networkIds).size !== value.networkIds.length) invalid();
+    networkIds = value.networkIds as ChainId[];
+  }
+  return { id, sortOrder: value.sortOrder as number, enabled: boolean(value.enabled), networkIds };
 }
 function items<T extends ContentItem>(value: unknown, parse: (raw: Record<string, unknown>) => T): T[] {
   if (!Array.isArray(value) || value.length > 100) invalid();
@@ -98,6 +105,14 @@ export function parseAppContent(value: unknown): AppContent {
 
 export function parseAppProjects(value: unknown): AppBrowseProject[] {
   return items(value, (p) => {
+    let networkUrls: AppBrowseProject['networkUrls'];
+    if (p.networkUrls !== undefined) {
+      networkUrls = {};
+      for (const [network, target] of Object.entries(record(p.networkUrls))) {
+        if (!isChainId(network)) invalid();
+        networkUrls[network] = url(target, true);
+      }
+    }
     const translations: AppBrowseProject['translations'] = {};
     if (p.translations !== undefined && p.translations !== null) {
       for (const [locale, entry] of Object.entries(record(p.translations))) {
@@ -110,7 +125,7 @@ export function parseAppProjects(value: unknown): AppBrowseProject[] {
         translations[locale as keyof typeof translations] = translated;
       }
     }
-    return { ...item(p), name: text(p.name, 80, true), description: text(p.description, 500),
+    return { ...item(p), networkUrls, name: text(p.name, 80, true), description: text(p.description, 500),
       category: text(p.category, 40), appUrl: url(p.appUrl, true),
       iconUrl: p.iconUrl === '' ? '' : url(p.iconUrl, true), featured: boolean(p.featured),
       color: p.color === undefined || p.color === '' ? undefined : color(p.color),

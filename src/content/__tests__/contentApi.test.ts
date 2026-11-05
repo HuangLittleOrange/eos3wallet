@@ -15,7 +15,7 @@ afterEach(() => { jest.useRealTimers(); });
 it('reads the public catalog without credentials and validates the complete payload', async () => {
   jest.mocked(fetchWithRetry).mockResolvedValue(reply(async () => JSON.stringify(payload)));
   await expect(fetchAppContent()).resolves.toEqual(payload);
-  expect(fetchWithRetry).toHaveBeenCalledWith(expect.stringMatching(/\/api\/app-content$/),
+  expect(fetchWithRetry).toHaveBeenCalledWith(expect.stringMatching(/\/api\/app-content\?discoveryNetworks=1$/),
     expect.objectContaining({ credentials: 'omit', signal: expect.any(AbortSignal) }), { attempts: 2 });
   expect(jest.getTimerCount()).toBe(0);
 });
