@@ -31,7 +31,7 @@ const GROUPS: Item[][] = [
   ],
   [
     { icon: 'translate', labelKey: 'me.language', route: 'Language' },
-    // Android 可下载安装包；iOS 打开后台配置的安装或商店页面。
+    // 自定义检查更新只用于 Android；iOS 由 App Store / TestFlight 管理。
     ...(canCheckUpdates ? [{ icon: 'cellphone-arrow-down', labelKey: 'me.checkUpdate', action: 'checkUpdate' } as Item] : []),
   ],
 ];

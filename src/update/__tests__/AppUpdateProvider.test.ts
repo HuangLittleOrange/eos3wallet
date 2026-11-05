@@ -1,6 +1,7 @@
 jest.mock('react-native', () => ({ AppState: { currentState: 'active', addEventListener: jest.fn(() => ({ remove: jest.fn() })) } }));
 jest.mock('../../components/AppUpdateSheet', () => 'AppUpdateSheet');
-jest.mock('../appUpdate', () => ({ canCheckUpdates: true, checkForUpdate: jest.fn() }));
+let mockCanCheckUpdates = true;
+jest.mock('../appUpdate', () => ({ get canCheckUpdates() { return mockCanCheckUpdates; }, checkForUpdate: jest.fn() }));
 import React from 'react';
 import { AppState } from 'react-native';
 import { AppUpdateProvider, useAppUpdates } from '../AppUpdateProvider';
@@ -23,6 +24,7 @@ async function transition(state: 'active' | 'background' | 'inactive') {
 beforeEach(() => {
   (globalThis as any).IS_REACT_ACT_ENVIRONMENT = true;
   jest.useFakeTimers(); jest.clearAllMocks(); AppState.currentState = 'active'; network.mockResolvedValue(null);
+  mockCanCheckUpdates = true;
 });
 afterEach(async () => {
   if (renderer) await act(async () => renderer.unmount()); renderer = null;
@@ -33,6 +35,18 @@ test('cold launch checks without login or opening the Me screen and presents rel
   network.mockResolvedValue(release()); await mount();
   expect(network).toHaveBeenCalledTimes(1);
   expect(prompt().props.release).toMatchObject({ versionName: '1.0.5', releaseNotes: 'Fixes', forceUpdate: false });
+});
+test('disabled platforms never check or present updates on startup, foreground, or manual requests', async () => {
+  mockCanCheckUpdates = false;
+  network.mockResolvedValue(release({ platform: 'ios', forceUpdate: true }));
+  await mount();
+  expect(prompt()).toBeUndefined();
+  await transition('background');
+  await act(async () => jest.advanceTimersByTime(5 * 60 * 1000));
+  await transition('active');
+  await act(async () => { expect(await updates.checkUpdates()).toBeNull(); });
+  expect(network).not.toHaveBeenCalled();
+  expect(prompt()).toBeUndefined();
 });
 test('no update or automatic network errors leave the wallet unobstructed', async () => {
   network.mockRejectedValueOnce(new Error('offline')); await mount(); expect(prompt()).toBeUndefined();

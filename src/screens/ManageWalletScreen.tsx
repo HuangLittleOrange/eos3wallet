@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons, MaterialCommunityIcons, Feather } from '@expo/vector-icons';
@@ -94,18 +94,7 @@ export default function ManageWalletScreen() {
         </ScrollView>
       </View>
 
-      {/* 底部操作栏 —— 硬件钱包还没做,点了给"敬请期待"而不是没反应;
-          原来最右还有个什么都不干的"⋮",撤掉 */}
       <View style={[styles.foot, { paddingBottom: insets.bottom + 10 }]}>
-        <TouchableOpacity
-          style={styles.footItem}
-          activeOpacity={0.6}
-          onPress={() => Alert.alert(t('manageWallet.comingSoonTitle'), t('manageWallet.comingSoonBody'))}
-        >
-          <MaterialCommunityIcons name="cellphone-link" size={22} color={colors.text} />
-          <Text style={styles.footTxt}>{t('manageWallet.hardwareWallet')}</Text>
-        </TouchableOpacity>
-        <View style={styles.footLine} />
         <TouchableOpacity style={styles.footItem} activeOpacity={0.6} onPress={() => nav.navigate('Networks', { manageVisibility: true })}>
           <MaterialCommunityIcons name="view-grid-outline" size={22} color={colors.text} />
           <Text style={styles.footTxt}>{t('manageWallet.manageNetwork')}</Text>
@@ -166,5 +155,4 @@ const styles = StyleSheet.create({
   },
   footItem: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
   footTxt: { fontSize: 15.5, color: colors.text },
-  footLine: { width: StyleSheet.hairlineWidth, height: 26, backgroundColor: '#E0E3E8' },
 });

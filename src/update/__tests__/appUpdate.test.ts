@@ -41,12 +41,13 @@ function mockFetch(impl: () => Promise<any>) {
 const ok = (body: unknown) => Promise.resolve({ ok: true, status: 200, json: async () => body });
 
 describe('checkForUpdate', () => {
-  it('iOS 按 iOS 版本目录检查 HTTPS 安装或商店链接', async () => {
+  it('iOS 不请求自定义更新目录，即使目录返回强制 TestFlight 更新', async () => {
     let mod!: Mod;
     jest.isolateModules(() => { require('react-native').Platform.OS = 'ios'; mod = require('../appUpdate'); });
-    const f = mockFetch(() => ok({ updateAvailable: true, release: release({platform:'ios',apkUrl:'https://apps.apple.com/app/example'}) }));
-    await expect(mod.checkForUpdate()).resolves.toMatchObject({platform:'ios'});
-    expect(String(f.mock.calls[0][0])).toContain('platform=ios&versionCode=3');
+    const f = mockFetch(() => ok({ updateAvailable: true, release: release({platform:'ios',forceUpdate:true,apkUrl:'https://testflight.apple.com/join/example'}) }));
+    await expect(mod.checkForUpdate()).resolves.toBeNull();
+    expect(f).not.toHaveBeenCalled();
+    expect(mod.canCheckUpdates).toBe(false);
     expect(mod.canSelfUpdate).toBe(false);
   });
   it('带上当前的 versionCode 去问后端', async () => {

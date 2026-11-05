@@ -29,7 +29,7 @@ test('the network trigger navigates to a page without opening a modal', async ()
 test('unchecked test networks have no entry or testnet tab in the normal selector', async () => {
   jest.mocked(useNetworkVisibility).mockReturnValue({ enabled: ['vaulta'], ready: true, readError: false });
   await act(async () => { renderer = create(React.createElement(NetworkList, { selected: 'vaulta', onSelect: select })); });
-  expect(button('Vaulta')).toBeDefined();
+  expect(button('EOS')).toBeDefined();
   expect(button('manageWallet.testnet')).toBeUndefined();
   expect(button('Jungle4')).toBeUndefined();
 });
@@ -51,11 +51,11 @@ test('configuration checks network visibility without selecting the network or l
 
 test('page tabs filter networks without switching; selecting a row chooses the network', async () => {
   await act(async () => { renderer = create(React.createElement(NetworkList, { selected: 'vaulta', onSelect: select })); });
-  expect(button('Vaulta')).toBeDefined();
+  expect(button('EOS')).toBeDefined();
   expect(button('Jungle4')).toBeUndefined();
   await act(async () => button('manageWallet.testnet').props.onPress());
   expect(select).not.toHaveBeenCalled();
-  expect(button('Vaulta')).toBeUndefined();
+  expect(button('EOS')).toBeUndefined();
   await act(async () => button('Jungle4').props.onPress());
   expect(select).toHaveBeenCalledWith('jungle4');
   await act(async () => renderer.update(React.createElement(NetworkList, { selected: 'jungle4', onSelect: select })));

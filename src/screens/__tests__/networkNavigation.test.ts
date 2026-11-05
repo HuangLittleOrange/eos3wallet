@@ -37,7 +37,7 @@ test('switch mode selects the network and returns to the previous page', async (
 test('add mode navigates from network choice to create/import with normal page back navigation', async () => {
   jest.mocked(useRoute).mockReturnValue({ params: { addWallet: true } } as any);
   await act(async () => { renderer = create(React.createElement(NetworksScreen)); });
-  await act(async () => button('Vaulta').props.onPress());
+  await act(async () => button('EOS').props.onPress());
   expect(setChain).toHaveBeenCalledWith('vaulta');
   expect(goBack).not.toHaveBeenCalled();
   expect(push).toHaveBeenCalledWith('Networks', { addWallet: true, selectedNetwork: 'vaulta' });

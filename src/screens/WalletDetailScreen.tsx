@@ -248,15 +248,6 @@ export default function WalletDetailScreen() {
           </View>
         </TouchableOpacity>
 
-        <TouchableOpacity
-          style={styles.advanced}
-          activeOpacity={0.6}
-          onPress={() => Alert.alert(t('walletDetail.comingSoonTitle'), t('walletDetail.comingSoonBody'))}
-        >
-          <Text style={styles.advancedTxt}>{t('walletDetail.advancedMode')}</Text>
-          <Ionicons name="chevron-forward" size={15} color={colors.textFaint} />
-        </TouchableOpacity>
-
         <View style={{ flex: 1, minHeight: 40 }} />
 
         {wallet || w.account ? (
@@ -376,9 +367,6 @@ const styles = StyleSheet.create({
   row: { flexDirection: 'row', alignItems: 'center', gap: 8, minHeight: 24 },
   rowLabel: { fontSize: 16, color: colors.text, flex: 1 },
   rowSub: { fontSize: 13, color: colors.textFaint },
-
-  advanced: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', gap: 4, paddingRight: 4, marginBottom: 8 },
-  advancedTxt: { fontSize: 13.5, color: colors.textSub },
 
   deleteBtn: { backgroundColor: '#F0644E', height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center' },
   deleteBtnOff: { opacity: 0.6 },
