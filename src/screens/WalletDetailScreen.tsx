@@ -228,25 +228,22 @@ export default function WalletDetailScreen() {
           </TouchableOpacity>
 
           <Text style={styles.addrLabel}>{t('walletDetail.addressLabel')}</Text>
-          <TouchableOpacity style={styles.addrBox} activeOpacity={0.6} onPress={() => copy('addr')}>
+          <TouchableOpacity style={styles.addrBox} activeOpacity={0.6} disabled={!wallet?.publicKey} onPress={() => copy('addr')}>
             <Text style={styles.addrTxt} selectable numberOfLines={2}>
-              {wallet?.publicKey ?? t('walletDetail.watchOnlyNoKey')}
+              {wallet?.publicKey || t('walletDetail.watchOnlyNoKey')}
             </Text>
-            {wallet ? <Ionicons name="copy-outline" size={16} color={colors.textFaint} /> : null}
+            {wallet?.publicKey ? <Ionicons name="copy-outline" size={16} color={colors.textFaint} /> : null}
           </TouchableOpacity>
           {copied === 'addr' ? <Text style={styles.copiedHint}>{t('walletDetail.addressCopied')}</Text> : null}
         </View>
 
         {/* 导出私钥 */}
-        <TouchableOpacity style={styles.card} activeOpacity={0.6} onPress={openExport}>
+        {!isWatchOnly && !isPasskey ? <TouchableOpacity style={styles.card} activeOpacity={0.6} onPress={openExport}>
           <View style={styles.row}>
             <Text style={styles.rowLabel}>{t('walletDetail.exportKey')}</Text>
-            {isWatchOnly || isPasskey ? (
-              <Text style={styles.rowSub}>{isWatchOnly ? t('walletDetail.watchOnlyNa') : t('walletDetail.protectedByPasskey')}</Text>
-            ) : null}
             <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
           </View>
-        </TouchableOpacity>
+        </TouchableOpacity> : null}
 
         <View style={{ flex: 1, minHeight: 40 }} />
 

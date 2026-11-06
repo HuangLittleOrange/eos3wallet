@@ -4,6 +4,7 @@ jest.mock('@react-navigation/native', () => ({ useNavigation: jest.fn(), useRout
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ bottom: 24 }) }));
 jest.mock('../../components/PageHeader', () => 'PageHeader');
 jest.mock('../../chain/WalletContext', () => ({ useWalletSession: jest.fn() }));
+jest.mock('../../chain/customNetworks', () => ({ useCustomNetworks: () => ({ networks: [], ready: true, readError: false }) }));
 jest.mock('../../chain/networkVisibility', () => ({ useNetworkVisibility: () => ({ enabled: ['vaulta', 'jungle4'], ready: true, readError: false }), setNetworkVisible: jest.fn(async () => {}), retryNetworkVisibility: jest.fn() }));
 jest.mock('../../i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));
 jest.mock('../../navigation/navigationRef', () => ({ navigationRef: { isReady: () => true, navigate: jest.fn() } }));
@@ -12,6 +13,7 @@ import { useNavigation, useRoute } from '@react-navigation/native';
 import { useWalletSession } from '../../chain/WalletContext';
 import NetworksScreen from '../NetworksScreen';
 import { setNetworkVisible } from '../../chain/networkVisibility';
+import { CHAINS } from '../../chain/config';
 const { create, act } = require('react-test-renderer');
 let renderer: any;
 const setChain = jest.fn(), goBack = jest.fn(), replace = jest.fn(), push = jest.fn();
@@ -27,7 +29,6 @@ afterEach(async () => { await act(async () => renderer.unmount()); });
 
 test('switch mode selects the network and returns to the previous page', async () => {
   await act(async () => { renderer = create(React.createElement(NetworksScreen)); });
-  await act(async () => button('manageWallet.testnet').props.onPress());
   expect(setChain).not.toHaveBeenCalled();
   await act(async () => button('Jungle4').props.onPress());
   expect(setChain).toHaveBeenCalledWith('jungle4');
@@ -53,11 +54,30 @@ test('add mode navigates from network choice to create/import with normal page b
 test('visibility mode checks networks and Done returns without switching accounts', async () => {
   jest.mocked(useRoute).mockReturnValue({ params: { manageVisibility: true } } as any);
   await act(async () => { renderer = create(React.createElement(NetworksScreen)); });
-  await act(async () => button('manageWallet.testnet').props.onPress());
   await act(async () => button('Jungle4').props.onPress());
   expect(setNetworkVisible).toHaveBeenCalledWith('jungle4', false);
   expect(setChain).not.toHaveBeenCalled();
   expect(push).not.toHaveBeenCalled();
   await act(async () => renderer.root.findByType('PageHeader').props.right.props.onPress());
   expect(goBack).toHaveBeenCalledTimes(1);
+});
+
+test('testnet add-wallet flow offers import without mainnet-only creation', async () => {
+  jest.mocked(useRoute).mockReturnValue({ params: { addWallet: true, selectedNetwork: 'jungle4' } } as any);
+  await act(async () => { renderer = create(React.createElement(NetworksScreen)); });
+  expect(button('walletList.createWallet')).toBeUndefined();
+  await act(async () => button('walletList.importWallet').props.onPress());
+  expect(replace).toHaveBeenCalledWith('Import');
+});
+
+test('custom EOSIO networks offer import without mainnet-only account creation', async () => {
+  const id = 'custom:example' as const;
+  CHAINS[id] = { ...CHAINS.jungle4, id, custom: true, name: 'Custom' };
+  try {
+    jest.mocked(useRoute).mockReturnValue({ params: { addWallet: true, selectedNetwork: id } } as any);
+    await act(async () => { renderer = create(React.createElement(NetworksScreen)); });
+    expect(button('walletList.createWallet')).toBeUndefined();
+    await act(async () => button('walletList.importWallet').props.onPress());
+    expect(replace).toHaveBeenCalledWith('Import');
+  } finally { delete CHAINS[id]; }
 });

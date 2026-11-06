@@ -41,7 +41,7 @@ export default function PermissionScreen() {
   const perms = w.resources?.permissions ?? [];
 
   const overview = useAuthorizedApps(w.chainId, w.account);
-  const authorized = overview.data?.permissions.filter(app => app.managedByPayLimit);
+  const authorized = w.chainId === 'vaulta' ? overview.data?.permissions.filter(app => app.managedByPayLimit) : undefined;
   const authorizedErr = overview.error?.message;
   const loadingAuthorized = !!w.account && overview.data === undefined && !overview.error;
 
@@ -57,7 +57,7 @@ export default function PermissionScreen() {
         contentContainerStyle={[styles.scroll, { paddingBottom: insets.bottom + 40 }]}
       >
         {/* 已授权应用(paylimit 受限权限)—— 卡片列表,点进去看详情/管理 */}
-        <Text style={styles.sectionTitle}>{t('permission.authorizedApps')}</Text>
+        {w.chainId === 'vaulta' ? <><Text style={styles.sectionTitle}>{t('permission.authorizedApps')}</Text>
         <View style={styles.noteCard}>
           <Ionicons name="shield-checkmark-outline" size={16} color={colors.textSub} />
           <Text style={styles.noteTxt}>{t('permission.authorizedNote')}</Text>
@@ -115,6 +115,7 @@ export default function PermissionScreen() {
           })
         )}
 
+        </> : null}
         {/* 普通链上权限(owner/active/其它自定义 key)—— 只读展示 */}
         <Text style={[styles.sectionTitle, { marginTop: 24 }]}>{t('permission.accountPermissions')}</Text>
         <View style={styles.noteCard}>

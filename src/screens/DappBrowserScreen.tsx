@@ -59,9 +59,6 @@ const CHAIN_BADGE: Record<string, any> = {
   jungle4: require('../../assets/tokens/eos.png'),
 };
 
-// Google 翻译的目标语言代码,跟着 App 当前语言走,不再写死中文
-const TRANSLATE_TARGET: Record<string, string> = { zh: 'zh-CN', en: 'en', ko: 'ko', vi: 'vi', ja: 'ja', ru: 'ru' };
-
 type Req = { id: string; method: string; params?: any; isCurrent?: () => boolean };
 
 export default function DappBrowserScreen() {
@@ -528,7 +525,7 @@ export default function DappBrowserScreen() {
       reply(req.id, true, { transaction_id: res.txId, processed: { id: res.txId } });
       clearPending();
       Alert.alert(t('dappBrowser.broadcastedTitle'), t('dappBrowser.broadcastedBody', { txId: res.txId }), [
-        { text: t('dappBrowser.viewExplorer'), onPress: () => Linking.openURL(res.explorerUrl) },
+        ...(res.explorerUrl ? [{ text: t('dappBrowser.viewExplorer'), onPress: () => { void Linking.openURL(res.explorerUrl); } }] : []),
         { text: t('dappBrowser.done') },
       ]);
     } catch (e: any) {
@@ -619,9 +616,6 @@ export default function DappBrowserScreen() {
             readOnly: canSign ? '' : t('dappBrowser.readOnlySuffix'),
           })
         );
-        return;
-      case 'translate':
-        setUrl(`https://translate.google.com/translate?sl=auto&tl=${TRANSLATE_TARGET[locale]}&u=${encodeURIComponent(url)}`);
         return;
       case 'clearCache':
         webRef.current?.clearCache?.(true);

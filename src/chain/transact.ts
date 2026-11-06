@@ -298,16 +298,13 @@ export async function signDigest(signer: Signer, digest: Checksum256, external?:
 // eoseyes.com 按链分子域名:主网是裸域名,Jungle4 测试网是 jungle4.eoseyes.com——
 // 这个规律是直接在 eoseyes.com 上把网络切换器切到 Jungle4 Testnet、看地址栏实测出来的,
 // 不是猜的。/tx/{64位十六进制哈希}、/account/{账户名} 两条路径也是照实测的链接抄的。
-const EOSEYES_HOST: Record<ChainId, string> = {
-  vaulta: 'eoseyes.com',
-  jungle4: 'jungle4.eoseyes.com',
-};
-
 export function explorerTx(chainId: ChainId, txId: string): string {
-  return `https://${EOSEYES_HOST[chainId]}/tx/${txId}`;
+  const base = CHAINS[chainId].explorerUrl;
+  return base ? `${base}/tx/${encodeURIComponent(txId)}` : '';
 }
 
 /** 账户在区块浏览器上的主页——代币详情页"在浏览器查看更多记录"用 */
 export function explorerAccount(chainId: ChainId, account: string): string {
-  return `https://${EOSEYES_HOST[chainId]}/account/${account}`;
+  const base = CHAINS[chainId].explorerUrl;
+  return base ? `${base}/account/${encodeURIComponent(account)}` : '';
 }

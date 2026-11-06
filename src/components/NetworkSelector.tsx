@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { View, Text, Image, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { CHAINS, networksFor, type ChainId, type NetworkKind } from '../chain/config';
+import { CHAINS, type ChainId } from '../chain/config';
+import { useCustomNetworks } from '../chain/customNetworks';
 import { useWalletSession } from '../chain/WalletContext';
 import { useI18n } from '../i18n';
 import { colors } from '../theme';
@@ -13,7 +14,7 @@ export function NetworkIcon({ networkId, size = 36 }: { networkId: ChainId; size
     {networkId === 'vaulta' ? <Image source={require('../../assets/tokens/vaulta.png')}
       style={{ width: size, height: size, borderRadius: size / 2 }} /> :
       <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: '#21A76B', alignItems: 'center', justifyContent: 'center' }}>
-        <Ionicons name="leaf-outline" size={size * 0.6} color="#fff" />
+        <Ionicons name={networkId === 'jungle4' ? 'leaf-outline' : 'globe-outline'} size={size * 0.6} color="#fff" />
       </View>}
     {CHAINS[networkId].testnet ? <View style={styles.testnetBadge}><Text style={styles.testnetBadgeText}>T</Text></View> : null}
   </View>;
@@ -23,31 +24,17 @@ export function NetworkList({ selected, onSelect, manageVisibility = false }: {
   selected: ChainId; onSelect: (network: ChainId) => void; manageVisibility?: boolean;
 }) {
   const { t } = useI18n();
+  useCustomNetworks();
   const { enabled, ready, readError } = useNetworkVisibility();
   const [busy, setBusy] = useState<ChainId | null>(null);
-  const [kind, setKind] = useState<NetworkKind>(!manageVisibility && CHAINS[selected].testnet ? 'testnet' : 'mainnet');
-  useEffect(() => {
-    if (!manageVisibility) setKind(CHAINS[selected].testnet ? 'testnet' : 'mainnet');
-  }, [selected, manageVisibility]);
-  const kinds = (['mainnet', 'testnet'] as const).filter(value => manageVisibility || networksFor(value).some(network => enabled.includes(network.id)));
-  const activeKind = kinds.includes(kind) ? kind : 'mainnet';
   if (!ready) return <ActivityIndicator style={styles.loading} color="#2980FF" />;
   if (readError) return <View style={styles.error}>
     <Text style={styles.errorText}>{t('network.settingsError')}</Text>
     <TouchableOpacity style={styles.retry} onPress={() => { void retryNetworkVisibility(); }}><Text style={styles.activeText}>{t('content.retry')}</Text></TouchableOpacity>
   </View>;
   return <View style={styles.list}>
-      <View style={styles.tabs}>
-        {kinds.map(value => <TouchableOpacity key={value}
-          accessibilityRole="tab" accessibilityState={{ selected: activeKind === value }}
-          onPress={() => setKind(value)} style={[styles.tab, activeKind === value && styles.activeTab]}>
-          <Text style={[styles.tabText, activeKind === value && styles.activeText]}>
-            {t(value === 'mainnet' ? 'manageWallet.mainnet' : 'manageWallet.testnet')}
-          </Text>
-        </TouchableOpacity>)}
-      </View>
       <ScrollView>
-        {networksFor(activeKind).filter(network => manageVisibility || enabled.includes(network.id)).map(network => <TouchableOpacity key={network.id}
+        {Object.values(CHAINS).filter(network => manageVisibility || enabled.includes(network.id)).map(network => <TouchableOpacity key={network.id}
           accessibilityRole={manageVisibility ? 'checkbox' : 'button'}
           accessibilityState={manageVisibility ? { checked: enabled.includes(network.id), disabled: busy !== null || network.id === 'vaulta' } : { selected: selected === network.id }}
           disabled={manageVisibility && (busy !== null || network.id === 'vaulta')} style={styles.option}
@@ -61,12 +48,19 @@ export function NetworkList({ selected, onSelect, manageVisibility = false }: {
           <NetworkIcon networkId={network.id} />
           <View style={styles.optionLabel}>
             <Text style={styles.name}>{network.name}</Text>
-            <Text style={styles.description}>{t(network.testnet ? 'manageWallet.testnet' : 'manageWallet.mainnet')}</Text>
+            <Text style={styles.description}>{t(network.testnet ? 'manageWallet.testnet' : 'manageWallet.mainnet')}
+              {network.custom ? ` · ${t('network.custom')}` : ''}</Text>
           </View>
           {manageVisibility ? <Ionicons name={enabled.includes(network.id) ? 'checkmark-circle' : 'ellipse-outline'} size={25}
             color={enabled.includes(network.id) ? '#2980FF' : '#BDC2CA'} />
             : selected === network.id ? <Ionicons name="checkmark" size={23} color="#1E88FF" /> : null}
         </TouchableOpacity>)}
+        <TouchableOpacity style={styles.addNetwork} accessibilityLabel={t('network.addCustom')}
+          onPress={() => { if (navigationRef.isReady()) navigationRef.navigate('AddNetwork'); }}>
+          <View style={styles.addIcon}><Ionicons name="add" size={24} color="#2980FF" /></View>
+          <Text style={styles.addText}>{t('network.addCustom')}</Text>
+          <Ionicons name="chevron-forward" size={18} color={colors.textFaint} />
+        </TouchableOpacity>
       </ScrollView>
     </View>;
 }
@@ -96,10 +90,9 @@ const styles = StyleSheet.create({
   error: { padding: 24, alignItems: 'center' },
   errorText: { color: colors.textSub, textAlign: 'center' },
   retry: { minHeight: 44, justifyContent: 'center', marginTop: 12 },
-  tabs: { flexDirection: 'row', gap: 10, marginVertical: 12 },
-  tab: { flex: 1, minHeight: 44, justifyContent: 'center', alignItems: 'center', borderBottomWidth: 2, borderBottomColor: '#F2F3F5' },
-  activeTab: { borderBottomColor: '#2980FF' },
-  tabText: { fontSize: 15, color: colors.textSub },
+  addNetwork: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 76, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.line },
+  addIcon: { width: 36, height: 36, borderRadius: 18, backgroundColor: '#EDF5FF', alignItems: 'center', justifyContent: 'center' },
+  addText: { flex: 1, color: '#2980FF', fontSize: 16, fontWeight: '500' },
   activeText: { color: '#1677FF', fontWeight: '600' },
   option: { flexDirection: 'row', gap: 12, alignItems: 'center', minHeight: 78 },
   optionLabel: { flex: 1 },

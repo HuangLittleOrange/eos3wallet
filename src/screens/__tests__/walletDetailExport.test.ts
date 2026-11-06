@@ -64,6 +64,13 @@ async function reveal() {
   expect(revealDialog().props.visible).toBe(true);
   expect(useScreenCaptureGuard).toHaveBeenLastCalledWith(true, 'wallet-export');
 }
+
+test.each(['watch', 'passkey'])('%s wallets do not expose an unsupported private-key export entry', async source => {
+  session.currentWallet = { ...session.currentWallet, source };
+  await act(async () => { renderer = create(React.createElement(WalletDetailScreen)); });
+  expect(button('walletDetail.exportKey')).toBeUndefined();
+  expect(loadSecret).not.toHaveBeenCalled();
+});
 async function requestCopy() {
   await act(async () => { button('walletDetail.copySecret').props.onPress(); });
   expect(Alert.alert).toHaveBeenLastCalledWith('walletDetail.copySecret', 'walletDetail.clipboardWarning', expect.any(Array));

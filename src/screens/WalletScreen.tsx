@@ -67,7 +67,8 @@ export default function WalletScreen() {
   // 资产区的"资产/授权"分栏——"授权"这栏跟 PermissionScreen 展示的是同一份
   // 数据(paylimit 受限权限),只是给首页开个更快的入口,不用先进"更多工具"。
   // 懒加载:切到这栏才拉一次,避免每次打开首页都多打一发不一定用得上的请求。
-  const [assetTab, setAssetTab] = useState<'tokens' | 'permissions'>('tokens');
+  const [selectedAssetTab, setAssetTab] = useState<'tokens' | 'permissions'>('tokens');
+  const assetTab = w.chainId === 'vaulta' ? selectedAssetTab : 'tokens';
   const authorized = useAuthorizedApps(w.chainId, assetTab === 'permissions' ? w.account : '');
   const authorizedApps = authorized.data?.permissions.filter(p => p.managedByPayLimit) ?? null;
   const authorizedLoading = authorized.refreshing || (assetTab === 'permissions' && !authorized.data && !authorized.error);
@@ -317,11 +318,11 @@ export default function WalletScreen() {
                 {t('wallet.assets')}
               </Text>
             </TouchableOpacity>
-            <TouchableOpacity hitSlop={6} onPress={() => setAssetTab('permissions')}>
+            {w.chainId === 'vaulta' ? <TouchableOpacity hitSlop={6} onPress={() => setAssetTab('permissions')}>
               <Text style={[styles.assetTabTxt, assetTab === 'permissions' && styles.assetTabTxtActive]}>
                 {t('wallet.assetsTabAuthorized')}
               </Text>
-            </TouchableOpacity>
+            </TouchableOpacity> : null}
           </View>
           {assetTab === 'tokens' ? (
             <TouchableOpacity hitSlop={8} onPress={() => nav.navigate('AddToken')}>

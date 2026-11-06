@@ -47,6 +47,8 @@ import { notifyWalletDataChanged } from '../walletDataEvents';
 import { tokenDirectoryCache, tokenDirectoryKey } from '../tokenDirectory';
 import { authorizedAppsCache, authorizedAppsKey } from '../authorizedAppsCache';
 import { eos3Get } from '../eos3Sign';
+import { CHAINS } from '../config';
+import { validateCustomNetwork } from '../customNetworks';
 
 const { act, create } = require('react-test-renderer');
 let state: ReturnType<typeof useWallet>;
@@ -95,6 +97,29 @@ it('首次无账户启动不查询默认账户', async () => {
   for (const client of jest.mocked(ChainClient).mock.results) {
     expect(client.value.getAccount).not.toHaveBeenCalled();
   }
+});
+
+it('自定义网络无历史节点时可切换并恢复自己的账户和节点，不混用主网账户', async () => {
+  const network = validateCustomNetwork({ name: 'Custom', chainIdHash: 'ab'.repeat(32), rpcUrl: 'https://rpc.example.com',
+    backupRpcUrl: '', symbol: 'TST', precision: 4, systemToken: 'eosio.token', resourceContract: 'eosio',
+    testnet: true, historyUrl: '', explorerUrl: '' });
+  CHAINS[network.id] = network;
+  try {
+    await mount();
+    await act(async () => state.setAccount('mainaccount'));
+    await act(async () => state.setChain(network.id));
+    expect(state.account).toBe(''); expect(state.historyNode).toBeUndefined();
+    expect(state.node.url).toBe('https://rpc.example.com');
+    await act(async () => state.setAccount('otheraccount'));
+    await act(async () => state.setChain('vaulta'));
+    expect(state.account).toBe('mainaccount');
+    await act(async () => state.setChain(network.id));
+    expect(state.account).toBe('otheraccount');
+    await act(async () => root.unmount());
+    await mount();
+    expect(state.chainId).toBe(network.id); expect(state.account).toBe('otheraccount');
+    expect(state.historyNode).toBeUndefined();
+  } finally { delete CHAINS[network.id]; }
 });
 
 it('旧占位会话恢复后仍无账户,重启也不会再出现', async () => {
@@ -372,7 +397,7 @@ it('自动切换分别保存 RPC 和历史节点，旧 client 不能覆盖手动
   await act(async () => {
     state.setNode(manual);
     stale.onSwitch!('rpc', rpc);
-    old.onSwitch!('history', previousHistory);
+    old.onSwitch!('history', previousHistory!);
   });
   expect(state.node).toEqual(manual); expect(state.historyNode).toEqual(history);
   expect((await loadSession())?.nodeId).toBe('manual');

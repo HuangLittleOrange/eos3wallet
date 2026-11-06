@@ -129,7 +129,7 @@ export default function SendScreen() {
       setAmount('');
       setMemo('');
       Alert.alert(t('send.txBroadcastTitle'), `TxID\n${res.txId}`, [
-        { text: t('send.viewExplorer'), onPress: () => Linking.openURL(res.explorerUrl) },
+        ...(res.explorerUrl ? [{ text: t('send.viewExplorer'), onPress: () => { void Linking.openURL(res.explorerUrl); } }] : []),
         { text: t('send.done') },
       ]);
     } catch (e: any) {

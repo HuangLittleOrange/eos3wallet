@@ -74,3 +74,16 @@ test('authorized apps clear immediately and late previous-account results stay i
   expect(tokenRows().map((row: any) => row.permission)).toEqual(['new.permission']);
 });
 jest.mock('../../components/NetworkSelector', () => 'NetworkSelector');
+
+test('leaving mainnet hides the EOS3 authorization entry and shows tokens immediately', async () => {
+  jest.mocked(loadTokenPrefs).mockResolvedValue({ hidden: [], added: [] });
+  jest.mocked(fetchAuthorizedApps).mockResolvedValue({ eosAccount: 'wallet-switch-alice', permissions: [], assetCatalog: [] });
+  await act(async () => { renderer = create(React.createElement(WalletScreen)); });
+  const authorizedButton = () => renderer.root.findAllByType('TouchableOpacity').find((node: any) =>
+    node.findAllByType('Text').some((text: any) => text.children.includes('wallet.assetsTabAuthorized')));
+  await act(async () => authorizedButton().props.onPress());
+  session = { ...session, chainId: 'jungle4', tokens: balances };
+  await act(async () => renderer.update(React.createElement(WalletScreen)));
+  expect(authorizedButton()).toBeUndefined();
+  expect(tokenRows()).toEqual(balances);
+});

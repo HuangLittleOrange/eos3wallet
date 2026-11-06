@@ -50,7 +50,6 @@ export default function DappMoreSheet({
     { key: 'share', label: t('dappMore.share'), icon: 'share-variant-outline' },
     { key: 'favorite', label: favorited ? t('dappMore.unfavorite') : t('dappMore.favorite'), icon: favorited ? 'star' : 'star-outline', active: favorited },
     { key: 'details', label: t('dappMore.details'), icon: 'file-document-outline' },
-    { key: 'translate', label: t('dappMore.translate'), icon: 'translate' },
     { key: 'clearCache', label: t('dappMore.clearCache'), icon: 'broom' },
   ];
 

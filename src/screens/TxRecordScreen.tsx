@@ -50,7 +50,7 @@ export default function TxRecordScreen() {
       // 这个按钮之前没有 onPress,点了什么都不会发生——用户以为交易号已经在
       // 剪贴板里了,粘贴出去的却是残留的旧内容
       { text: t('txRecord.copyTxId'), onPress: () => Clipboard.setStringAsync(tx.id).catch(() => {}) },
-      { text: t('txRecord.viewOnExplorer'), onPress: () => Linking.openURL(url) },
+      ...(url ? [{ text: t('txRecord.viewOnExplorer'), onPress: () => { void Linking.openURL(url); } }] : []),
       { text: t('txRecord.close'), style: 'cancel' },
     ]);
   };
@@ -136,7 +136,7 @@ export default function TxRecordScreen() {
               <ActivityIndicator style={styles.footerLoading} color={colors.textFaint} size="small" />
             ) : (
               /* 交易记录来自历史节点(Hyperion),不是 RPC 节点——来源标注要写对 */
-              <Text style={styles.footer}>{t('txRecord.dataSource', { node: w.historyNode.name })}</Text>
+              w.historyNode ? <Text style={styles.footer}>{t('txRecord.dataSource', { node: w.historyNode.name })}</Text> : null
             )
           ) : null
         }

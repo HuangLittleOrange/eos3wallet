@@ -49,7 +49,7 @@ type WalletSessionState = {
   defaultHistoryNodes: NodeInfo[];
   node: NodeInfo;
   /** 历史节点(Hyperion)——和 node 各自独立选择,切 RPC 节点不会带着它一起变 */
-  historyNode: NodeInfo;
+  historyNode: NodeInfo | undefined;
   account: string;
   /** 只读模式:当前账户没有本机保存的私钥 */
   readOnly: boolean;
@@ -85,7 +85,7 @@ type WalletSessionState = {
 
   setChain: (id: ChainId) => void;
   setNode: (n: NodeInfo) => void;
-  setHistoryNode: (n: NodeInfo) => void;
+  setHistoryNode: (n: NodeInfo | undefined) => void;
   setPriceSource: (id: PriceSourceId) => void;
   setAccount: (a: string) => void;
   /** force: 忽略行情的 60 秒缓存,强制现拉最新价——只给下拉刷新这类用户主动要求「现在就要」的场景用 */
@@ -133,7 +133,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const previousCatalog=useRef(catalog);
   const [chainId, setChainId] = useState<ChainId>(DEFAULT_CHAIN);
   const [node, setNodeState] = useState<NodeInfo>(catalogRef.current[DEFAULT_CHAIN].rpc[0]);
-  const [historyNode, setHistoryNodeState] = useState<NodeInfo>(catalogRef.current[DEFAULT_CHAIN].history[0]);
+  const [historyNode, setHistoryNodeState] = useState<NodeInfo | undefined>(catalogRef.current[DEFAULT_CHAIN].history[0]);
   const [account, setAccountState] = useState('');
   // 显式选中的具体那条 StoredWallet(而不只是账户名)——同一账户存着多把钥匙时,
   // 靠这个记住"当前是拿哪把在签",不设置就退回 currentWallet 的默认挑选逻辑
@@ -160,7 +160,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const [priceSource, setPriceSource] = useState<PriceSourceId>(DEFAULT_PRICE_SOURCE);
   const [tokenSnapshot, setTokenSnapshot] = useState<{ scope: string; value: TokenSnapshot | null } | null>(null);
   const snapshotScope = JSON.stringify([chainId, account]);
-  const dataScope = JSON.stringify([chainId, account, node.url, historyNode.url]);
+  const dataScope = JSON.stringify([chainId, account, node.url, historyNode?.url]);
   const activeDataScope = useRef(dataScope); activeDataScope.current = dataScope;
   const selectedPriceSource = useRef(priceSource); selectedPriceSource.current = priceSource;
   const cachedSnapshot = account
@@ -169,8 +169,8 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
   const cachedTokens = cachedSnapshot?.tokens ?? null;
   const cachedAt = cachedSnapshot?.updatedAt ?? null;
   const loadedWalletsRef = useRef<StoredWallet[]>([]);
-  const activeSessionRef = useRef({ chainId, account, walletId, nodeId: node.id, historyNodeId: historyNode.id });
-  activeSessionRef.current = { chainId, account, walletId, nodeId: node.id, historyNodeId: historyNode.id };
+  const activeSessionRef = useRef({ chainId, account, walletId, nodeId: node.id, historyNodeId: historyNode?.id });
+  activeSessionRef.current = { chainId, account, walletId, nodeId: node.id, historyNodeId: historyNode?.id };
 
   const switchedNode = useRef<(kind: NodeKind, next: NodeInfo) => void>(() => {});
   const currentClient = useRef<ChainClient | null>(null);
@@ -181,7 +181,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         const active = activeSessionRef.current;
         // A manual node/chain switch retires this client immediately.
         if (currentClient.current !== created || active.chainId !== chainId
-          || active.nodeId !== node.id || active.historyNodeId !== historyNode.id) return;
+          || active.nodeId !== node.id || active.historyNodeId !== historyNode?.id) return;
         switchedNode.current(kind, next);
       },
     });
@@ -260,7 +260,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
    * perChain —— 切链时要靠它把每条链各自的账户原样还回来。
    */
   const persistSession = useCallback(
-    (s: { chainId: ChainId; account: string; walletId?: string; nodeId: string; historyNodeId: string }) => {
+    (s: { chainId: ChainId; account: string; walletId?: string; nodeId: string; historyNodeId?: string }) => {
       chainAccountsRef.current = {
         ...chainAccountsRef.current,
         [s.chainId]: { account: s.account, walletId: s.walletId, hasAccount: !!s.account },
@@ -276,17 +276,17 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       currentClient.current = null;
       activeSessionRef.current = { ...activeSessionRef.current, nodeId: n.id };
       setNodeState(n);
-      persistSession({ chainId, account, walletId, nodeId: n.id, historyNodeId: historyNode.id });
+      persistSession({ chainId, account, walletId, nodeId: n.id, historyNodeId: historyNode?.id });
     },
     [chainId, account, walletId, historyNode, persistSession]
   );
 
   const setHistoryNode = useCallback(
-    (n: NodeInfo) => {
+    (n: NodeInfo | undefined) => {
       currentClient.current = null;
-      activeSessionRef.current = { ...activeSessionRef.current, historyNodeId: n.id };
+      activeSessionRef.current = { ...activeSessionRef.current, historyNodeId: n?.id };
       setHistoryNodeState(n);
-      persistSession({ chainId, account, walletId, nodeId: node.id, historyNodeId: n.id });
+      persistSession({ chainId, account, walletId, nodeId: node.id, historyNodeId: n?.id });
     },
     [chainId, account, walletId, node, persistSession]
   );
@@ -301,12 +301,12 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(()=>{
     if(!bootReady)return;
-    const previous=previousCatalog.current[chainId];
+    const previous=previousCatalog.current[chainId] ?? catalog[chainId];
     const next=catalog[chainId];
     const rpc=next.rpc.find(n=>n.id===node.id)??(previous.rpc.some(n=>n.id===node.id)?next.rpc[0]:node);
-    const history=next.history.find(n=>n.id===historyNode.id)??(previous.history.some(n=>n.id===historyNode.id)?next.history[0]:historyNode);
-    const changed=rpc.url!==node.url||rpc.id!==node.id||rpc.name!==node.name||history.url!==historyNode.url||history.id!==historyNode.id||history.name!==historyNode.name;
-    if(changed){setNodeState(rpc);setHistoryNodeState(history);persistSession({chainId,account,walletId,nodeId:rpc.id,historyNodeId:history.id});}
+    const history=next.history.find(n=>n.id===historyNode?.id)??(previous.history.some(n=>n.id===historyNode?.id)?next.history[0]:historyNode);
+    const changed=rpc.url!==node.url||rpc.id!==node.id||rpc.name!==node.name||history?.url!==historyNode?.url||history?.id!==historyNode?.id||history?.name!==historyNode?.name;
+    if(changed){setNodeState(rpc);setHistoryNodeState(history);persistSession({chainId,account,walletId,nodeId:rpc.id,historyNodeId:history?.id});}
     previousCatalog.current=catalog;
   },[catalog,bootReady,chainId,node,historyNode,account,walletId,persistSession]);
 
@@ -368,7 +368,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
             chainId: session.chainId,
             ...selected,
             nodeId: restoredNode?.id ?? catalogRef.current[session.chainId].rpc[0].id,
-            historyNodeId: restoredHistoryNode?.id ?? catalogRef.current[session.chainId].history[0].id,
+            historyNodeId: restoredHistoryNode?.id ?? catalogRef.current[session.chainId].history[0]?.id,
           });
         } else if (loaded.length > 0) {
           // 还没存过 session(比如这个功能上线前就已经导入过钱包),
@@ -382,7 +382,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
           persistSession({
             chainId: restoredChain, account: loaded[0].account, walletId: loaded[0].id,
             nodeId: catalogRef.current[restoredChain].rpc[0].id,
-            historyNodeId: catalogRef.current[restoredChain].history[0].id,
+            historyNodeId: catalogRef.current[restoredChain].history[0]?.id,
           });
         }
       } else if (!readFailed) {
@@ -604,7 +604,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
         account: nextAccount,
         walletId: nextWalletId,
         nodeId: nextNode.id,
-        historyNodeId: nextHistoryNode.id,
+        historyNodeId: nextHistoryNode?.id,
       });
     },
     [chainId, account, walletId, wallets, persistSession]
@@ -624,7 +624,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       activeSessionRef.current = { ...activeSessionRef.current, account: a };
       setAccountState(a);
       setWalletIdState(selectedWallet?.id);
-      persistSession({ chainId, account: a, walletId: selectedWallet?.id, nodeId: node.id, historyNodeId: historyNode.id });
+      persistSession({ chainId, account: a, walletId: selectedWallet?.id, nodeId: node.id, historyNodeId: historyNode?.id });
     },
     [chainId, node, historyNode, persistSession]
   );
@@ -637,7 +637,7 @@ export function WalletProvider({ children }: { children: React.ReactNode }) {
       activeSessionRef.current = { ...activeSessionRef.current, account: target.account };
       setAccountState(target.account);
       setWalletIdState(id);
-      persistSession({ chainId, account: target.account, walletId: id, nodeId: node.id, historyNodeId: historyNode.id });
+      persistSession({ chainId, account: target.account, walletId: id, nodeId: node.id, historyNodeId: historyNode?.id });
     },
     [chainId, node, historyNode, wallets, persistSession]
   );

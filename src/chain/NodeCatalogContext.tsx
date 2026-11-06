@@ -1,8 +1,9 @@
-import React,{createContext,useCallback,useContext,useEffect,useRef,useState} from 'react';
+import React,{createContext,useCallback,useContext,useEffect,useMemo,useRef,useState} from 'react';
 import {AppState} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {fetchPublicJSON,OPERATIONS_API_BASE_URL} from '../net/publicApi';
-import {BUILTIN_NODE_CATALOG,parseNodeCatalog,type NodeCatalog} from './nodeCatalog';
+import {BUILTIN_NODE_CATALOG,parseNodeCatalog,withCustomNetworkNodes,type NodeCatalog} from './nodeCatalog';
+import {useCustomNetworks} from './customNetworks';
 
 const KEY='eos3.nodes.v1:'+OPERATIONS_API_BASE_URL;
 const MAX_BYTES=256*1024;
@@ -45,6 +46,13 @@ export function NodeCatalogProvider({children}:{children:React.ReactNode}) {
   // Hydrate the catalog before restoring a session that may refer to a remote node ID.
   return hydrated?<RefreshCtx.Provider value={refreshNow}><Ctx.Provider value={catalog}>{children}</Ctx.Provider></RefreshCtx.Provider>:null;
 }
-export function useNodeCatalog():NodeCatalog{return useContext(Ctx);}
+export function useNodeCatalog():NodeCatalog{
+  const catalog=useContext(Ctx);
+  const {networks}=useCustomNetworks();
+  return useMemo(()=>withCustomNetworkNodes(catalog),[catalog,networks]);
+}
 
-export function useNodeCatalogRefresh(){return useContext(RefreshCtx);}
+export function useNodeCatalogRefresh(){
+  const refresh=useContext(RefreshCtx);
+  return useCallback(async()=>withCustomNetworkNodes(await refresh()),[refresh]);
+}

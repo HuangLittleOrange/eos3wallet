@@ -16,6 +16,7 @@ import { NodeCatalogProvider } from './src/chain/NodeCatalogContext';
 import { AppUpdateProvider } from './src/update/AppUpdateProvider';
 import { UsageAnalyticsProvider } from './src/analytics/UsageAnalyticsContext';
 import NetworkVisibilityGuard from './src/components/NetworkVisibilityGuard';
+import CustomNetworksProvider from './src/components/CustomNetworksProvider';
 
 export default function App() {
   return (
@@ -23,6 +24,7 @@ export default function App() {
       <StatusBar style="dark" />
       <UsageAnalyticsProvider>
       <I18nProvider>
+        <CustomNetworksProvider>
         <AppContentProvider>
           <NodeCatalogProvider>
           <WalletProvider>
@@ -51,6 +53,7 @@ export default function App() {
           </WalletProvider>
           </NodeCatalogProvider>
         </AppContentProvider>
+        </CustomNetworksProvider>
       </I18nProvider>
       </UsageAnalyticsProvider>
     </SafeAreaProvider>

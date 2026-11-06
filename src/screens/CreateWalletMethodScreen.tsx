@@ -39,7 +39,7 @@ export default function CreateWalletMethodScreen() {
   return (
     <View style={styles.root}>
       <PageHeader title={t('createWalletMethod.title')} />
-      <View style={{ padding: spacing.lg }}>
+      {w.chainId === 'vaulta' ? <View style={{ padding: spacing.lg }}>
         <View style={styles.group}>
           <Row
             icon={<MaterialCommunityIcons name="file-sign" size={22} color={BLUE} />}
@@ -58,7 +58,7 @@ export default function CreateWalletMethodScreen() {
             onPress={() => nav.navigate('PasskeyCreate')}
           />
         </View>
-      </View>
+      </View> : null}
     </View>
   );
 }

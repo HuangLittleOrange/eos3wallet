@@ -20,7 +20,6 @@ import { localizedText, visibleItems } from '../content/types';
 import { discoveryModules } from '../content/modules';
 import { discoveryForNetwork } from '../content/networkDiscovery';
 import { useWalletSession } from '../chain/WalletContext';
-import NetworkSelector from '../components/NetworkSelector';
 import UnassignedDappRecords from '../components/UnassignedDappRecords';
 import { useDappRecords } from '../dapp/useDappRecords';
 
@@ -127,7 +126,6 @@ export default function DiscoverScreen() {
 
   return (
     <View style={[styles.root, { paddingTop: insets.top }]}>
-      <View style={{ paddingHorizontal: spacing.lg }}><NetworkSelector /></View>
       <View style={styles.searchRow}>
         <View style={styles.searchBox}>
           <TouchableOpacity style={styles.searchTap} activeOpacity={0.7} onPress={() => nav.navigate('Search')}>

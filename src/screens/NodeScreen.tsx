@@ -182,7 +182,7 @@ export default function NodeScreen() {
             if (w.node.id === n.id) w.setNode(defaultRpcNodes[0]);
           } else {
             setCustomHistoryNodes(next);
-            if (w.historyNode.id === n.id) w.setHistoryNode(defaultHistoryNodes[0]);
+            if (w.historyNode?.id === n.id) w.setHistoryNode(defaultHistoryNodes[0] ?? next[0]);
           }
         },
       },
@@ -193,7 +193,7 @@ export default function NodeScreen() {
     const defaults = kind === 'rpc' ? defaultRpcNodes : defaultHistoryNodes;
     const customs = kind === 'rpc' ? customRpcNodes : customHistoryNodes;
     const probes = kind === 'rpc' ? rpcProbes : historyProbes;
-    const selectedId = kind === 'rpc' ? w.node.id : w.historyNode.id;
+    const selectedId = kind === 'rpc' ? w.node.id : w.historyNode?.id;
     const onPick = (n: NodeInfo) => (kind === 'rpc' ? w.setNode(n) : w.setHistoryNode(n));
     const blockLabel = kind === 'rpc' ? t('node.blockHeight') : t('node.indexedTo');
 

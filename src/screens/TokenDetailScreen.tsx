@@ -261,7 +261,7 @@ export default function TokenDetailScreen() {
             {loadingMore ? (
               <ActivityIndicator style={styles.loadMoreIndicator} color={colors.textFaint} size="small" />
             ) : null}
-            {w.historyNode ? (
+            {w.historyNode && explorerAccount(w.chainId, w.account) ? (
               <TouchableOpacity
                 style={styles.explorerHint}
                 activeOpacity={0.6}
@@ -373,7 +373,7 @@ export default function TokenDetailScreen() {
             ) : null}
           </View>
 
-          <TouchableOpacity
+          {explorerAccount(w.chainId, token.contract) ? <TouchableOpacity
             style={styles.explorerBtn}
             activeOpacity={0.85}
             onPress={() => {
@@ -383,7 +383,7 @@ export default function TokenDetailScreen() {
           >
             <Ionicons name="open-outline" size={17} color={BLUE} style={{ marginRight: 6 }} />
             <Text style={styles.explorerBtnTxt}>{t('tokenDetail.viewOnExplorer')}</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> : null}
         </View>
       </BottomSheet>
 

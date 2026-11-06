@@ -4,8 +4,9 @@ import { fetch as fetchRpc } from 'expo/fetch';
 const MAX_RESPONSE = 2 * 1024 * 1024;
 type RpcRead = (path: string, body: unknown) => Promise<any>;
 
-/** Two distinct built-in HTTPS hosts must agree. A selected/custom endpoint or
- * remote node catalog cannot grant itself trust. Bounds include response bodies.
+/** Two distinct configured HTTPS hosts must agree. Built-in networks retain their
+ * pinned sources; custom networks use only the endpoints explicitly saved at creation.
+ * A selected node or remote node catalog cannot grant itself trust. Bounds include response bodies.
  * This tolerates one malicious source, not two colluding trust anchors.
  */
 export async function readTrustedRpc<T>(chainId: string,

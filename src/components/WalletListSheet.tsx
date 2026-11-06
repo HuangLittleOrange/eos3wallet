@@ -393,10 +393,11 @@ export default function WalletListSheet({ visible, onClose }: { visible: boolean
               </TouchableOpacity>
             </View>
             <View style={styles.methodLine} /></> : null}
-            <TouchableOpacity style={[styles.methodRow, panel === 'manage' && styles.manageRow]} activeOpacity={0.6} onPress={panel === 'manage' ? goManageWallets : goCreate}>
+            {panel === 'manage' || w.chainId === 'vaulta' ? <><TouchableOpacity style={[styles.methodRow, panel === 'manage' && styles.manageRow]} activeOpacity={0.6} onPress={panel === 'manage' ? goManageWallets : goCreate}>
               <Text style={styles.methodRowTxt}>{t(panel === 'manage' ? 'manageWallet.title' : 'walletList.createWallet')}</Text>
             </TouchableOpacity>
             <View style={styles.methodLine} />
+            </> : null}
             {/* Passkey 登录已收进「创建钱包」页,那里和邮箱注册这类 passkey 相关的
                 入口放在一起更好找,这个二选一的小菜单也不用堆三行 */}
             <TouchableOpacity style={[styles.methodRow, panel === 'manage' && styles.manageRow]} activeOpacity={0.6} onPress={panel === 'manage' ? goSelectNetwork : goImport}>

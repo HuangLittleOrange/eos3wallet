@@ -1,7 +1,8 @@
 // 链与节点配置
 import { t } from '../i18n';
 
-export type ChainId = 'vaulta' | 'jungle4';
+export type CustomChainId = `custom:${string}`;
+export type ChainId = 'vaulta' | 'jungle4' | CustomChainId;
 export type NetworkKind = 'mainnet' | 'testnet';
 
 export type NodeInfo = {
@@ -52,6 +53,9 @@ export type ChainConfig = {
    * 和"用哪个节点查历史",切换其中一个不会影响另一个。
    */
   historyNodes: NodeInfo[];
+  /** User-configured EOSIO networks never replace the built-in chain identities. */
+  custom?: boolean;
+  explorerUrl?: string;
 };
 
 export const CHAINS: Record<ChainId, ChainConfig> = {
@@ -72,6 +76,7 @@ export const CHAINS: Record<ChainId, ChainConfig> = {
     systemToken: 'core.vaulta',
     resourceContract: 'core.vaulta',
     testnet: false,
+    explorerUrl: 'https://eoseyes.com',
     // 参考 TP 节点设置页实测补齐的公共 BP 节点列表(2026-08 逐个探测过 /v1/chain/get_info
     // 确认能连、证书有效才收进来)。原来的 EOS Nation / EOS Detroit 地址已经连不上了——
     // 两家都换了域名,这里顺手更新到它们现在实际在用的地址,不是新加的服务商。
@@ -109,6 +114,7 @@ export const CHAINS: Record<ChainId, ChainConfig> = {
     systemToken: 'eosio.token',
     resourceContract: 'eosio',
     testnet: true,
+    explorerUrl: 'https://jungle4.eoseyes.com',
     nodes: [
       { id: 'greymass-j4', name: 'Greymass', url: 'https://jungle4.greymass.com' },
       { id: 'cryptolions', name: 'CryptoLions', url: 'https://jungle4.cryptolions.io' },
@@ -125,7 +131,8 @@ export const CHAINS: Record<ChainId, ChainConfig> = {
  * 字符串没法在语言切换后跟着变,所以改成一个按需调用、每次都读最新语言的函数。
  */
 export function legacyLabel(id: ChainId): string {
-  return id === 'vaulta' ? t('chainConfig.legacyVaulta') : t('chainConfig.legacyJungle4');
+  return id === 'vaulta' ? t('chainConfig.legacyVaulta') : id === 'jungle4'
+    ? t('chainConfig.legacyJungle4') : t(CHAINS[id].testnet ? 'manageWallet.testnet' : 'manageWallet.mainnet');
 }
 
 export const DEFAULT_CHAIN: ChainId = 'vaulta';

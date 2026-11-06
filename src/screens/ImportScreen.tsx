@@ -69,13 +69,14 @@ export default function ImportScreen() {
             desc={t('import.privateKeyDesc')}
             onPress={() => nav.navigate('ImportSecret', { mode: 'privatekey' })}
           />
-          <View style={styles.sep} />
+          {w.chainId === 'vaulta' ? <><View style={styles.sep} />
           <Row
             icon={<MaterialCommunityIcons name="cellphone-key" size={22} color={BLUE} />}
             title={t('import.viaEos3')}
             desc={t('import.viaEos3Desc')}
             onPress={() => nav.navigate('DeviceKeyImport')}
           />
+          </> : null}
         </View>
 
         <View style={styles.group}>

@@ -111,17 +111,17 @@ export default function TransactionDetailScreen() {
                 <Text style={styles.rowValue}>{tx.time.replace('T', ' ').replace(/\.\d+Z?$/, '').replace('Z', '')}</Text>
               </View>
             </View>
-            <View style={styles.qrWrap}>
+            {explorerUrl ? <View style={styles.qrWrap}>
               <QRCode value={explorerUrl} size={72} color="#3A3A3A" backgroundColor="#fff" />
               <Text style={styles.qrLabel}>{t('txDetail.queryUrl')}</Text>
-            </View>
+            </View> : null}
           </View>
         </View>
 
-        <TouchableOpacity style={styles.explorerBtn} activeOpacity={0.7} onPress={() => Linking.openURL(explorerUrl)}>
+        {explorerUrl ? <TouchableOpacity style={styles.explorerBtn} activeOpacity={0.7} onPress={() => Linking.openURL(explorerUrl)}>
           <Ionicons name="compass-outline" size={17} color={BLUE} />
           <Text style={styles.explorerTxt}>{t('txRecord.viewOnExplorer')}</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> : null}
       </ScrollView>
     </View>
   );

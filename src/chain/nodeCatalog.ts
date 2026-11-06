@@ -4,6 +4,16 @@ import {CHAINS} from './config';
 export type NodeCatalog=Record<ChainId,{rpc:NodeInfo[];history:NodeInfo[]}>;
 export const BUILTIN_NODE_CATALOG:NodeCatalog={vaulta:{rpc:CHAINS.vaulta.nodes,history:CHAINS.vaulta.historyNodes},jungle4:{rpc:CHAINS.jungle4.nodes,history:CHAINS.jungle4.historyNodes}};
 
+/** Public catalogs can update built-in endpoints; only the user can add a chain identity. */
+export function withCustomNetworkNodes(catalog: NodeCatalog): NodeCatalog {
+  const custom = Object.values(CHAINS).filter(network => network.custom);
+  if (!custom.length) return catalog;
+  const result = { ...catalog };
+  for (const network of custom)
+    result[network.id] = { rpc: network.nodes, history: network.historyNodes };
+  return result;
+}
+
 /** Only endpoint metadata is configurable. Chain IDs and signing rules stay local. */
 export function parseNodeCatalog(value:unknown):NodeCatalog {
   const invalid=():never=>{throw new Error('Invalid node catalog');};

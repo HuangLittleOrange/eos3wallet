@@ -37,9 +37,9 @@ export default function NetworksScreen() {
         <NetworkIcon networkId={addingNetwork} />
         <Text style={styles.name}>{CHAINS[addingNetwork].name} · {t(CHAINS[addingNetwork].testnet ? 'manageWallet.testnet' : 'manageWallet.mainnet')}</Text>
       </View>
-      <TouchableOpacity style={styles.action} onPress={() => nav.replace('CreateWalletMethod')}>
+      {addingNetwork === 'vaulta' ? <TouchableOpacity style={styles.action} onPress={() => nav.replace('CreateWalletMethod')}>
         <Text style={styles.label}>{t('walletList.createWallet')}</Text><Ionicons name="chevron-forward" size={20} color={colors.textSub} />
-      </TouchableOpacity>
+      </TouchableOpacity> : null}
       <TouchableOpacity style={styles.action} onPress={() => nav.replace('Import')}>
         <Text style={styles.label}>{t('walletList.importWallet')}</Text><Ionicons name="chevron-forward" size={20} color={colors.textSub} />
       </TouchableOpacity>

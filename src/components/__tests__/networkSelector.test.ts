@@ -3,6 +3,7 @@ jest.mock('@expo/vector-icons', () => ({ Ionicons: 'Icon' }));
 jest.mock('../../navigation/navigationRef', () => ({ navigationRef: { isReady: () => true, navigate: jest.fn() } }));
 jest.mock('../../i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }));
 jest.mock('../../chain/WalletContext', () => ({ useWalletSession: jest.fn() }));
+jest.mock('../../chain/customNetworks', () => ({ useCustomNetworks: () => ({ networks: [], ready: true, readError: false }) }));
 jest.mock('../../chain/networkVisibility', () => ({ useNetworkVisibility: jest.fn(), setNetworkVisible: jest.fn(async () => {}), retryNetworkVisibility: jest.fn() }));
 import React from 'react';
 import NetworkSelector, { NetworkList } from '../NetworkSelector';
@@ -34,11 +35,12 @@ test('unchecked test networks have no entry or testnet tab in the normal selecto
   expect(button('Jungle4')).toBeUndefined();
 });
 
-test('configuration checks network visibility without selecting the network or leaving the testnet tab', async () => {
+test('configuration shows both network types together and changes visibility without switching', async () => {
   jest.mocked(useNetworkVisibility).mockReturnValue({ enabled: ['vaulta'], ready: true, readError: false });
   const props = { selected: 'vaulta' as const, onSelect: select, manageVisibility: true };
   await act(async () => { renderer = create(React.createElement(NetworkList, props)); });
-  await act(async () => button('manageWallet.testnet').props.onPress());
+  expect(button('EOS')).toBeDefined();
+  expect(renderer.root.findAll((node: any) => node.props.accessibilityRole === 'tab')).toHaveLength(0);
   expect(button('Jungle4').props.accessibilityRole).toBe('checkbox');
   expect(button('Jungle4').props.accessibilityState.checked).toBe(false);
   await act(async () => button('Jungle4').props.onPress());
@@ -49,15 +51,22 @@ test('configuration checks network visibility without selecting the network or l
   expect(button('Jungle4').props.accessibilityState.checked).toBe(true);
 });
 
-test('page tabs filter networks without switching; selecting a row chooses the network', async () => {
+test('enabled mainnet and testnet appear together; selecting a row chooses the network', async () => {
   await act(async () => { renderer = create(React.createElement(NetworkList, { selected: 'vaulta', onSelect: select })); });
   expect(button('EOS')).toBeDefined();
-  expect(button('Jungle4')).toBeUndefined();
-  await act(async () => button('manageWallet.testnet').props.onPress());
+  expect(button('Jungle4')).toBeDefined();
   expect(select).not.toHaveBeenCalled();
-  expect(button('EOS')).toBeUndefined();
+  expect(button('EOS')).toBeDefined();
   await act(async () => button('Jungle4').props.onPress());
   expect(select).toHaveBeenCalledWith('jungle4');
   await act(async () => renderer.update(React.createElement(NetworkList, { selected: 'jungle4', onSelect: select })));
   expect(button('Jungle4').props.accessibilityState.selected).toBe(true);
+});
+
+test('custom network entry is available from both selection and management', async () => {
+  await act(async () => { renderer = create(React.createElement(NetworkList, { selected: 'vaulta', onSelect: select })); });
+  await act(async () => button('network.addCustom').props.onPress());
+  expect(navigationRef.navigate).toHaveBeenCalledWith('AddNetwork');
+  await act(async () => renderer.update(React.createElement(NetworkList, { selected: 'vaulta', onSelect: select, manageVisibility: true })));
+  expect(button('network.addCustom')).toBeDefined();
 });

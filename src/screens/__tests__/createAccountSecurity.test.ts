@@ -229,7 +229,7 @@ test('network errors never mark names available; real unknown-account errors and
   wallet.client.getAccount.mockRejectedValueOnce(new Error('offline'));
   await act(async () => { await renderer.root.findByType('AccountNameBoxes').props.onBlur(); });
   expect(hasText('createAccountPay.nameCheckFailed')).toBe(true);
-  await act(async () => { button('createAccountPay.agreePrefix').props.onPress(); });
+  expect(button('createAccountPay.agreePrefix')).toBeUndefined();
   expect(button('createAccountPay.nextStep').props.disabled).toBe(true);
   wallet.client.getAccount.mockRejectedValueOnce(unknownAccount());
   await act(async () => { await renderer.root.findByType('AccountNameBoxes').props.onBlur(); });

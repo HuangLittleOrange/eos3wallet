@@ -71,7 +71,6 @@ export default function CreateAccountPayScreen() {
   const [nameCheck, setNameCheck] = useState<'idle' | 'checking' | 'available' | 'taken'>('idle');
   const [checkedName, setCheckedName] = useState('');
   const [nameErr, setNameErr] = useState<string | null>(null);
-  const [agreed, setAgreed] = useState(false);
   // 金额是固定的(SIGNUP_AMOUNT),这里只需要确认合约当前还收这个代币
   const [tokenOk, setTokenOk] = useState(false);
   const [quoteErr, setQuoteErr] = useState<string | null>(null);
@@ -253,7 +252,7 @@ export default function CreateAccountPayScreen() {
     checkName(name);
   };
 
-  const nameReady = isAccount(accountName) && checkedName === accountName && nameCheck === 'available' && agreed && tokenOk && !nextBusy;
+  const nameReady = isAccount(accountName) && checkedName === accountName && nameCheck === 'available' && tokenOk && !nextBusy;
 
   /**
    * 「下一步」:当场生成这个账户要用的密钥,存进临时槽位,并把订单落盘,
@@ -432,7 +431,6 @@ export default function CreateAccountPayScreen() {
           setOrder(null);
           setAccountName('');
           setNameCheck('idle');
-          setAgreed(false);
           setPolling(false);
           setPollTimedOut(false);
           setTxErr(null);
@@ -578,22 +576,8 @@ export default function CreateAccountPayScreen() {
               ) : null}
             </ScrollView>
 
-            {/* 底部固定:同意协议 + 下一步(TP 截图 3) */}
+            {/* 底部固定:下一步。服务协议尚未上线，不展示无内容的协议入口。 */}
             <View style={[styles.bottomBar, { paddingBottom: insets.bottom + 28 }]}>
-              <TouchableOpacity style={styles.agreeRow} activeOpacity={0.7} onPress={() => setAgreed((v) => !v)}>
-                <Ionicons
-                  name={agreed ? 'checkmark-circle' : 'ellipse-outline'}
-                  size={21}
-                  color={agreed ? BLUE : colors.textFaint}
-                />
-                <Text style={styles.agreeTxt}>
-                  {t('createAccountPay.agreePrefix')}
-                  <Text style={styles.agreeLink} onPress={() => Linking.openURL('https://eos3.app/terms')}>
-                    {t('createAccountPay.serviceAgreement')}
-                  </Text>
-                </Text>
-              </TouchableOpacity>
-
               {/* 代币支持检查在后台默默跑完就直接放行,但没查完之前按钮是灰的——
                   不加这行提示的话,用户明明已经填完名字、勾了协议,却看不出
                   按钮为什么点不动,像是卡住了 */}
@@ -880,9 +864,6 @@ const styles = StyleSheet.create({
   errBoxTxt: { flex: 1, fontSize: 13, color: RED, lineHeight: 19 },
 
   bottomBar: { paddingHorizontal: spacing.lg, paddingTop: 8 },
-  agreeRow: { flexDirection: 'row', alignItems: 'center', gap: 9, marginBottom: 14 },
-  agreeTxt: { flex: 1, fontSize: 13, color: colors.textSub },
-  agreeLink: { color: BLUE },
 
   bigBtn: { backgroundColor: BLUE, height: 52, borderRadius: 26, alignItems: 'center', justifyContent: 'center', marginTop: 16 },
   bigBtnOff: { opacity: 0.45 },

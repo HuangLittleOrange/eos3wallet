@@ -36,7 +36,6 @@ import { biometricSigner, passkeySigner, passwordSigner } from '../chain/signers
 import { useI18n, TranslationKey } from '../i18n';
 import { getResourceRepairMarket, peekResourceRepairMarket } from '../chain/resourceRepairQuote';
 
-const TABS = ['CPU/NET', 'RAM', 'REX'];
 const BLUE = '#1E88FF';
 const BAR_BLUE = '#8FB8FB';
 
@@ -47,7 +46,9 @@ export default function ResourceScreen() {
   const { t } = useI18n();
   const { refreshing, onRefresh } = useManualRefresh(w.status, w.refresh);
 
-  const [tab, setTab] = useState(0);
+  const tabs = w.chainId === 'vaulta' ? ['CPU/NET', 'RAM', 'REX'] : ['CPU/NET', 'RAM'];
+  const [selectedTab, setTab] = useState(0);
+  const tab = selectedTab < tabs.length ? selectedTab : 0;
   const [mode, setMode] = useState(0);
   const [cpuIn, setCpuIn] = useState('');
   const [netIn, setNetIn] = useState('');
@@ -196,7 +197,7 @@ export default function ResourceScreen() {
       const res = await transact({ chainId: w.chainId, node: w.node, actor: w.account, signer, permission, actions: confirm, isCurrent: attempt.isCurrent });
       setConfirm(null);
       Alert.alert(t('send.txBroadcastTitle'), `TxID\n${res.txId}`, [
-        { text: t('send.viewExplorer'), onPress: () => Linking.openURL(res.explorerUrl) },
+        ...(res.explorerUrl ? [{ text: t('send.viewExplorer'), onPress: () => { void Linking.openURL(res.explorerUrl); } }] : []),
         { text: t('send.done') },
       ]);
     } catch (e: any) {
@@ -219,7 +220,7 @@ export default function ResourceScreen() {
         <TouchableOpacity onPress={() => nav.goBack()} hitSlop={10} style={styles.back}>
           <Ionicons name="chevron-back" size={26} color={colors.text} />
         </TouchableOpacity>
-        {TABS.map((t, i) => (
+        {tabs.map((t, i) => (
           <TouchableOpacity
             key={t}
             onPress={() => {

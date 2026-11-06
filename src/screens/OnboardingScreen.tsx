@@ -78,7 +78,7 @@ export default function OnboardingScreen() {
           <Ionicons name="chevron-forward" size={19} color={colors.textFaint} />
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.card} activeOpacity={0.7} onPress={() => nav.navigate('CreateWalletMethod')}>
+        {w.chainId === 'vaulta' ? <TouchableOpacity style={styles.card} activeOpacity={0.7} onPress={() => nav.navigate('CreateWalletMethod')}>
           <View style={[styles.cardIcon, { backgroundColor: '#EAF1FF' }]}>
             <Ionicons name="add-circle-outline" size={22} color="#2E7DF7" />
           </View>
@@ -87,7 +87,7 @@ export default function OnboardingScreen() {
             <Text style={styles.cardDesc}>{t('onboarding.noAccountDesc')}</Text>
           </View>
           <Ionicons name="chevron-forward" size={19} color={colors.textFaint} />
-        </TouchableOpacity>
+        </TouchableOpacity> : null}
       </View>
 
       <Text style={[styles.footNote, { paddingBottom: insets.bottom + 14 }]}>{t('onboarding.footNote')}</Text>
